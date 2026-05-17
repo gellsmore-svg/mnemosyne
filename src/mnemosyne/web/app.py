@@ -17,6 +17,7 @@ from mnemosyne.ingestion.worker import discover_sources, process_next
 from mnemosyne.retrieval.queries import list_documents, search_nodes
 from mnemosyne.sessions.exchanges import recent_exchanges
 from mnemosyne.sessions.interaction import answer_query
+from mnemosyne.sessions.registry import create_session, list_sessions
 
 
 class AskRequest(BaseModel):
@@ -25,6 +26,11 @@ class AskRequest(BaseModel):
     session_id: str = "web"
     adapter: str | None = None
     model: str | None = None
+
+
+class CreateSessionRequest(BaseModel):
+    title: str | None = None
+    session_id: str | None = None
 
 
 def create_app() -> FastAPI:
@@ -63,6 +69,14 @@ def create_app() -> FastAPI:
     @app.get("/api/documents")
     def documents(limit: int = 10) -> dict[str, Any]:
         return {"ok": True, "documents": list_documents(db, limit=limit)}
+
+    @app.get("/api/sessions")
+    def sessions(limit: int = 20) -> dict[str, Any]:
+        return {"ok": True, "sessions": list_sessions(db, limit=limit)}
+
+    @app.post("/api/sessions")
+    def new_session(request: CreateSessionRequest) -> dict[str, Any]:
+        return {"ok": True, "session": create_session(db, title=request.title, session_id=request.session_id)}
 
     @app.get("/api/search")
     def search(query: str = "", label: str | None = None, limit: int = 10) -> dict[str, Any]:

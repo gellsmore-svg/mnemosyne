@@ -80,8 +80,10 @@ Current early web surface:
 - FastAPI app;
 - static HTML/CSS/JS UI;
 - health, document, search, ask, and history APIs;
+- session create/list APIs;
 - queue status, recent job, and process-inbox APIs;
 - node focus and adapter selection controls;
+- session selector/create controls;
 - operator controls for inbox processing.
 
 Minimum build:

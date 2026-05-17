@@ -18,6 +18,13 @@
         </header>
 
         <section class="ask-panel">
+          <div class="session-row">
+            <select id="sessionId">
+              <option value="web">web</option>
+            </select>
+            <input id="newSessionTitle" placeholder="New session title" />
+            <button id="createSession">New</button>
+          </div>
           <textarea id="query" rows="4" placeholder="Ask Mnemosyne..."></textarea>
           <div class="controls">
             <input id="nodeId" placeholder="Focus node ID (optional)" />

@@ -65,6 +65,8 @@ def ensure_indexes(db: Database) -> None:
     db.queue.create_index("path")
     db.exchanges.create_index([("session_id", 1), ("created_at", -1)])
     db.exchanges.create_index("focus_node_id")
+    db.sessions.create_index("session_id", unique=True)
+    db.sessions.create_index("updated_at")
     db.label_definitions.create_index("key", unique=True)
     for definition in LABEL_DEFINITIONS:
         db.label_definitions.update_one(

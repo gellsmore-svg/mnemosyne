@@ -6,6 +6,8 @@ from typing import Any
 from bson import ObjectId
 from pymongo.database import Database
 
+from mnemosyne.sessions.registry import touch_session
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -20,6 +22,7 @@ def save_exchange(
     session_id: str = "default",
 ) -> str:
     now = utc_now()
+    touch_session(db, session_id)
     result = db.exchanges.insert_one(
         {
             "schema_version": 1,

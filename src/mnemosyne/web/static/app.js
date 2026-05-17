@@ -40,8 +40,28 @@ async function loadDocuments() {
   );
 }
 
+async function loadSessions() {
+  const previous = $("sessionId").value || "web";
+  const data = await api("/api/sessions?limit=30");
+  const options = data.sessions.length
+    ? data.sessions.map((session) => {
+        const label = `${session.title} (${session.session_id})`;
+        return new Option(label, session.session_id);
+      })
+    : [new Option("web", "web")];
+  if (!options.some((option) => option.value === "web")) {
+    options.unshift(new Option("Web (web)", "web"));
+  }
+  $("sessionId").replaceChildren(...options);
+  $("sessionId").value = options.some((option) => option.value === previous) ? previous : options[0].value;
+  if (!$("historySession").value) {
+    $("historySession").value = $("sessionId").value;
+  }
+}
+
 async function loadHistory() {
-  const session = encodeURIComponent($("historySession").value);
+  const sessionValue = $("historySession").value || $("sessionId").value;
+  const session = encodeURIComponent(sessionValue);
   const suffix = session ? `&session_id=${session}` : "";
   const data = await api(`/api/history?limit=6${suffix}`);
   $("history").replaceChildren(
@@ -89,7 +109,7 @@ async function ask() {
   const payload = {
     query: $("query").value,
     node_id: $("nodeId").value || null,
-    session_id: "web",
+    session_id: $("sessionId").value || "web",
     adapter: $("adapter").value || null,
     model: $("model").value || null,
   };
@@ -128,6 +148,20 @@ async function ask() {
     null,
     2
   );
+  await Promise.all([loadSessions(), loadHistory()]);
+}
+
+async function createSession() {
+  const title = $("newSessionTitle").value || null;
+  const data = await api("/api/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  $("newSessionTitle").value = "";
+  await loadSessions();
+  $("sessionId").value = data.session.session_id;
+  $("historySession").value = data.session.session_id;
   await loadHistory();
 }
 
@@ -142,6 +176,7 @@ async function refresh() {
   await Promise.all([
     loadHealth(),
     loadRuntime(),
+    loadSessions(),
     loadDocuments(),
     loadHistory(),
     loadQueue(),
@@ -151,10 +186,15 @@ async function refresh() {
 }
 
 $("ask").addEventListener("click", ask);
+$("createSession").addEventListener("click", createSession);
 $("search").addEventListener("click", searchNodes);
 $("refresh").addEventListener("click", refresh);
 $("processInbox").addEventListener("click", processInbox);
 $("loadHistory").addEventListener("click", loadHistory);
+$("sessionId").addEventListener("change", () => {
+  $("historySession").value = $("sessionId").value;
+  loadHistory();
+});
 $("query").addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") ask();
 });

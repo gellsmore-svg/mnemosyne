@@ -37,6 +37,8 @@ The domain is in early scaffold mode. The imported requirements and design docum
 .venv/bin/mnemosyne queue-status
 .venv/bin/mnemosyne queue-recent --limit 5
 .venv/bin/mnemosyne labels
+.venv/bin/mnemosyne sessions
+.venv/bin/mnemosyne create-session --title "Design review"
 .venv/bin/mnemosyne backfill-schema-metadata
 .venv/bin/mnemosyne show-tree <document_id>
 .venv/bin/mnemosyne list-docs --limit 5
@@ -80,7 +82,7 @@ Node search also supports document scoping and created-at bounds. `node-context`
 
 `build-prompt` wraps rendered context with the user query, system instruction, and token-budget metadata. Token estimates use a simple four-characters-per-token approximation until a tokenizer is wired in.
 
-`ask` and `chat` are now the first interactive surfaces. They use the retrieval pipeline, a mock answer adapter, and persist exchanges in MongoDB.
+`ask` and `chat` are now the first interactive surfaces. They use the retrieval pipeline, a mock answer adapter, and persist exchanges in MongoDB. Sessions can be created and listed from the CLI, and each saved exchange updates its session metadata.
 
 For a real local model call, pass `--adapter ollama_cli`. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`.
 
@@ -94,7 +96,7 @@ Run:
 
 Open `http://127.0.0.1:8765/`.
 
-The web UI can search nodes, focus a node, ask questions with `mock` or `ollama_cli`, choose an Ollama model per request, show recent exchanges, show queue status, process `data/ingest/`, and list recent jobs. To call a local LLM from the browser, set the adapter to `ollama_cli`, choose a model such as `gemma3:1b`, optionally focus a node, and press Ask.
+The web UI can create/select sessions, search nodes, focus a node, ask questions with `mock` or `ollama_cli`, choose an Ollama model per request, show recent exchanges, show queue status, process `data/ingest/`, and list recent jobs. To call a local LLM from the browser, set the adapter to `ollama_cli`, choose a model such as `gemma3:1b`, optionally focus a node, and press Ask.
 
 If no Mongo node matches the prompt and no focus node is selected, Mnemosyne still sends the submitted prompt to the selected answer adapter. The answer panel includes a compact run log showing whether retrieved context was used.
 

@@ -40,3 +40,21 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     assert data["ok"] is True
     assert "ollama_cli" in data["available_adapters"]
     assert data["default_model"]
+
+
+def test_session_endpoints() -> None:
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/sessions",
+        json={"title": "Web Test Session", "session_id": "web-test-session"},
+    )
+    listed = client.get("/api/sessions")
+
+    assert created.status_code == 200
+    assert created.json()["session"]["session_id"] == "web-test-session"
+    assert listed.status_code == 200
+    assert any(
+        session["session_id"] == "web-test-session"
+        for session in listed.json()["sessions"]
+    )

@@ -88,11 +88,18 @@ textarea {
 }
 
 .controls,
+.session-row,
 .row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px 150px 90px;
   gap: 8px;
   margin-top: 8px;
+}
+
+.session-row {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px) 90px;
+  margin-top: 0;
+  margin-bottom: 8px;
 }
 
 .row {
@@ -162,6 +169,10 @@ pre {
   }
 
   .controls {
+    grid-template-columns: 1fr;
+  }
+
+  .session-row {
     grid-template-columns: 1fr;
   }
 }

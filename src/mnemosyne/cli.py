@@ -32,6 +32,7 @@ from mnemosyne.retrieval.queries import (
 )
 from mnemosyne.sessions.exchanges import recent_exchanges
 from mnemosyne.sessions.interaction import answer_query
+from mnemosyne.sessions.registry import create_session, list_sessions
 
 
 def main() -> None:
@@ -47,6 +48,11 @@ def main() -> None:
     subcommands.add_parser("process-inbox")
     subcommands.add_parser("queue-status")
     subcommands.add_parser("labels")
+    subcommands.add_parser("sessions")
+
+    create_session_cmd = subcommands.add_parser("create-session")
+    create_session_cmd.add_argument("--title", default=None)
+    create_session_cmd.add_argument("--session-id", default=None)
 
     list_docs = subcommands.add_parser("list-docs")
     list_docs.add_argument("--limit", type=int, default=20)
@@ -221,6 +227,28 @@ def main() -> None:
     if args.command == "labels":
         ensure_indexes(db)
         print(json.dumps({"ok": True, "labels": label_definitions(db)}, indent=2))
+        return
+
+    if args.command == "sessions":
+        ensure_indexes(db)
+        print(json.dumps({"ok": True, "sessions": list_sessions(db)}, indent=2))
+        return
+
+    if args.command == "create-session":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "session": create_session(
+                        db,
+                        title=args.title,
+                        session_id=args.session_id,
+                    ),
+                },
+                indent=2,
+            )
+        )
         return
 
     if args.command == "list-docs":
