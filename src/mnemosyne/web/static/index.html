@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mnemosyne</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>Mnemosyne</h1>
+            <p id="health">Connecting...</p>
+          </div>
+          <button id="refresh">Refresh</button>
+        </header>
+
+        <section class="ask-panel">
+          <textarea id="query" rows="4" placeholder="Ask Mnemosyne..."></textarea>
+          <div class="controls">
+            <input id="nodeId" placeholder="Focus node ID (optional)" />
+            <select id="adapter">
+              <option value="">default</option>
+              <option value="mock">mock</option>
+              <option value="ollama_cli">ollama_cli</option>
+            </select>
+            <select id="model">
+              <option value="">default model</option>
+            </select>
+            <button id="ask">Ask</button>
+          </div>
+        </section>
+
+        <section class="answer">
+          <h2>Answer</h2>
+          <pre id="answerText">No answer yet.</pre>
+          <div id="answerMeta"></div>
+          <pre id="runLog" class="console-log">No run yet.</pre>
+        </section>
+
+        <section class="operator">
+          <h2>Ingestion</h2>
+          <div class="operator-grid">
+            <button id="processInbox">Process Inbox</button>
+            <div id="queueStatus" class="status">Queue: unknown</div>
+          </div>
+          <pre id="processResult">Drop .md/.txt files into data/ingest, then process the inbox.</pre>
+        </section>
+      </section>
+
+      <aside class="sidebar">
+        <section>
+          <h2>Search Nodes</h2>
+          <div class="row">
+            <input id="searchQuery" placeholder="Search text" />
+            <button id="search">Search</button>
+          </div>
+          <div id="nodes" class="list"></div>
+        </section>
+
+        <section>
+          <h2>Recent Documents</h2>
+          <div id="documents" class="list"></div>
+        </section>
+
+        <section>
+          <h2>History</h2>
+          <div class="row">
+            <input id="historySession" placeholder="Session filter" />
+            <button id="loadHistory">Load</button>
+          </div>
+          <div id="history" class="list"></div>
+        </section>
+
+        <section>
+          <h2>Recent Jobs</h2>
+          <div id="jobs" class="list"></div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

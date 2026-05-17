@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from bson import ObjectId
+from pymongo.database import Database
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def save_exchange(
+    db: Database,
+    query: str,
+    answer: dict[str, Any],
+    prompt: dict[str, Any],
+    focus_node_id: str | None,
+    session_id: str = "default",
+) -> str:
+    now = utc_now()
+    result = db.exchanges.insert_one(
+        {
+            "schema_version": 1,
+            "session_id": session_id,
+            "focus_node_id": ObjectId(focus_node_id) if focus_node_id else None,
+            "query": query,
+            "answer": answer,
+            "prompt_budget": prompt.get("budget", {}),
+            "context_metadata": prompt.get("context_metadata", {}),
+            "created_at": now,
+        }
+    )
+    return str(result.inserted_id)
+
+
+def recent_exchanges(db: Database, limit: int = 10, session_id: str | None = None) -> list[dict]:
+    query = {}
+    if session_id:
+        query["session_id"] = session_id
+    return [serialize_exchange(row) for row in db.exchanges.find(query).sort("created_at", -1).limit(limit)]
+
+
+def serialize_exchange(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "exchange_id": str(row["_id"]),
+        "session_id": row.get("session_id"),
+        "focus_node_id": str(row["focus_node_id"]) if row.get("focus_node_id") else None,
+        "query": row.get("query"),
+        "answer": row.get("answer", {}).get("answer"),
+        "adapter": row.get("answer", {}).get("adapter"),
+        "model": row.get("answer", {}).get("model"),
+        "used_node_ids": row.get("answer", {}).get("used_node_ids", []),
+        "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
+    }

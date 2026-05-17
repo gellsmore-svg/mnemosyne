@@ -1,0 +1,167 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f6f7f9;
+  color: #18202b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  gap: 1px;
+  min-height: 100vh;
+  background: #d8dde5;
+}
+
+.workspace,
+.sidebar {
+  background: #f6f7f9;
+  padding: 24px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 28px;
+}
+
+h2 {
+  font-size: 14px;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  color: #526071;
+}
+
+button,
+input,
+select,
+textarea {
+  border: 1px solid #c8d0da;
+  border-radius: 6px;
+  font: inherit;
+}
+
+button {
+  background: #1e4f8f;
+  color: white;
+  padding: 9px 13px;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  background: white;
+  padding: 10px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.ask-panel,
+.answer,
+.operator,
+.sidebar section {
+  margin-bottom: 18px;
+}
+
+.controls,
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px 150px 90px;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.row {
+  grid-template-columns: minmax(0, 1fr) 90px;
+}
+
+.operator-grid {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.status {
+  background: white;
+  border: 1px solid #d6dce4;
+  border-radius: 6px;
+  padding: 10px;
+  color: #334155;
+}
+
+pre {
+  white-space: pre-wrap;
+  background: white;
+  border: 1px solid #d6dce4;
+  border-radius: 6px;
+  min-height: 220px;
+  margin: 0;
+  padding: 16px;
+}
+
+.console-log {
+  min-height: 72px;
+  margin-top: 8px;
+  background: #101820;
+  border-color: #101820;
+  color: #d7e2ee;
+  font-size: 12px;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+}
+
+.item {
+  background: white;
+  border: 1px solid #d6dce4;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.item button {
+  margin-top: 8px;
+  padding: 6px 9px;
+}
+
+.muted {
+  color: #667387;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .controls {
+    grid-template-columns: 1fr;
+  }
+}

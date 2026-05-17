@@ -1,0 +1,25 @@
+mongo:
+  uri: mongodb://localhost:27017
+  database: mnemosyne_dev
+
+paths:
+  ingest: data/ingest
+  archive: data/archive
+  dead_letter: data/dead_letter
+  staging: data/staging
+
+runtime:
+  model_adapter: mock
+  answer_adapter: mock
+  ollama_model: gemma3:1b
+  ollama_base_url: http://localhost:11434
+  ollama_executable: /mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe
+  ollama_timeout_seconds: 120
+
+queue:
+  max_attempts: 3
+
+retrieval:
+  context_char_budget: 4000
+  prompt_token_budget: 2000
+  reserved_response_tokens: 500

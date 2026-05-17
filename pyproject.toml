@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mnemosyne"
+version = "0.1.0"
+description = "Local graph-based memory and retrieval layer for LLM interactions."
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = [
+  "llm",
+  "memory",
+  "retrieval",
+  "graph",
+  "mongodb",
+  "ollama",
+  "local-first",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Framework :: FastAPI",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Database",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+  "fastapi>=0.115",
+  "pydantic>=2.7",
+  "pymongo>=4.7",
+  "pyyaml>=6.0",
+  "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27",
+  "pytest>=8.0",
+]
+
+[project.scripts]
+mnemosyne = "mnemosyne.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/gellsmore-svg/mnemosyne"
+Repository = "https://github.com/gellsmore-svg/mnemosyne"
+Issues = "https://github.com/gellsmore-svg/mnemosyne/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
