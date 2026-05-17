@@ -20,7 +20,7 @@ class PathConfig(BaseModel):
 
 class RuntimeConfig(BaseModel):
     model_adapter: str = "mock"
-    answer_adapter: str = "mock"
+    answer_adapter: str = "ollama_cli"
     ollama_model: str = "gemma3:1b"
     ollama_base_url: str = "http://localhost:11434"
     ollama_executable: Path = Path("/mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe")

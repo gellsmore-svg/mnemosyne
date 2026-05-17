@@ -25,6 +25,9 @@ async function loadHealth() {
 async function loadRuntime() {
   const data = await api("/api/runtime");
   window.mnemosyneRuntime = data;
+  const adapter = $("adapter");
+  const defaultAdapter = adapter.querySelector("option[value='']");
+  defaultAdapter.textContent = `default (${data.default_adapter})`;
   const modelOptions = [
     new Option(`default (${data.default_model})`, ""),
     ...data.known_models.map((model) => new Option(model, model)),

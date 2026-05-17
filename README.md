@@ -82,9 +82,9 @@ Node search also supports document scoping and created-at bounds. `node-context`
 
 `build-prompt` wraps rendered context with the user query, system instruction, and token-budget metadata. Token estimates use a simple four-characters-per-token approximation until a tokenizer is wired in.
 
-`ask` and `chat` are now the first interactive surfaces. They use the retrieval pipeline, a mock answer adapter, and persist exchanges in MongoDB. Sessions can be created and listed from the CLI, and each saved exchange updates its session metadata.
+`ask` and `chat` are now the first interactive surfaces. They use the retrieval pipeline, the local Ollama CLI answer adapter by default, and persist exchanges in MongoDB. Sessions can be created and listed from the CLI, and each saved exchange updates its session metadata. The mock answer adapter remains available for deterministic tests and offline diagnostics with `--adapter mock`.
 
-For a real local model call, pass `--adapter ollama_cli`. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`. Ollama CLI prompts are sent through stdin and bounded by `runtime.ollama_timeout_seconds`.
+For a real local model call, use the default adapter or pass `--adapter ollama_cli` explicitly. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`. Ollama CLI prompts are sent through stdin and bounded by `runtime.ollama_timeout_seconds`.
 
 ## Web UI
 
@@ -96,7 +96,7 @@ Run:
 
 Open `http://127.0.0.1:8765/`.
 
-The web UI can create/select sessions, search nodes, focus a node, ask questions with `mock` or `ollama_cli`, choose an Ollama model per request, show recent exchanges, show queue status, process `data/ingest/`, and list recent jobs. To call a local LLM from the browser, set the adapter to `ollama_cli`, choose a model such as `gemma3:1b`, optionally focus a node, and press Ask.
+The web UI can create/select sessions, search nodes, focus a node, ask questions with the default `ollama_cli` adapter or the diagnostic `mock` adapter, choose an Ollama model per request, show recent exchanges, show queue status, process `data/ingest/`, and list recent jobs. To call a local LLM from the browser, leave the adapter on default, choose a model such as `gemma3:1b`, optionally focus a node, and press Ask.
 
 If no Mongo node matches the prompt and no focus node is selected, Mnemosyne still sends the submitted prompt to the selected answer adapter. The answer panel includes a compact run log showing whether retrieved context was used.
 

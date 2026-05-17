@@ -109,7 +109,7 @@ Current early read surface:
 - compile a role-tagged context record set from a focus node, including ancestors, nearby siblings, and descendants.
 - render compiled context to Markdown with include/skip metadata under a character budget.
 - build a prompt envelope with system instruction, user query, rendered context, and estimated token budget metadata.
-- ask/chat commands using the retrieval pipeline and a mock answer adapter;
+- ask/chat commands using the retrieval pipeline and local Ollama CLI answer adapter by default;
 - optional Ollama CLI answer adapter for real local model calls;
 - saved exchange records in MongoDB.
 

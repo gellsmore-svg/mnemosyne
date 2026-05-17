@@ -10,7 +10,7 @@ paths:
 
 runtime:
   model_adapter: mock
-  answer_adapter: mock
+  answer_adapter: ollama_cli
   ollama_model: gemma3:1b
   ollama_base_url: http://localhost:11434
   ollama_executable: /mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe
