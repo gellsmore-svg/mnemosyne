@@ -134,11 +134,41 @@ pre {
 
 .console-log {
   min-height: 72px;
+  max-height: 520px;
+  overflow: auto;
   margin-top: 8px;
+  padding: 12px;
   background: #101820;
   border-color: #101820;
+  border-radius: 6px;
   color: #d7e2ee;
   font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.console-log details {
+  border-top: 1px solid #273545;
+  padding: 8px 0;
+}
+
+.console-log details:first-child {
+  border-top: 0;
+}
+
+.console-log summary {
+  cursor: pointer;
+  color: #f3f7fb;
+}
+
+.console-log pre {
+  min-height: 0;
+  margin-top: 8px;
+  padding: 10px;
+  overflow: auto;
+  background: #0b1118;
+  border-color: #273545;
+  color: #d7e2ee;
+  font: inherit;
 }
 
 .list {

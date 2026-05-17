@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
             "ok": True,
             "default_adapter": config.runtime.answer_adapter,
             "default_model": config.runtime.ollama_model,
+            "retrieval_mode": config.runtime.retrieval_mode,
             "available_adapters": ["mock", "ollama_cli", "ollama_http"],
             "known_models": [
                 "gemma3:1b",

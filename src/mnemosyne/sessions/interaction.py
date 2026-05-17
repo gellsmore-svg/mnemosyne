@@ -24,6 +24,22 @@ def answer_query(
     answer_adapter_name: str | None = None,
     ollama_model: str | None = None,
 ) -> dict[str, Any]:
+    process_trace: list[dict[str, Any]] = [
+        {
+            "step": "user_prompt",
+            "input": {
+                "query": query,
+                "focus_node_id": focus_node_id,
+                "session_id": session_id,
+                "requested_adapter": answer_adapter_name,
+                "requested_model": ollama_model,
+                "retrieval_mode": config.runtime.retrieval_mode,
+            },
+            "output": {
+                "submitted_prompt": query,
+            },
+        }
+    ]
     selected_node_id = focus_node_id or select_focus_node(db, query)
     retrieval_status = "matched_context"
     if selected_node_id:
@@ -50,14 +66,49 @@ def answer_query(
             token_budget=config.retrieval.prompt_token_budget,
             reserved_response_tokens=config.retrieval.reserved_response_tokens,
         )
+    process_trace.append(
+        {
+            "step": "retrieval_context",
+            "input": {
+                "query": query,
+                "provided_focus_node_id": focus_node_id,
+                "selected_node_id": selected_node_id,
+                "mode": config.runtime.retrieval_mode,
+            },
+            "output": {
+                "retrieval_status": retrieval_status,
+                "focus_node_id": selected_node_id,
+                "context_text": prompt["context_text"],
+                "context_metadata": prompt["context_metadata"],
+                "budget": prompt["budget"],
+            },
+        }
+    )
     runtime_config = config.runtime.model_copy()
     if answer_adapter_name:
         runtime_config.answer_adapter = answer_adapter_name
     if ollama_model:
         runtime_config.ollama_model = ollama_model
+    adapter_step = {
+        "step": "answer_adapter",
+        "input": {
+            "adapter": runtime_config.answer_adapter,
+            "model": runtime_config.ollama_model,
+            "prompt_text": prompt["prompt_text"],
+            "timeout_seconds": runtime_config.ollama_timeout_seconds
+            if runtime_config.answer_adapter.startswith("ollama")
+            else None,
+        },
+        "output": {},
+    }
+    process_trace.append(adapter_step)
     try:
         answer = answer_adapter(runtime_config).answer(prompt)
     except Exception as error:
+        adapter_step["output"] = {
+            "ok": False,
+            "error": str(error),
+        }
         return {
             "ok": False,
             "reason": "answer_adapter_failed",
@@ -65,7 +116,15 @@ def answer_query(
             "adapter": runtime_config.answer_adapter,
             "model": runtime_config.ollama_model,
             "focus_node_id": selected_node_id,
+            "process_trace": process_trace,
         }
+    adapter_step["output"] = {
+        "ok": True,
+        "answer": answer["answer"],
+        "used_node_ids": answer["used_node_ids"],
+        "adapter": answer["adapter"],
+        "model": answer.get("model"),
+    }
     exchange_id = save_exchange(
         db,
         query=query,
@@ -73,6 +132,7 @@ def answer_query(
         prompt=prompt,
         focus_node_id=selected_node_id,
         session_id=session_id,
+        process_trace=process_trace,
     )
     return {
         "ok": True,
@@ -86,6 +146,7 @@ def answer_query(
         "used_node_ids": answer["used_node_ids"],
         "budget": prompt["budget"],
         "retrieval_status": retrieval_status,
+        "process_trace": process_trace,
     }
 
 

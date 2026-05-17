@@ -20,6 +20,7 @@ def save_exchange(
     prompt: dict[str, Any],
     focus_node_id: str | None,
     session_id: str = "default",
+    process_trace: list[dict[str, Any]] | None = None,
 ) -> str:
     now = utc_now()
     touch_session(db, session_id)
@@ -32,6 +33,7 @@ def save_exchange(
             "answer": answer,
             "prompt_budget": prompt.get("budget", {}),
             "context_metadata": prompt.get("context_metadata", {}),
+            "process_trace": process_trace or [],
             "created_at": now,
         }
     )

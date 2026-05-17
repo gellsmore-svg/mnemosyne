@@ -17,6 +17,32 @@ function item(html) {
   return div;
 }
 
+function renderConsole(trace) {
+  if (!Array.isArray(trace) || trace.length === 0) {
+    $("runLog").textContent = "No process trace.";
+    return;
+  }
+  $("runLog").replaceChildren(
+    ...trace.map((step, index) => {
+      const details = document.createElement("details");
+      details.open = index === trace.length - 1;
+      const summary = document.createElement("summary");
+      summary.textContent = `${index + 1}. ${step.step}`;
+      const pre = document.createElement("pre");
+      pre.textContent = JSON.stringify(
+        {
+          input: step.input,
+          output: step.output,
+        },
+        null,
+        2
+      );
+      details.append(summary, pre);
+      return details;
+    })
+  );
+}
+
 async function loadHealth() {
   const data = await api("/api/health");
   $("health").textContent = `Mongo: ${data.database}`;
@@ -120,16 +146,18 @@ async function ask() {
   $("answerText").textContent = "Thinking...";
   $("answerMeta").innerHTML = "";
   const timeout = window.mnemosyneRuntime?.ollama_timeout_seconds;
-  $("runLog").textContent = JSON.stringify(
+  renderConsole([
     {
-      status: "running",
-      adapter: payload.adapter || "default",
-      model: payload.model || "default",
-      timeout_seconds: timeout || null,
+      step: "request_started",
+      input: payload,
+      output: {
+        status: "running",
+        adapter: payload.adapter || "default",
+        model: payload.model || "default",
+        timeout_seconds: timeout || null,
+      },
     },
-    null,
-    2
-  );
+  ]);
   $("ask").disabled = true;
   try {
     const data = await api("/api/ask", {
@@ -139,48 +167,34 @@ async function ask() {
     });
     if (!data.ok) {
       $("answerText").textContent = data.message || JSON.stringify(data, null, 2);
-      $("runLog").textContent = JSON.stringify(
+      renderConsole(data.process_trace || [
         {
-          ok: data.ok,
-          reason: data.reason,
-          message: data.message,
-          adapter: data.adapter,
-          model: data.model,
-          focus_node_id: data.focus_node_id,
+          step: "request_failed",
+          input: payload,
+          output: data,
         },
-        null,
-        2
-      );
+      ]);
       return;
     }
     $("answerText").textContent = data.answer;
     $("answerMeta").innerHTML = `<div class="muted">exchange ${data.exchange_id} | ${data.adapter} ${text(data.model)}</div>`;
-    $("runLog").textContent = JSON.stringify(
-      {
-        retrieval_status: data.retrieval_status,
-        focus_node_id: data.focus_node_id,
-        used_node_ids: data.used_node_ids,
-        adapter: data.adapter,
-        model: data.model,
-        budget: data.budget,
-      },
-      null,
-      2
-    );
+    renderConsole(data.process_trace);
     await Promise.all([loadSessions(), loadHistory()]);
   } catch (error) {
     $("answerText").textContent = error.message;
-    $("runLog").textContent = JSON.stringify(
+    renderConsole([
       {
-        ok: false,
-        reason: "request_failed",
-        message: error.message,
-        adapter: payload.adapter || "default",
-        model: payload.model || "default",
+        step: "request_failed",
+        input: payload,
+        output: {
+          ok: false,
+          reason: "request_failed",
+          message: error.message,
+          adapter: payload.adapter || "default",
+          model: payload.model || "default",
+        },
       },
-      null,
-      2
-    );
+    ]);
   } finally {
     $("ask").disabled = false;
   }

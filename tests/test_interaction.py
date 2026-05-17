@@ -39,3 +39,9 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert result["retrieval_status"] == "no_focus_node"
     assert result["used_node_ids"] == []
     assert "plain prompt" in captured["prompt"]["context_text"]
+    assert [step["step"] for step in result["process_trace"]] == [
+        "user_prompt",
+        "retrieval_context",
+        "answer_adapter",
+    ]
+    assert "plain prompt" in result["process_trace"][1]["output"]["context_text"]
