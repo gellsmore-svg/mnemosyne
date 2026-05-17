@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from typing import Any
@@ -53,19 +54,31 @@ class OllamaCliAnswerAdapter:
         self.config = config
 
     def answer(self, prompt: dict[str, Any]) -> dict[str, Any]:
-        completed = subprocess.run(
-            [
-                str(self.config.ollama_executable),
-                "run",
-                self.config.ollama_model,
-                prompt["prompt_text"],
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=self.config.ollama_timeout_seconds,
-        )
+        env = os.environ.copy()
+        env.setdefault("NO_COLOR", "1")
+        env.setdefault("TERM", "dumb")
+        try:
+            completed = subprocess.run(
+                [
+                    str(self.config.ollama_executable),
+                    "run",
+                    self.config.ollama_model,
+                ],
+                input=prompt["prompt_text"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=self.config.ollama_timeout_seconds,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise TimeoutError(
+                f"Ollama CLI timed out after {self.config.ollama_timeout_seconds}s "
+                f"while running {self.config.ollama_model}."
+            ) from error
         answer_text = clean_ollama_output(completed.stdout)
+        if not answer_text:
+            raise RuntimeError("Ollama CLI returned an empty response.")
         return answer_payload(self.name, self.config.ollama_model, prompt, answer_text)
 
 

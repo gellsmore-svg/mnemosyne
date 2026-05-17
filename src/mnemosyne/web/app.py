@@ -64,6 +64,7 @@ def create_app() -> FastAPI:
                 "gemma4:e2b",
                 "qwen3.6:latest",
             ],
+            "ollama_timeout_seconds": config.runtime.ollama_timeout_seconds,
         }
 
     @app.get("/api/documents")

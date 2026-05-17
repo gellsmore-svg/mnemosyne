@@ -24,6 +24,7 @@ async function loadHealth() {
 
 async function loadRuntime() {
   const data = await api("/api/runtime");
+  window.mnemosyneRuntime = data;
   const modelOptions = [
     new Option(`default (${data.default_model})`, ""),
     ...data.known_models.map((model) => new Option(model, model)),
@@ -114,41 +115,72 @@ async function ask() {
     model: $("model").value || null,
   };
   $("answerText").textContent = "Thinking...";
-  const data = await api("/api/ask", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!data.ok) {
-    $("answerText").textContent = JSON.stringify(data, null, 2);
-    $("runLog").textContent = JSON.stringify(
-      {
-        ok: data.ok,
-        reason: data.reason,
-        adapter: data.adapter,
-        model: data.model,
-        focus_node_id: data.focus_node_id,
-      },
-      null,
-      2
-    );
-    return;
-  }
-  $("answerText").textContent = data.answer;
-  $("answerMeta").innerHTML = `<div class="muted">exchange ${data.exchange_id} | ${data.adapter} ${text(data.model)}</div>`;
+  $("answerMeta").innerHTML = "";
+  const timeout = window.mnemosyneRuntime?.ollama_timeout_seconds;
   $("runLog").textContent = JSON.stringify(
     {
-      retrieval_status: data.retrieval_status,
-      focus_node_id: data.focus_node_id,
-      used_node_ids: data.used_node_ids,
-      adapter: data.adapter,
-      model: data.model,
-      budget: data.budget,
+      status: "running",
+      adapter: payload.adapter || "default",
+      model: payload.model || "default",
+      timeout_seconds: timeout || null,
     },
     null,
     2
   );
-  await Promise.all([loadSessions(), loadHistory()]);
+  $("ask").disabled = true;
+  try {
+    const data = await api("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!data.ok) {
+      $("answerText").textContent = data.message || JSON.stringify(data, null, 2);
+      $("runLog").textContent = JSON.stringify(
+        {
+          ok: data.ok,
+          reason: data.reason,
+          message: data.message,
+          adapter: data.adapter,
+          model: data.model,
+          focus_node_id: data.focus_node_id,
+        },
+        null,
+        2
+      );
+      return;
+    }
+    $("answerText").textContent = data.answer;
+    $("answerMeta").innerHTML = `<div class="muted">exchange ${data.exchange_id} | ${data.adapter} ${text(data.model)}</div>`;
+    $("runLog").textContent = JSON.stringify(
+      {
+        retrieval_status: data.retrieval_status,
+        focus_node_id: data.focus_node_id,
+        used_node_ids: data.used_node_ids,
+        adapter: data.adapter,
+        model: data.model,
+        budget: data.budget,
+      },
+      null,
+      2
+    );
+    await Promise.all([loadSessions(), loadHistory()]);
+  } catch (error) {
+    $("answerText").textContent = error.message;
+    $("runLog").textContent = JSON.stringify(
+      {
+        ok: false,
+        reason: "request_failed",
+        message: error.message,
+        adapter: payload.adapter || "default",
+        model: payload.model || "default",
+      },
+      null,
+      2
+    );
+  } finally {
+    $("ask").disabled = false;
+  }
 }
 
 async function createSession() {

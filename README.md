@@ -84,7 +84,7 @@ Node search also supports document scoping and created-at bounds. `node-context`
 
 `ask` and `chat` are now the first interactive surfaces. They use the retrieval pipeline, a mock answer adapter, and persist exchanges in MongoDB. Sessions can be created and listed from the CLI, and each saved exchange updates its session metadata.
 
-For a real local model call, pass `--adapter ollama_cli`. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`.
+For a real local model call, pass `--adapter ollama_cli`. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`. Ollama CLI prompts are sent through stdin and bounded by `runtime.ollama_timeout_seconds`.
 
 ## Web UI
 

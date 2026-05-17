@@ -24,7 +24,7 @@ class RuntimeConfig(BaseModel):
     ollama_model: str = "gemma3:1b"
     ollama_base_url: str = "http://localhost:11434"
     ollama_executable: Path = Path("/mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe")
-    ollama_timeout_seconds: int = 120
+    ollama_timeout_seconds: int = 45
 
 
 class QueueConfig(BaseModel):
