@@ -21,6 +21,30 @@ def test_select_focus_node_returns_none_without_matches(monkeypatch) -> None:
     assert select_focus_node(FakeDb(), "missing") is None
 
 
+def test_select_focus_node_falls_back_to_ranked_terms(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    def fake_search_nodes(_db, query=None, label=None, limit=5):
+        if query == "Mnemosyne" and label == "source_chunk":
+            return [
+                {
+                    "node_id": "generic",
+                    "title": "Worker Smoke",
+                    "text_preview": "Mnemosyne ingestion worker",
+                },
+                {
+                    "node_id": "technical",
+                    "title": "Mnemosyne Technical Design Document",
+                    "text_preview": "Architecture notes",
+                },
+            ]
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+
+    assert select_focus_node(FakeDb(), "What does the Mnemosyne technical design say?") == "technical"
+
+
 def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 

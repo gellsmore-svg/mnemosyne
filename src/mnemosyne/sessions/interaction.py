@@ -296,12 +296,32 @@ def answer_query_agentic(
 
 
 def select_focus_node(db: Database, query: str) -> str | None:
-    matches = search_nodes(db, query=query, label="source_chunk", limit=1)
+    matches = ranked_focus_matches(db, query, label="source_chunk", limit=5)
     if not matches:
-        matches = search_nodes(db, query=query, limit=1)
+        matches = ranked_focus_matches(db, query, label=None, limit=5)
     if not matches:
         return None
     return matches[0]["node_id"]
+
+
+def ranked_focus_matches(
+    db: Database,
+    query: str,
+    label: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    cleaned_query = normalize_query_text(query)
+    matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
+    if cleaned_query:
+        seen = {row["node_id"] for row in matches}
+        for fallback_query in fallback_queries(cleaned_query):
+            fallback_results = search_nodes(db, query=fallback_query, label=label, limit=limit)
+            for row in fallback_results:
+                if row["node_id"] not in seen:
+                    seen.add(row["node_id"])
+                    matches.append(row)
+    matches.sort(key=lambda row: score_node_match(row, cleaned_query), reverse=True)
+    return matches[:limit]
 
 
 def build_planner_prompt(query: str, focus_node_id: str | None = None) -> str:
@@ -467,17 +487,14 @@ def execute_search_nodes_tool(
                 if row["node_id"] not in seen:
                     seen.add(row["node_id"])
                     matches.append(row)
-                if len(matches) >= limit:
-                    break
-            if len(matches) >= limit:
-                break
     matches.sort(key=lambda row: score_node_match(row, cleaned_query), reverse=True)
+    top_matches = matches[:limit]
     compiled_contexts = []
-    for match in matches[:2]:
+    for match in top_matches[:2]:
         context = compile_context(db, match["node_id"])
         if context:
             compiled_contexts.append(context)
-    return {"matches": matches, "compiled_contexts": compiled_contexts}, details
+    return {"matches": top_matches, "compiled_contexts": compiled_contexts}, details
 
 
 def normalize_query_text(value: Any) -> str | None:

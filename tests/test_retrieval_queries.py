@@ -212,6 +212,32 @@ def test_build_prompt_envelope_includes_query_budget_and_context() -> None:
     assert envelope["budget"]["estimated_total_with_reserved_response_tokens"] <= 200
 
 
+def test_render_context_document_uses_full_context_text() -> None:
+    long_text = "A" * 350 + " full-tail"
+    rendered = render_context_document(
+        {
+            "document": {"title": "Doc", "document_id": "doc1"},
+            "focus_node_id": "node1",
+            "records": [
+                {
+                    "role": "focus",
+                    "distance": 0,
+                    "title": "A",
+                    "node_id": "node1",
+                    "labels": [],
+                    "endorsement_label": "unreviewed",
+                    "provenance": {},
+                    "text_preview": long_text[:300],
+                    "text": long_text,
+                },
+            ],
+        },
+        char_budget=1000,
+    )
+
+    assert "full-tail" in rendered["text"]
+
+
 def test_build_prompt_envelope_without_context_uses_no_context_instruction() -> None:
     envelope = build_prompt_envelope_without_context("What is stored?")
 

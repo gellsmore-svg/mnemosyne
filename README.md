@@ -43,6 +43,7 @@ The domain is in early scaffold mode. The imported requirements and design docum
 .venv/bin/mnemosyne show-tree <document_id>
 .venv/bin/mnemosyne list-docs --limit 5
 .venv/bin/mnemosyne show-doc <document_id>
+.venv/bin/mnemosyne rebuild-document <document_id>
 .venv/bin/mnemosyne search-nodes --query hierarchy --label source_chunk
 .venv/bin/mnemosyne search-nodes --document-id <document_id> --created-after 2026-05-17T14:50:00
 .venv/bin/mnemosyne node-context <node_id>
@@ -63,7 +64,7 @@ The domain is in early scaffold mode. The imported requirements and design docum
 
 ## Immediate Next Step
 
-Continue the Stage 1 ingestion slice with a Mongo-backed queue, folder worker, archive/dead-letter movement, duplicate handling, and endorsement labels as MongoDB tree/node metadata.
+Continue the Stage 1 interaction slice by improving retrieval ranking for natural prompts, especially when broad project terms like `Mnemosyne` and `technical design` should lead to a more specific section such as `System Name and Concept`.
 
 Duplicate ingestion is rejected by SHA-256 checksum. Accepted files are copied into `data/archive/`, processed inbox requests are moved to `data/staging/processed/`, duplicate inbox requests are moved to `data/dead_letter/duplicate/`, and label meanings are seeded into MongoDB in `label_definitions`.
 
@@ -73,6 +74,8 @@ Document, tree, and node records carry `schema_version: 1`. Nodes carry `endorse
 
 The deterministic mock adapter now creates hierarchical trees: `source_root`, `source_section`, and `source_chunk`.
 
+Existing documents can be rebuilt in place from their archived source with `rebuild-document <document_id>`. This keeps the document identity/checksum while replacing its tree and nodes using the current ingestion adapter.
+
 The first retrieval commands are available for listing documents, inspecting document metadata, showing tree nodes, and searching nodes by text, label, and endorsement label.
 
 Node search also supports document scoping and created-at bounds. `node-context` returns the selected node with document metadata, parent, and children.
@@ -80,6 +83,8 @@ Node search also supports document scoping and created-at bounds. `node-context`
 `compile-context` returns a role-tagged context record set with focus, ancestors, nearby siblings, and descendants.
 
 `render-context` produces Markdown context for model input and can return JSON metadata showing which records were included or skipped under the character budget.
+
+Compiled context now renders the full stored node text, subject to the context budget, while search responses continue to expose compact previews.
 
 `build-prompt` wraps rendered context with the user query, system instruction, and token-budget metadata. Token estimates use a simple four-characters-per-token approximation until a tokenizer is wired in.
 

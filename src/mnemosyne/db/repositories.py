@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from bson import ObjectId
+from typing import Any
+
 from pymongo.database import Database
 
 from mnemosyne.models.ingestion import (
@@ -24,7 +27,7 @@ def find_duplicate_by_checksum(db: Database, checksum: str) -> dict | None:
     return db.documents.find_one({"source.checksum_sha256": checksum})
 
 
-def commit_ingestion(db: Database, result: IngestionResult) -> dict[str, str]:
+def commit_ingestion(db: Database, result: IngestionResult) -> dict[str, Any]:
     if result.source.checksum_sha256:
         existing = find_duplicate_by_checksum(db, result.source.checksum_sha256)
         if existing:
@@ -39,6 +42,42 @@ def commit_ingestion(db: Database, result: IngestionResult) -> dict[str, str]:
     ).model_dump()
     document_id = db.documents.insert_one(document).inserted_id
 
+    inserted = insert_tree_nodes(db, document_id, result)
+
+    return {
+        "document_id": str(document_id),
+        **inserted,
+    }
+
+
+def rebuild_document(db: Database, document_id: str, result: IngestionResult) -> dict[str, Any]:
+    object_id = ObjectId(document_id)
+    existing = db.documents.find_one({"_id": object_id})
+    if not existing:
+        raise ValueError(f"Document not found: {document_id}")
+
+    db.nodes.delete_many({"document_id": object_id})
+    db.trees.delete_many({"document_id": object_id})
+    db.documents.update_one(
+        {"_id": object_id},
+        {
+            "$set": {
+                "title": result.title,
+                "summary": result.summary,
+                "source": result.source.model_dump(),
+                "updated_at": result.created_at,
+            }
+        },
+    )
+    inserted = insert_tree_nodes(db, object_id, result)
+    return {
+        "document_id": str(object_id),
+        "replaced": True,
+        **inserted,
+    }
+
+
+def insert_tree_nodes(db: Database, document_id: object, result: IngestionResult) -> dict[str, Any]:
     tree = TreeRecord(
         document_id=document_id,
         label=result.tree_label,
@@ -81,7 +120,6 @@ def commit_ingestion(db: Database, result: IngestionResult) -> dict[str, str]:
         node_ids.append(inserted_id)
 
     return {
-        "document_id": str(document_id),
         "tree_id": str(tree_id),
         "node_ids": [str(node_id) for node_id in node_ids],
     }

@@ -15,6 +15,7 @@ from mnemosyne.db.repositories import (
     find_duplicate_by_checksum,
     document_tree,
     label_definitions,
+    rebuild_document,
 )
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
 from mnemosyne.ingestion.files import archive_source, move_request_file, sha256_file
@@ -130,6 +131,14 @@ def main() -> None:
 
     ingest_one = subcommands.add_parser("ingest-one")
     ingest_one.add_argument("path")
+
+    rebuild_doc = subcommands.add_parser("rebuild-document")
+    rebuild_doc.add_argument("document_id")
+    rebuild_doc.add_argument(
+        "--source",
+        default=None,
+        help="Optional source path override. Defaults to the document archive path, then original source path.",
+    )
 
     args = parser.parse_args()
     config = load_config(args.config)
@@ -519,6 +528,53 @@ def main() -> None:
         inserted["ok"] = True
         inserted["archive_path"] = str(archived_path)
         inserted["checksum_sha256"] = checksum
+        print(json.dumps(inserted, indent=2))
+        return
+
+    if args.command == "rebuild-document":
+        ensure_indexes(db)
+        document = get_document(db, args.document_id)
+        if not document:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "reason": "document_not_found",
+                        "document_id": args.document_id,
+                    },
+                    indent=2,
+                )
+            )
+            return
+        source = document.get("source", {})
+        source_path = Path(
+            args.source
+            or source.get("archive_path")
+            or source.get("path")
+            or ""
+        )
+        if not source_path.exists():
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "reason": "source_missing",
+                        "document_id": args.document_id,
+                        "path": str(source_path),
+                    },
+                    indent=2,
+                )
+            )
+            return
+        text, source_kind = read_text_source(source_path)
+        result = MockIngestionAdapter().process(source_path, text, source_kind)
+        result.source.path = source.get("path") or str(source_path)
+        result.source.checksum_sha256 = source.get("checksum_sha256") or sha256_file(source_path)
+        result.source.archive_path = source.get("archive_path") or str(source_path)
+        inserted = rebuild_document(db, args.document_id, result)
+        inserted["ok"] = True
+        inserted["source_path"] = str(source_path)
+        inserted["checksum_sha256"] = result.source.checksum_sha256
         print(json.dumps(inserted, indent=2))
         return
 

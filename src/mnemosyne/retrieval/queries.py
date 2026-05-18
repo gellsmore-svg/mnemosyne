@@ -336,6 +336,7 @@ def prioritize_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def render_record(record: dict[str, Any]) -> str:
     labels = ", ".join(record.get("labels", [])) or "<none>"
     provenance = record.get("provenance", {})
+    text = record.get("text") or record.get("text_preview") or ""
     lines = [
         f"### {record['role']} d={record['distance']}: {record.get('title') or '<untitled>'}",
         "",
@@ -344,7 +345,7 @@ def render_record(record: dict[str, Any]) -> str:
         f"- Endorsement: {record.get('endorsement_label') or '<none>'}",
         f"- Source: {provenance.get('archive_path') or provenance.get('source_path') or '<unknown>'}",
         "",
-        record.get("text_preview") or "",
+        text,
         "",
     ]
     return "\n".join(lines)
@@ -389,6 +390,7 @@ def nearby_siblings(db: Database, node: dict[str, Any], window: int) -> list[dic
 
 def context_record(role: str, node: dict[str, Any], distance: int) -> dict[str, Any]:
     serialized = serialize_node(node)
+    serialized["text"] = node.get("text", "")
     serialized["role"] = role
     serialized["distance"] = distance
     return serialized
