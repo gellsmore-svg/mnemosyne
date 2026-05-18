@@ -3,6 +3,8 @@ from mnemosyne.sessions.interaction import (
     answer_query,
     combined_query_text,
     execute_search_nodes_tool,
+    memory_agent_runtime_config,
+    parse_memory_agent_decision,
     parse_tool_calls,
     prepare_tool_results_for_answer,
     render_tool_results,
@@ -112,7 +114,13 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
             if len(prompts) == 1:
                 return {
                     "adapter": "fake",
-                    "answer": '{"tool_calls":[{"tool":"search_nodes","arguments":{"query":"memory"}}]}',
+                    "answer": '{"status":"continue","tool_calls":[{"tool":"search_nodes","arguments":{"query":"memory"}}]}',
+                    "used_node_ids": [],
+                }
+            if len(prompts) == 2:
+                return {
+                    "adapter": "fake",
+                    "answer": '{"status":"done","tool_calls":[],"compiled_context_notes":"enough"}',
                     "used_node_ids": [],
                 }
             return {
@@ -144,12 +152,41 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
     assert result["answer"] == "final answer"
     assert [step["step"] for step in result["process_trace"]] == [
         "user_prompt",
-        "planner_adapter",
-        "tool_execution",
+        "memory_agent_iteration",
+        "memory_agent_iteration",
         "answer_adapter",
     ]
-    assert result["process_trace"][2]["output"]["tool_results"][0]["tool"] == "search_nodes"
-    assert "Mnemosyne Tool Results" in prompts[1]
+    assert result["process_trace"][1]["output"]["tool_results"][0]["tool"] == "search_nodes"
+    assert result["process_trace"][2]["output"]["stopped"] is True
+    assert "Mnemosyne Tool Results" in prompts[2]
+
+
+def test_parse_memory_agent_decision_accepts_done_status() -> None:
+    decision = parse_memory_agent_decision(
+        '{"status":"done","tool_calls":[],"compiled_context_notes":"sufficient"}'
+    )
+
+    assert decision == {
+        "status": "done",
+        "tool_calls": [],
+        "compiled_context_notes": "sufficient",
+    }
+
+
+def test_memory_agent_runtime_can_differ_from_answer_runtime() -> None:
+    runtime = RuntimeConfig(
+        answer_adapter="ollama_cli",
+        ollama_model="final",
+        memory_agent_adapter="ollama_http",
+        memory_agent_model="memory",
+    )
+
+    memory_runtime = memory_agent_runtime_config(runtime)
+
+    assert memory_runtime.answer_adapter == "ollama_http"
+    assert memory_runtime.ollama_model == "memory"
+    assert runtime.answer_adapter == "ollama_cli"
+    assert runtime.ollama_model == "final"
 
 
 def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:

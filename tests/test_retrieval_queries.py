@@ -267,3 +267,18 @@ def test_node_search_score_demotes_empty_title_only_chunks() -> None:
         empty_chunk,
         "substrate coherence schema",
     )
+
+
+def test_node_search_score_prefers_human_endorsed_nodes() -> None:
+    unreviewed = {
+        "title": "Memory note",
+        "text": "memory context",
+        "labels": ["source_chunk"],
+        "endorsement_label": "unreviewed",
+    }
+    endorsed = {
+        **unreviewed,
+        "endorsement_label": "explicit_endorsed",
+    }
+
+    assert node_search_score(endorsed, "memory") > node_search_score(unreviewed, "memory")

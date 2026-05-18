@@ -57,16 +57,18 @@ def create_app() -> FastAPI:
             "ok": True,
             "default_adapter": config.runtime.answer_adapter,
             "default_model": config.runtime.ollama_model,
+            "memory_agent_adapter": config.runtime.memory_agent_adapter or config.runtime.answer_adapter,
+            "memory_agent_model": config.runtime.memory_agent_model or config.runtime.ollama_model,
             "retrieval_mode": config.runtime.retrieval_mode,
             "available_retrieval_modes": ["direct", "agentic"],
             "available_adapters": ["mock", "ollama_cli", "ollama_http"],
-            "known_models": [
-                "gemma3:1b",
-                "gemma2:2b",
-                "llama3.2:1b",
-                "gemma4:e2b",
-                "qwen3.6:latest",
-            ],
+            "known_models": sorted(
+                {
+                    config.runtime.ollama_model,
+                    config.runtime.memory_agent_model or config.runtime.ollama_model,
+                    "gemma3:1b",
+                }
+            ),
             "ollama_timeout_seconds": config.runtime.ollama_timeout_seconds,
         }
 

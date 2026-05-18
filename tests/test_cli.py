@@ -5,6 +5,7 @@ from bson import ObjectId
 from mnemosyne.cli import (
     discover_folder_sources,
     document_ids_for_label,
+    destructive_rebuild_refusal,
     existing_document_extra_labels,
     rebuild_document_from_existing_source,
 )
@@ -57,6 +58,14 @@ def test_document_ids_for_label_returns_sorted_strings() -> None:
     )
 
     assert document_ids_for_label(db, "ams_domain") == sorted([str(first), str(second)])
+
+
+def test_destructive_rebuild_refusal_explains_force_replace() -> None:
+    refusal = destructive_rebuild_refusal("rebuild-document")
+
+    assert refusal["ok"] is False
+    assert refusal["reason"] == "destructive_rebuild_requires_force_replace"
+    assert "--force-replace" in refusal["message"]
 
 
 def test_rebuild_document_uses_original_source_path_for_adapter_title(

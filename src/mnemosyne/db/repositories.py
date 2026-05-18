@@ -101,8 +101,13 @@ def insert_tree_nodes(db: Database, document_id: object, result: IngestionResult
             order=order,
             title=node.title,
             text=node.text,
+            summary=node.summary or summarize_node_text(node.text),
             labels=node.labels,
             endorsement_label=endorsement_label,
+            relations=node.relations,
+            proximity=node.proximity,
+            usage_score=node.usage_score,
+            continuity_critical=node.continuity_critical,
             provenance=Provenance(
                 source_path=result.source.path,
                 source_checksum_sha256=result.source.checksum_sha256,
@@ -123,6 +128,10 @@ def insert_tree_nodes(db: Database, document_id: object, result: IngestionResult
         "tree_id": str(tree_id),
         "node_ids": [str(node_id) for node_id in node_ids],
     }
+
+
+def summarize_node_text(text: str, limit: int = 500) -> str:
+    return " ".join(text.split())[:limit]
 
 
 def backfill_schema_metadata(db: Database) -> dict[str, int]:
@@ -172,10 +181,34 @@ def backfill_schema_metadata(db: Database) -> dict[str, int]:
         )
         nodes_updated += 1
 
+    node_default_result = db.nodes.update_many(
+        {
+            "$or": [
+                {"summary": {"$exists": False}},
+                {"relations": {"$exists": False}},
+                {"proximity": {"$exists": False}},
+                {"usage_score": {"$exists": False}},
+                {"continuity_critical": {"$exists": False}},
+            ]
+        },
+        [
+            {
+                "$set": {
+                    "summary": {"$ifNull": ["$summary", ""]},
+                    "relations": {"$ifNull": ["$relations", []]},
+                    "proximity": {"$ifNull": ["$proximity", {}]},
+                    "usage_score": {"$ifNull": ["$usage_score", 0]},
+                    "continuity_critical": {"$ifNull": ["$continuity_critical", False]},
+                }
+            }
+        ],
+    )
+
     return {
         "documents": document_result.modified_count,
         "trees": tree_result.modified_count,
         "nodes": nodes_updated,
+        "nodes_with_graph_defaults": node_default_result.modified_count,
     }
 
 

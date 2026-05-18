@@ -34,8 +34,13 @@ class IngestedNode(BaseModel):
     parent_key: str | None = None
     title: str
     text: str
+    summary: str | None = None
     labels: list[str] = Field(default_factory=list)
     endorsement_label: str = DEFAULT_ENDORSEMENT_LABEL
+    relations: list[dict[str, Any]] = Field(default_factory=list)
+    proximity: dict[str, Any] = Field(default_factory=dict)
+    usage_score: int = 0
+    continuity_critical: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -77,8 +82,13 @@ class NodeRecord(BaseModel):
     order: int
     title: str
     text: str
+    summary: str = ""
     labels: list[str] = Field(default_factory=list)
     endorsement_label: str = DEFAULT_ENDORSEMENT_LABEL
+    relations: list[dict[str, Any]] = Field(default_factory=list)
+    proximity: dict[str, Any] = Field(default_factory=dict)
+    usage_score: int = 0
+    continuity_critical: bool = False
     provenance: Provenance
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime

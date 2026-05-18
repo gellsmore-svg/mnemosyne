@@ -113,9 +113,18 @@ Current early read surface:
 - ask/chat commands using the retrieval pipeline and local Ollama CLI answer adapter by default;
 - optional Ollama CLI answer adapter for real local model calls;
 - saved exchange records in MongoDB.
-- first agentic retrieval loop: planner model emits bounded JSON tool calls, Mnemosyne executes allowed retrieval tools, and the answer model replies from tool results.
+- first iterative memory-agent retrieval loop: memory-agent model emits bounded JSON tool calls, Mnemosyne executes allowed retrieval tools, feeds observations back to the memory-agent, and only then calls the final answer model.
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
-- agentic search fallback and lexical ranking, with full console tool output but top-ranked context packaged for the answer model.
+- memory-agent search fallback and lexical ranking, with full console tool output but top-ranked context packaged for the answer model.
+
+Known gaps after reconciliation:
+
+- current ingestion chunking is deterministic scaffold, not Gemma-driven chunking;
+- typed weighted graph edges, proximity scores, and semantic-map traversal are not implemented;
+- destructive rebuild commands are maintenance-only and require `--force-replace`; versioned replacement remains unimplemented;
+- the memory-agent loop is iterative but still limited to read-only scaffold tools;
+- the compiled context corpus does not yet match the full technical design schema;
+- active document registry, restart state node, endorsement, output ingestion, traversal scoring, and REM consolidation are not started.
 
 Minimum build:
 

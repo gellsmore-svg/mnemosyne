@@ -13,6 +13,9 @@ def test_mock_adapter_uses_first_heading_as_title() -> None:
     assert result.title == "Project Memory"
     assert result.nodes[0].node_key == "root"
     assert result.nodes[0].labels == ["source_root"]
+    assert result.nodes[0].relations == []
+    assert result.nodes[0].proximity == {}
+    assert result.nodes[0].continuity_critical is False
     assert result.nodes[1].parent_key == "root"
     assert result.nodes[2].parent_key == "section-1"
     assert result.nodes[2].text == "First paragraph."

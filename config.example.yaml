@@ -11,8 +11,10 @@ paths:
 runtime:
   model_adapter: mock
   answer_adapter: ollama_cli
+  memory_agent_adapter:
   retrieval_mode: direct
   ollama_model: gemma3:1b
+  memory_agent_model:
   ollama_base_url: http://localhost:11434
   ollama_executable: /mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe
   ollama_timeout_seconds: 45
@@ -24,3 +26,4 @@ retrieval:
   context_char_budget: 4000
   prompt_token_budget: 2000
   reserved_response_tokens: 500
+  memory_agent_max_iterations: 4

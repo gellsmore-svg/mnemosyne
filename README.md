@@ -45,8 +45,8 @@ The domain is in early scaffold mode. The imported requirements and design docum
 .venv/bin/mnemosyne show-tree <document_id>
 .venv/bin/mnemosyne list-docs --limit 5
 .venv/bin/mnemosyne show-doc <document_id>
-.venv/bin/mnemosyne rebuild-document <document_id>
-.venv/bin/mnemosyne rebuild-by-label --label ams_domain
+.venv/bin/mnemosyne rebuild-document <document_id> --force-replace
+.venv/bin/mnemosyne rebuild-by-label --label ams_domain --force-replace
 .venv/bin/mnemosyne search-nodes --query hierarchy --label source_chunk
 .venv/bin/mnemosyne search-nodes --document-id <document_id> --created-after 2026-05-17T14:50:00
 .venv/bin/mnemosyne node-context <node_id>
@@ -85,13 +85,17 @@ Worker failures retry up to `queue.max_attempts` and then move the request file 
 
 Document, tree, and node records carry `schema_version: 1`. Nodes carry `endorsement_label` and provenance fields for source path, source checksum, archive path, and adapter.
 
+New node records also carry scaffold fields for `summary`, `relations`, `proximity`, `usage_score`, and `continuity_critical`. These fields are present so the requirement-backed graph traversal, scoring, and continuity model has an explicit schema target, although full Gemma relationship/proximity generation is not implemented yet.
+
 The deterministic mock adapter now creates hierarchical trees: `source_root`, `source_section`, and `source_chunk`.
 
-Existing documents can be rebuilt in place from their archived source with `rebuild-document <document_id>`. This keeps the document identity/checksum while replacing its tree and nodes using the current ingestion adapter.
+Existing documents can be destructively replaced from their archived source with `rebuild-document <document_id> --force-replace`. This is a maintenance escape hatch for prototype repair work, not requirement-compliant versioned ingestion. Without `--force-replace`, the command refuses to run.
 
-Groups of existing documents can be rebuilt by node label with `rebuild-by-label --label <label>`. Rebuilds preserve non-structural labels such as `ams_domain`, `external_corpus`, and `memory_reference`.
+Groups of existing documents can be destructively replaced by node label with `rebuild-by-label --label <label> --force-replace`. Rebuilds preserve non-structural labels such as `ams_domain`, `external_corpus`, and `memory_reference`, but still delete and recreate trees/nodes. The requirement-backed replacement path still needs versioned trees and supersession edges.
 
 The first retrieval commands are available for listing documents, inspecting document metadata, showing tree nodes, and searching nodes by text, label, and endorsement label.
+
+Search uses temporary lexical ordering, with requirement-backed provenance preference for explicitly and implicitly endorsed nodes. This is a tool-side ordering hint only; it does not replace the intended Gemma memory-agent selection and traversal loop.
 
 Node search also supports document scoping and created-at bounds. `node-context` returns the selected node with document metadata, parent, and children.
 
@@ -107,7 +111,7 @@ Compiled context now renders the full stored node text, subject to the context b
 
 For a real local model call, use the default adapter or pass `--adapter ollama_cli` explicitly. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`. Ollama CLI prompts are sent through stdin, run with word wrapping disabled, and are bounded by `runtime.ollama_timeout_seconds`.
 
-For the first planner-driven flow, pass `--retrieval-mode agentic` or choose `agentic` in the web UI. In this mode Mnemosyne calls the configured model once as a retrieval planner, executes allowed retrieval tools (`search_nodes`, `compile_context`, `list_documents`), and calls the model again to answer from the top-ranked tool context. The console keeps the fuller tool output for inspection.
+For the first memory-agent flow, pass `--retrieval-mode agentic` or choose `agentic` in the web UI. In this mode Mnemosyne calls the configured memory-agent model iteratively, feeding prior tool results back into the agent until it stops or reaches `retrieval.memory_agent_max_iterations`. The current allowed read-only tools are `search_nodes`, `compile_context`, and `list_documents`. The final answer call is separate and uses the final answer adapter/model. This is still a scaffold: it does not yet implement semantic graph traversal, source fallback, or the full compiled context corpus schema.
 
 ## Web UI
 

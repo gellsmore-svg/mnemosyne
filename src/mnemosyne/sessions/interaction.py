@@ -179,54 +179,14 @@ def answer_query_agentic(
     session_id: str,
     process_trace: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    planner_prompt = build_planner_prompt(query=query, focus_node_id=focus_node_id)
-    planner_envelope = {
-        "prompt_text": planner_prompt,
-        "context_text": "",
-        "context_metadata": {"included": []},
-    }
-    planner_step = {
-        "step": "planner_adapter",
-        "input": {
-            "adapter": runtime_config.answer_adapter,
-            "model": runtime_config.ollama_model,
-            "prompt_text": planner_prompt,
-            "allowed_tools": allowed_tool_specs(),
-        },
-        "output": {},
-    }
-    process_trace.append(planner_step)
-    raw_planner_answer = None
-    try:
-        planner_answer = answer_adapter(runtime_config).answer(planner_envelope)
-        raw_planner_answer = planner_answer["answer"]
-        tool_calls = parse_tool_calls(planner_answer["answer"])
-        planner_step["output"] = {
-            "ok": True,
-            "raw_answer": raw_planner_answer,
-            "tool_calls": tool_calls,
-        }
-    except Exception as error:
-        tool_calls = [{"tool": "search_nodes", "arguments": {"query": query, "limit": 5}}]
-        planner_step["output"] = {
-            "ok": False,
-            "raw_answer": raw_planner_answer,
-            "error": str(error),
-            "fallback_tool_calls": tool_calls,
-        }
-
-    tool_step = {
-        "step": "tool_execution",
-        "input": {
-            "tool_calls": tool_calls,
-        },
-        "output": {},
-    }
-    process_trace.append(tool_step)
-    tool_results = execute_tool_calls(db, tool_calls, original_query=query)
-    tool_step["output"] = {
-        "tool_results": tool_results,
-    }
+    tool_results = run_memory_agent_loop(
+        db=db,
+        runtime_config=runtime_config,
+        query=query,
+        focus_node_id=focus_node_id,
+        max_iterations=config.retrieval.memory_agent_max_iterations,
+        process_trace=process_trace,
+    )
 
     prompt = build_agentic_answer_envelope(
         query=query,
@@ -331,12 +291,23 @@ def ranked_focus_matches(
 
 
 def build_planner_prompt(query: str, focus_node_id: str | None = None) -> str:
+    return build_memory_agent_prompt(query=query, focus_node_id=focus_node_id, history=[])
+
+
+def build_memory_agent_prompt(
+    query: str,
+    focus_node_id: str | None,
+    history: list[dict[str, Any]],
+) -> str:
     return "\n".join(
         [
-            "You are the Mnemosyne retrieval planner.",
-            "Choose which Mnemosyne tools to call before the answer model replies.",
-            "Return only valid JSON with this shape:",
-            '{"tool_calls":[{"tool":"search_nodes","arguments":{"query":"...","limit":5}}]}',
+            "You are the Mnemosyne memory-agent.",
+            "Your job is to gather memory/context for a separate final thinking LLM.",
+            "Do not answer the user.",
+            "Inspect prior tool results, decide whether more Mongo context is needed, and either call tools or stop.",
+            "Return only valid JSON in one of these shapes:",
+            '{"status":"continue","tool_calls":[{"tool":"search_nodes","arguments":{"query":"...","limit":5}}]}',
+            '{"status":"done","tool_calls":[],"compiled_context_notes":"why the gathered context is sufficient or limited"}',
             "Allowed tools:",
             json.dumps(allowed_tool_specs(), indent=2),
             "",
@@ -345,15 +316,150 @@ def build_planner_prompt(query: str, focus_node_id: str | None = None) -> str:
             "- Preserve the user's substantive intent terms in search_nodes queries.",
             "- Use compile_context when a focus_node_id is provided or a specific node id is known.",
             "- Use list_documents only when the user asks what documents are available.",
-            "- Use at most 3 tool calls.",
-            "- Do not answer the user.",
+            "- Use at most 3 tool calls per iteration.",
+            "- Stop only when context is sufficient, clearly insufficient, or no further read-only tool call is useful.",
             "",
             f"focus_node_id: {focus_node_id or 'none'}",
+            "",
+            "Prior memory-agent iterations:",
+            json.dumps(history, indent=2, default=str),
             "",
             "User prompt:",
             query,
         ]
     )
+
+
+def run_memory_agent_loop(
+    db: Database,
+    runtime_config,
+    query: str,
+    focus_node_id: str | None,
+    max_iterations: int,
+    process_trace: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    memory_runtime = memory_agent_runtime_config(runtime_config)
+    history: list[dict[str, Any]] = []
+    all_tool_results: list[dict[str, Any]] = []
+    for iteration in range(1, max(1, max_iterations) + 1):
+        memory_prompt = build_memory_agent_prompt(
+            query=query,
+            focus_node_id=focus_node_id,
+            history=history,
+        )
+        step = {
+            "step": "memory_agent_iteration",
+            "input": {
+                "iteration": iteration,
+                "adapter": memory_runtime.answer_adapter,
+                "model": memory_runtime.ollama_model,
+                "prompt_text": memory_prompt,
+                "allowed_tools": allowed_tool_specs(),
+            },
+            "output": {},
+        }
+        process_trace.append(step)
+        raw_answer = None
+        try:
+            memory_answer = answer_adapter(memory_runtime).answer(
+                {
+                    "prompt_text": memory_prompt,
+                    "context_text": "",
+                    "context_metadata": {"included": []},
+                }
+            )
+            raw_answer = memory_answer["answer"]
+            decision = parse_memory_agent_decision(raw_answer)
+        except Exception as error:
+            decision = {
+                "status": "continue",
+                "tool_calls": [{"tool": "search_nodes", "arguments": {"query": query, "limit": 5}}],
+                "error": str(error),
+                "raw_answer": raw_answer,
+                "fallback": True,
+            }
+
+        tool_calls = decision.get("tool_calls", [])
+        if decision.get("status") == "done" or not tool_calls:
+            step["output"] = {
+                "ok": True,
+                "raw_answer": raw_answer,
+                "decision": decision,
+                "stopped": True,
+            }
+            break
+
+        tool_results = execute_tool_calls(db, tool_calls, original_query=query)
+        all_tool_results.extend(tool_results)
+        history.append(
+            {
+                "iteration": iteration,
+                "decision": decision,
+                "tool_results": summarize_tool_results_for_memory_agent(tool_results),
+            }
+        )
+        step["output"] = {
+            "ok": not decision.get("fallback"),
+            "raw_answer": raw_answer,
+            "decision": decision,
+            "tool_results": tool_results,
+        }
+    return all_tool_results
+
+
+def memory_agent_runtime_config(runtime_config):
+    memory_runtime = runtime_config.model_copy()
+    memory_runtime.answer_adapter = runtime_config.memory_agent_adapter or runtime_config.answer_adapter
+    memory_runtime.ollama_model = runtime_config.memory_agent_model or runtime_config.ollama_model
+    return memory_runtime
+
+
+def parse_memory_agent_decision(text: str) -> dict[str, Any]:
+    data = json.loads(extract_json_object(text), strict=False)
+    calls = data.get("tool_calls", [])
+    if not isinstance(calls, list):
+        raise ValueError("Memory-agent JSON must contain a tool_calls list.")
+    status = data.get("status") or ("continue" if calls else "done")
+    if status not in {"continue", "done"}:
+        raise ValueError("Memory-agent status must be 'continue' or 'done'.")
+    return {
+        "status": status,
+        "tool_calls": [normalize_tool_call(call) for call in calls[:3]],
+        "compiled_context_notes": data.get("compiled_context_notes"),
+    }
+
+
+def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    summary = []
+    for result in tool_results:
+        output = result.get("output")
+        item = {
+            "tool": result.get("tool"),
+            "arguments": result.get("arguments"),
+            "ok": result.get("ok"),
+        }
+        if result.get("tool") == "search_nodes" and isinstance(output, dict):
+            matches = output.get("matches") or []
+            item["match_count"] = len(matches)
+            item["top_matches"] = [
+                {
+                    "node_id": match.get("node_id"),
+                    "title": match.get("title"),
+                    "labels": match.get("labels"),
+                    "text_preview": match.get("text_preview"),
+                }
+                for match in matches[:5]
+            ]
+        elif isinstance(output, dict):
+            item["output_keys"] = sorted(output.keys())
+            if output.get("focus_node_id"):
+                item["focus_node_id"] = output.get("focus_node_id")
+        elif isinstance(output, list):
+            item["result_count"] = len(output)
+        if result.get("error"):
+            item["error"] = result.get("error")
+        summary.append(item)
+    return summary
 
 
 def allowed_tool_specs() -> list[dict[str, Any]]:

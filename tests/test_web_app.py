@@ -40,6 +40,7 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     assert data["ok"] is True
     assert "ollama_cli" in data["available_adapters"]
     assert data["default_model"]
+    assert data["memory_agent_model"]
 
 
 def test_session_endpoints() -> None:

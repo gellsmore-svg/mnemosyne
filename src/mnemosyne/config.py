@@ -21,8 +21,10 @@ class PathConfig(BaseModel):
 class RuntimeConfig(BaseModel):
     model_adapter: str = "mock"
     answer_adapter: str = "ollama_cli"
+    memory_agent_adapter: str | None = None
     retrieval_mode: str = "direct"
     ollama_model: str = "gemma3:1b"
+    memory_agent_model: str | None = None
     ollama_base_url: str = "http://localhost:11434"
     ollama_executable: Path = Path("/mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe")
     ollama_timeout_seconds: int = 45
@@ -36,6 +38,7 @@ class RetrievalConfig(BaseModel):
     context_char_budget: int = 4000
     prompt_token_budget: int = 2000
     reserved_response_tokens: int = 500
+    memory_agent_max_iterations: int = 4
 
 
 class AppConfig(BaseModel):

@@ -115,6 +115,19 @@ def document_ids_for_label(db, label: str) -> list[str]:
     return sorted(str(document_id) for document_id in document_ids)
 
 
+def destructive_rebuild_refusal(command: str) -> dict:
+    return {
+        "ok": False,
+        "reason": "destructive_rebuild_requires_force_replace",
+        "command": command,
+        "message": (
+            "This command deletes and recreates existing trees/nodes. Requirements call for "
+            "versioned replacement, not silent deletion. Re-run with --force-replace only for "
+            "explicit maintenance work."
+        ),
+    }
+
+
 def rebuild_document_from_existing_source(
     db,
     document_id: str,
@@ -288,10 +301,20 @@ def main() -> None:
         default=None,
         help="Optional source path override. Defaults to the document archive path, then original source path.",
     )
+    rebuild_doc.add_argument(
+        "--force-replace",
+        action="store_true",
+        help="Destructively replace existing trees/nodes. This is a maintenance command, not versioned ingestion.",
+    )
 
     rebuild_by_label = subcommands.add_parser("rebuild-by-label")
     rebuild_by_label.add_argument("--label", required=True)
     rebuild_by_label.add_argument("--limit", type=int, default=None)
+    rebuild_by_label.add_argument(
+        "--force-replace",
+        action="store_true",
+        help="Destructively replace existing trees/nodes for all matching documents.",
+    )
 
     args = parser.parse_args()
     config = load_config(args.config)
@@ -667,6 +690,9 @@ def main() -> None:
 
     if args.command == "rebuild-document":
         ensure_indexes(db)
+        if not args.force_replace:
+            print(json.dumps(destructive_rebuild_refusal("rebuild-document"), indent=2))
+            return
         print(
             json.dumps(
                 rebuild_document_from_existing_source(db, args.document_id, args.source),
@@ -677,6 +703,9 @@ def main() -> None:
 
     if args.command == "rebuild-by-label":
         ensure_indexes(db)
+        if not args.force_replace:
+            print(json.dumps(destructive_rebuild_refusal("rebuild-by-label"), indent=2))
+            return
         document_ids = document_ids_for_label(db, args.label)
         if args.limit is not None:
             document_ids = document_ids[: args.limit]

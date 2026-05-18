@@ -82,6 +82,11 @@ def node_search_score(node: dict[str, Any], query: str) -> int:
         score -= 12
     if not str(node.get("text") or "").strip():
         score -= 25
+    endorsement_label = node.get("endorsement_label")
+    if endorsement_label == "explicit_endorsed":
+        score += 30
+    elif endorsement_label == "implicit_endorsed":
+        score += 10
     return score
 
 
