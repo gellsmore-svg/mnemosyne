@@ -54,6 +54,7 @@ The domain is in early scaffold mode. The imported requirements and design docum
 .venv/bin/mnemosyne ask "What should I know?" --node-id <node_id>
 .venv/bin/mnemosyne ask "What should I know?" --node-id <node_id> --adapter ollama_cli
 .venv/bin/mnemosyne ask "What should I know?" --node-id <node_id> --adapter ollama_cli --model gemma3:1b
+.venv/bin/mnemosyne ask "What should I know?" --retrieval-mode agentic --model gemma3:1b
 .venv/bin/mnemosyne chat --node-id <node_id>
 .venv/bin/mnemosyne chat --node-id <node_id> --adapter ollama_cli
 .venv/bin/mnemosyne chat --node-id <node_id> --adapter ollama_cli --model gemma3:1b
@@ -86,6 +87,8 @@ Node search also supports document scoping and created-at bounds. `node-context`
 
 For a real local model call, use the default adapter or pass `--adapter ollama_cli` explicitly. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`. Ollama CLI prompts are sent through stdin and bounded by `runtime.ollama_timeout_seconds`.
 
+For the first planner-driven flow, pass `--retrieval-mode agentic` or choose `agentic` in the web UI. In this mode Mnemosyne calls the configured model once as a retrieval planner, executes allowed retrieval tools (`search_nodes`, `compile_context`, `list_documents`), and calls the model again to answer from the tool results.
+
 ## Web UI
 
 Run:
@@ -98,7 +101,7 @@ Open `http://127.0.0.1:8765/`.
 
 The web UI can create/select sessions, search nodes, focus a node, ask questions with the default `ollama_cli` adapter or the diagnostic `mock` adapter, choose an Ollama model per request, show recent exchanges, show queue status, process `data/ingest/`, and list recent jobs. To call a local LLM from the browser, leave the adapter on default, choose a model such as `gemma3:1b`, optionally focus a node, and press Ask.
 
-If no Mongo node matches the prompt and no focus node is selected, Mnemosyne still sends the submitted prompt to the selected answer adapter. The answer panel includes a console trace showing ordered step input/output data for prompt intake, retrieval/context compilation, and answer adapter execution.
+If no Mongo node matches the prompt and no focus node is selected, Mnemosyne still sends the submitted prompt to the selected answer adapter. The answer panel includes a console trace showing ordered step input/output data for prompt intake, planner calls when enabled, tool execution, retrieval/context compilation, and answer adapter execution.
 
 ## Restart
 

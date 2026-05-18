@@ -54,6 +54,9 @@ async function loadRuntime() {
   const adapter = $("adapter");
   const defaultAdapter = adapter.querySelector("option[value='']");
   defaultAdapter.textContent = `default (${data.default_adapter})`;
+  const retrievalMode = $("retrievalMode");
+  const defaultRetrievalMode = retrievalMode.querySelector("option[value='']");
+  defaultRetrievalMode.textContent = `default (${data.retrieval_mode})`;
   const modelOptions = [
     new Option(`default (${data.default_model})`, ""),
     ...data.known_models.map((model) => new Option(model, model)),
@@ -142,6 +145,7 @@ async function ask() {
     session_id: $("sessionId").value || "web",
     adapter: $("adapter").value || null,
     model: $("model").value || null,
+    retrieval_mode: $("retrievalMode").value || null,
   };
   $("answerText").textContent = "Thinking...";
   $("answerMeta").innerHTML = "";
@@ -153,8 +157,9 @@ async function ask() {
       output: {
         status: "running",
         adapter: payload.adapter || "default",
-        model: payload.model || "default",
-        timeout_seconds: timeout || null,
+      model: payload.model || "default",
+      retrieval_mode: payload.retrieval_mode || "default",
+      timeout_seconds: timeout || null,
       },
     },
   ]);

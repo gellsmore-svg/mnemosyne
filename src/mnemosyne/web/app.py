@@ -26,6 +26,7 @@ class AskRequest(BaseModel):
     session_id: str = "web"
     adapter: str | None = None
     model: str | None = None
+    retrieval_mode: str | None = None
 
 
 class CreateSessionRequest(BaseModel):
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
             "default_adapter": config.runtime.answer_adapter,
             "default_model": config.runtime.ollama_model,
             "retrieval_mode": config.runtime.retrieval_mode,
+            "available_retrieval_modes": ["direct", "agentic"],
             "available_adapters": ["mock", "ollama_cli", "ollama_http"],
             "known_models": [
                 "gemma3:1b",
@@ -152,6 +154,7 @@ def create_app() -> FastAPI:
             session_id=request.session_id,
             answer_adapter_name=request.adapter,
             ollama_model=request.model,
+            retrieval_mode=request.retrieval_mode,
         )
 
     @app.get("/api/history")

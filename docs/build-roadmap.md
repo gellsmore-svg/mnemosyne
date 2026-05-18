@@ -84,6 +84,7 @@ Current early web surface:
 - queue status, recent job, and process-inbox APIs;
 - node focus and adapter selection controls;
 - session selector/create controls;
+- direct/agentic retrieval mode selector;
 - operator controls for inbox processing.
 
 Minimum build:
@@ -112,6 +113,8 @@ Current early read surface:
 - ask/chat commands using the retrieval pipeline and local Ollama CLI answer adapter by default;
 - optional Ollama CLI answer adapter for real local model calls;
 - saved exchange records in MongoDB.
+- first agentic retrieval loop: planner model emits bounded JSON tool calls, Mnemosyne executes allowed retrieval tools, and the answer model replies from tool results.
+- structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
 
 Minimum build:
 

@@ -91,7 +91,7 @@ textarea {
 .session-row,
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 150px 150px 90px;
+  grid-template-columns: minmax(0, 1fr) 140px 140px 140px 90px;
   gap: 8px;
   margin-top: 8px;
 }
