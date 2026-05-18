@@ -134,7 +134,17 @@ def clean_ollama_output(text: str) -> str:
     without_ansi = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", rewritten)
     without_spinners = re.sub(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s*", "", without_ansi)
     without_controls = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", without_spinners)
-    return without_controls.strip()
+    repaired_wraps = repair_duplicate_wrap_fragments(without_controls)
+    return repaired_wraps.strip()
+
+
+def repair_duplicate_wrap_fragments(text: str) -> str:
+    """Remove stale line-end prefixes left by Ollama terminal wrapping."""
+    return re.sub(
+        r"(?<![A-Za-z])([A-Za-z]{1,20})\n(?=\1[A-Za-z])",
+        "",
+        text,
+    )
 
 
 def apply_terminal_rewrites(text: str) -> str:

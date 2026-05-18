@@ -132,6 +132,19 @@ pre {
   padding: 16px;
 }
 
+.answer-text {
+  white-space: pre-wrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  background: white;
+  border: 1px solid #d6dce4;
+  border-radius: 6px;
+  min-height: 220px;
+  margin: 0;
+  padding: 16px;
+  line-height: 1.55;
+}
+
 .console-log {
   min-height: 72px;
   max-height: 520px;

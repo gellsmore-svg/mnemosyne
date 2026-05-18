@@ -6,6 +6,7 @@ from mnemosyne.adapters.answer import (
     MockAnswerAdapter,
     OllamaCliAnswerAdapter,
     clean_ollama_output,
+    repair_duplicate_wrap_fragments,
     summarize_context_text,
 )
 from mnemosyne.config import RuntimeConfig
@@ -44,6 +45,24 @@ def test_clean_ollama_output_strips_spinner_and_ansi() -> None:
 
 def test_clean_ollama_output_applies_cursor_rewrites() -> None:
     assert clean_ollama_output("prompte\x1b[7D\x1b[Kprompted\n") == "prompted"
+
+
+def test_clean_ollama_output_repairs_duplicate_wrap_fragments() -> None:
+    raw = (
+        "I understand you are asking about the MongoDB instance used when I am prompte\n"
+        "prompted to answer your questions. However, the u\n"
+        "underlying system includes Mo\n"
+        "MongoDB."
+    )
+
+    assert clean_ollama_output(raw) == (
+        "I understand you are asking about the MongoDB instance used when I am "
+        "prompted to answer your questions. However, the underlying system includes MongoDB."
+    )
+
+
+def test_repair_duplicate_wrap_fragments_leaves_intentional_newlines() -> None:
+    assert repair_duplicate_wrap_fragments("first line\nsecond line") == "first line\nsecond line"
 
 
 def test_ollama_cli_adapter_passes_prompt_via_stdin(monkeypatch) -> None:
