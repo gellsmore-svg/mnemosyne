@@ -110,18 +110,22 @@ def parse_sections(text: str, fallback_title: str) -> list[dict]:
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("#"):
-            if current_lines:
+            if has_content(current_lines):
                 sections.append(section(current_title, "\n".join(current_lines)))
             current_title = stripped.lstrip("#").strip() or fallback_title
             current_lines = []
         else:
             current_lines.append(line)
 
-    if current_lines:
+    if has_content(current_lines):
         sections.append(section(current_title, "\n".join(current_lines)))
     if not sections:
         sections.append(section(fallback_title, text))
     return sections
+
+
+def has_content(lines: list[str]) -> bool:
+    return any(line.strip() for line in lines)
 
 
 def section(title: str, text: str) -> dict:

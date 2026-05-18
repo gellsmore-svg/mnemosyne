@@ -51,8 +51,38 @@ def search_nodes(
     if created_filter:
         filters["created_at"] = created_filter
 
-    nodes = db.nodes.find(filters).sort("created_at", -1).limit(limit)
-    return [serialize_node(node) for node in nodes]
+    candidate_limit = max(limit * 5, 50) if query else limit
+    nodes = list(db.nodes.find(filters).sort("created_at", -1).limit(candidate_limit))
+    if query:
+        nodes.sort(key=lambda node: node_search_score(node, query), reverse=True)
+    return [serialize_node(node) for node in nodes[:limit]]
+
+
+def node_search_score(node: dict[str, Any], query: str) -> int:
+    title = str(node.get("title") or "").lower()
+    text = str(node.get("text") or "").lower()
+    labels = node.get("labels", [])
+    query_lower = query.lower()
+    terms = [term.lower() for term in re.findall(r"[A-Za-z0-9]+", query)]
+    score = 0
+    if query_lower in title:
+        score += 50
+    if query_lower in text:
+        score += 15
+    for term in terms:
+        if term in title:
+            score += 8
+        if term in text:
+            score += 2
+    if "source_section" in labels:
+        score += 4
+    if "source_chunk" in labels:
+        score += 1
+    if "source_root" in labels:
+        score -= 12
+    if not str(node.get("text") or "").strip():
+        score -= 25
+    return score
 
 
 def node_context(db: Database, node_id: str, child_limit: int = 20) -> dict[str, Any] | None:

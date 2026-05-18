@@ -1,6 +1,12 @@
 from pathlib import Path
 
-from mnemosyne.cli import discover_folder_sources
+from bson import ObjectId
+
+from mnemosyne.cli import (
+    discover_folder_sources,
+    document_ids_for_label,
+    existing_document_extra_labels,
+)
 
 
 def test_discover_folder_sources_finds_markdown_and_text(tmp_path: Path) -> None:
@@ -21,3 +27,55 @@ def test_discover_folder_sources_skips_git_directory(tmp_path: Path) -> None:
     (root / "included.md").write_text("included", encoding="utf-8")
 
     assert [path.name for path in discover_folder_sources(root)] == ["included.md"]
+
+
+def test_existing_document_extra_labels_excludes_structural_labels() -> None:
+    document_id = ObjectId()
+    db = FakeDb(
+        [
+            {"document_id": document_id, "labels": ["source_root", "memory_reference"]},
+            {"document_id": document_id, "labels": ["source_chunk", "external_corpus"]},
+        ]
+    )
+
+    assert existing_document_extra_labels(db, str(document_id)) == [
+        "external_corpus",
+        "memory_reference",
+    ]
+
+
+def test_document_ids_for_label_returns_sorted_strings() -> None:
+    first = ObjectId()
+    second = ObjectId()
+    db = FakeDb(
+        [
+            {"document_id": second, "labels": ["ams_domain"]},
+            {"document_id": first, "labels": ["ams_domain"]},
+            {"document_id": ObjectId(), "labels": ["other"]},
+        ]
+    )
+
+    assert document_ids_for_label(db, "ams_domain") == sorted([str(first), str(second)])
+
+
+class FakeCollection:
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
+
+    def find(self, query: dict, _projection: dict) -> list[dict]:
+        return [row for row in self.rows if row["document_id"] == query["document_id"]]
+
+    def distinct(self, field: str, query: dict) -> list:
+        values = []
+        for row in self.rows:
+            if query["labels"] not in row.get("labels", []):
+                continue
+            value = row[field]
+            if value not in values:
+                values.append(value)
+        return values
+
+
+class FakeDb:
+    def __init__(self, nodes: list[dict]) -> None:
+        self.nodes = FakeCollection(nodes)

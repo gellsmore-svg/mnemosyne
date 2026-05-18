@@ -45,3 +45,18 @@ def test_mock_adapter_applies_extra_labels_to_all_nodes() -> None:
 
     assert all("external_corpus" in node.labels for node in result.nodes)
     assert all("public_domain" in node.labels for node in result.nodes)
+
+
+def test_mock_adapter_skips_heading_only_empty_sections() -> None:
+    result = MockIngestionAdapter().process(
+        Path("sample.md"),
+        "# Title\n\n## Purpose\n\nUseful body.",
+        "md",
+    )
+
+    assert [node.title for node in result.nodes] == [
+        "Title",
+        "Purpose",
+        "Purpose / paragraph 1",
+    ]
+    assert all(node.text.strip() for node in result.nodes)

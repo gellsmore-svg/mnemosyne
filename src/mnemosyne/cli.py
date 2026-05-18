@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
+from bson import ObjectId
+
 from mnemosyne.adapters.mock import MockIngestionAdapter
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
@@ -37,6 +39,7 @@ from mnemosyne.sessions.registry import create_session, list_sessions
 
 
 SUPPORTED_FOLDER_SUFFIXES = {".md", ".txt"}
+STRUCTURAL_NODE_LABELS = {"source_root", "source_section", "source_chunk"}
 
 
 def discover_folder_sources(root: Path) -> list[Path]:
@@ -98,6 +101,61 @@ def rejection_reason_counts(results: list[dict]) -> dict[str, int]:
         reason = result.get("reason", "unknown")
         counts[reason] = counts.get(reason, 0) + 1
     return counts
+
+
+def existing_document_extra_labels(db, document_id: str) -> list[str]:
+    labels = set()
+    for row in db.nodes.find({"document_id": ObjectId(document_id)}, {"labels": 1}):
+        labels.update(row.get("labels", []))
+    return sorted(label for label in labels if label not in STRUCTURAL_NODE_LABELS)
+
+
+def document_ids_for_label(db, label: str) -> list[str]:
+    document_ids = db.nodes.distinct("document_id", {"labels": label})
+    return sorted(str(document_id) for document_id in document_ids)
+
+
+def rebuild_document_from_existing_source(
+    db,
+    document_id: str,
+    source_override: str | None = None,
+) -> dict:
+    document = get_document(db, document_id)
+    if not document:
+        return {
+            "ok": False,
+            "reason": "document_not_found",
+            "document_id": document_id,
+        }
+    source = document.get("source", {})
+    source_path = Path(
+        source_override
+        or source.get("archive_path")
+        or source.get("path")
+        or ""
+    )
+    if not source_path.exists():
+        return {
+            "ok": False,
+            "reason": "source_missing",
+            "document_id": document_id,
+            "path": str(source_path),
+        }
+    text, source_kind = read_text_source(source_path)
+    result = MockIngestionAdapter().process(
+        source_path,
+        text,
+        source_kind,
+        extra_labels=existing_document_extra_labels(db, document_id),
+    )
+    result.source.path = source.get("path") or str(source_path)
+    result.source.checksum_sha256 = source.get("checksum_sha256") or sha256_file(source_path)
+    result.source.archive_path = source.get("archive_path") or str(source_path)
+    inserted = rebuild_document(db, document_id, result)
+    inserted["ok"] = True
+    inserted["source_path"] = str(source_path)
+    inserted["checksum_sha256"] = result.source.checksum_sha256
+    return inserted
 
 
 def main() -> None:
@@ -229,6 +287,10 @@ def main() -> None:
         default=None,
         help="Optional source path override. Defaults to the document archive path, then original source path.",
     )
+
+    rebuild_by_label = subcommands.add_parser("rebuild-by-label")
+    rebuild_by_label.add_argument("--label", required=True)
+    rebuild_by_label.add_argument("--limit", type=int, default=None)
 
     args = parser.parse_args()
     config = load_config(args.config)
@@ -604,49 +666,37 @@ def main() -> None:
 
     if args.command == "rebuild-document":
         ensure_indexes(db)
-        document = get_document(db, args.document_id)
-        if not document:
-            print(
-                json.dumps(
-                    {
-                        "ok": False,
-                        "reason": "document_not_found",
-                        "document_id": args.document_id,
-                    },
-                    indent=2,
-                )
+        print(
+            json.dumps(
+                rebuild_document_from_existing_source(db, args.document_id, args.source),
+                indent=2,
             )
-            return
-        source = document.get("source", {})
-        source_path = Path(
-            args.source
-            or source.get("archive_path")
-            or source.get("path")
-            or ""
         )
-        if not source_path.exists():
-            print(
-                json.dumps(
-                    {
-                        "ok": False,
-                        "reason": "source_missing",
-                        "document_id": args.document_id,
-                        "path": str(source_path),
-                    },
-                    indent=2,
-                )
+        return
+
+    if args.command == "rebuild-by-label":
+        ensure_indexes(db)
+        document_ids = document_ids_for_label(db, args.label)
+        if args.limit is not None:
+            document_ids = document_ids[: args.limit]
+        results = [
+            rebuild_document_from_existing_source(db, document_id)
+            for document_id in document_ids
+        ]
+        failures = [result for result in results if not result.get("ok")]
+        print(
+            json.dumps(
+                {
+                    "ok": not failures,
+                    "label": args.label,
+                    "document_count": len(document_ids),
+                    "rebuilt": sum(1 for result in results if result.get("ok")),
+                    "failed": len(failures),
+                    "failures": failures,
+                },
+                indent=2,
             )
-            return
-        text, source_kind = read_text_source(source_path)
-        result = MockIngestionAdapter().process(source_path, text, source_kind)
-        result.source.path = source.get("path") or str(source_path)
-        result.source.checksum_sha256 = source.get("checksum_sha256") or sha256_file(source_path)
-        result.source.archive_path = source.get("archive_path") or str(source_path)
-        inserted = rebuild_document(db, args.document_id, result)
-        inserted["ok"] = True
-        inserted["source_path"] = str(source_path)
-        inserted["checksum_sha256"] = result.source.checksum_sha256
-        print(json.dumps(inserted, indent=2))
+        )
         return
 
     raise SystemExit(f"Unknown command: {args.command}")

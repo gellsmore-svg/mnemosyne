@@ -7,6 +7,7 @@ from mnemosyne.retrieval.queries import (
     default_no_context_system_instruction,
     estimate_tokens,
     nearby_siblings,
+    node_search_score,
     parse_iso_datetime,
     prioritize_records,
     render_context_document,
@@ -248,3 +249,21 @@ def test_build_prompt_envelope_without_context_uses_no_context_instruction() -> 
     assert "For this request, Mongo lookup ran but no matching Mongo context was used." in envelope["prompt_text"]
     assert "Do not withhold useful general answers" in envelope["prompt_text"]
     assert envelope["context_metadata"]["included"] == []
+
+
+def test_node_search_score_demotes_empty_title_only_chunks() -> None:
+    empty_chunk = {
+        "title": "AMS Substrate Coherence Schema v1 / paragraph 1",
+        "text": "",
+        "labels": ["source_chunk"],
+    }
+    useful_section = {
+        "title": "AMS Substrate Coherence Schema v1",
+        "text": "Purpose and shared fields for the substrate coherence programme.",
+        "labels": ["source_section"],
+    }
+
+    assert node_search_score(useful_section, "substrate coherence schema") > node_search_score(
+        empty_chunk,
+        "substrate coherence schema",
+    )

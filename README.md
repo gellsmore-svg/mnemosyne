@@ -46,6 +46,7 @@ The domain is in early scaffold mode. The imported requirements and design docum
 .venv/bin/mnemosyne list-docs --limit 5
 .venv/bin/mnemosyne show-doc <document_id>
 .venv/bin/mnemosyne rebuild-document <document_id>
+.venv/bin/mnemosyne rebuild-by-label --label ams_domain
 .venv/bin/mnemosyne search-nodes --query hierarchy --label source_chunk
 .venv/bin/mnemosyne search-nodes --document-id <document_id> --created-after 2026-05-17T14:50:00
 .venv/bin/mnemosyne node-context <node_id>
@@ -70,13 +71,13 @@ Stage 1 now has enough working data to test retrieval behavior against both proj
 
 Agentic mode is useful because it lets the first model call decide which Mnemosyne retrieval tools to use before the answer call. The current weak point is still planner/search discipline: the planner can choose broad or lossy search text, so Mnemosyne now preserves the initiating prompt as ranking context, expands fallback candidate pools, and demotes generic document root matches. A later stricter JSON planner mode would reduce malformed planner output and make tool calls easier to validate.
 
-A public-domain Project Gutenberg memory corpus has been imported as working data: `Memory: How to Develop, Train, and Use It` by William Walker Atkinson. It is labeled `external_corpus`, `public_domain`, and `memory_reference`. It inserted one document and 357 nodes.
+A public-domain Project Gutenberg memory corpus has been imported as working data: `Memory: How to Develop, Train, and Use It` by William Walker Atkinson. It is labeled `external_corpus`, `public_domain`, and `memory_reference`. The plain-text source is now stripped of Project Gutenberg envelope boilerplate, has an inferred title, and currently contains 302 nodes.
 
-The local AMS domain has been imported as working data. The import found 1,885 Markdown/text paths, inserted 1,868 unique AMS documents into MongoDB, and rejected duplicate paths by SHA-256 checksum. AMS nodes are labeled `ams_domain`, `imported_domain`, and `research_corpus`; Mongo currently has 175,687 AMS-labeled nodes.
+The local AMS domain has been imported as working data. The import found 1,885 Markdown/text paths, inserted 1,868 unique AMS documents into MongoDB, and rejected duplicate paths by SHA-256 checksum. AMS nodes are labeled `ams_domain`, `imported_domain`, and `research_corpus`. The corpus has been rebuilt with the current parser to remove heading-only empty nodes; Mongo currently has 169,995 AMS-labeled nodes and 0 empty AMS nodes.
 
 ## Immediate Next Step
 
-Continue the Stage 1 interaction slice by improving retrieval ranking and source preparation for larger corpora. The immediate issues are Gutenberg header/footer cleanup, title inference for plain text sources, and stronger ranking across the large AMS import.
+Continue the Stage 1 interaction slice by improving retrieval ranking for larger corpora. The immediate issue is stronger ranking across the large AMS import, especially distinguishing document-level matches from section-level answers when many versions contain overlapping concepts.
 
 Duplicate ingestion is rejected by SHA-256 checksum. Accepted files are copied into `data/archive/`, processed inbox requests are moved to `data/staging/processed/`, duplicate inbox requests are moved to `data/dead_letter/duplicate/`, and label meanings are seeded into MongoDB in `label_definitions`.
 
@@ -87,6 +88,8 @@ Document, tree, and node records carry `schema_version: 1`. Nodes carry `endorse
 The deterministic mock adapter now creates hierarchical trees: `source_root`, `source_section`, and `source_chunk`.
 
 Existing documents can be rebuilt in place from their archived source with `rebuild-document <document_id>`. This keeps the document identity/checksum while replacing its tree and nodes using the current ingestion adapter.
+
+Groups of existing documents can be rebuilt by node label with `rebuild-by-label --label <label>`. Rebuilds preserve non-structural labels such as `ams_domain`, `external_corpus`, and `memory_reference`.
 
 The first retrieval commands are available for listing documents, inspecting document metadata, showing tree nodes, and searching nodes by text, label, and endorsement label.
 
