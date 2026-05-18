@@ -217,5 +217,8 @@ def test_build_prompt_envelope_without_context_uses_no_context_instruction() -> 
 
     assert envelope["system_instruction"] == default_no_context_system_instruction()
     assert "No retrieved Mongo context matched this request." in envelope["prompt_text"]
-    assert "do not imply that the answer comes from Mnemosyne memory" in envelope["prompt_text"]
+    assert "- Matching Mongo context used: no" in envelope["prompt_text"]
+    assert "Treat the Runtime Facts as the source of truth" in envelope["prompt_text"]
+    assert "For this request, Mongo lookup ran but no matching Mongo context was used." in envelope["prompt_text"]
+    assert "Do not withhold useful general answers" in envelope["prompt_text"]
     assert envelope["context_metadata"]["included"] == []

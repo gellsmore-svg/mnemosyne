@@ -239,6 +239,11 @@ def build_prompt_envelope_without_context(
         [
             "# Mnemosyne Context",
             "",
+            "## Runtime Facts",
+            "- Mongo context lookup: ran",
+            "- Matching Mongo context used: no",
+            "- Submitted prompt available: yes",
+            "",
             "No retrieved Mongo context matched this request.",
             "",
             "## Submitted Prompt",
@@ -294,10 +299,14 @@ def default_system_instruction() -> str:
 
 def default_no_context_system_instruction() -> str:
     return (
-        "Answer the user query directly. No retrieved Mongo context is available for this request, "
-        "so do not imply that the answer comes from Mnemosyne memory. If the user asks about "
-        "stored project knowledge, provenance, or what Mnemosyne has indexed, say that no "
-        "matching Mongo context was retrieved before giving any general answer."
+        "Answer the user query directly and transparently. No retrieved Mongo context matched this "
+        "request, but the submitted prompt is still available. Treat the Runtime Facts as the "
+        "source of truth about what happened in this request. If you discuss behind-the-scenes "
+        "operation or context use, include this exact runtime fact: 'For this request, Mongo "
+        "lookup ran but no matching Mongo context was used.' Then explain the visible Mnemosyne "
+        "process in plain language: prompt intake, context lookup, tool or adapter calls, and "
+        "answer generation. Do not withhold useful general answers solely because no matching "
+        "context was retrieved."
     )
 
 
