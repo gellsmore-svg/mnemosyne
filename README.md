@@ -71,13 +71,13 @@ Stage 1 now has enough working data to test retrieval behavior against both proj
 
 Agentic mode is useful because it lets the first model call decide which Mnemosyne retrieval tools to use before the answer call. The current weak point is still planner/search discipline: the planner can choose broad or lossy search text, so Mnemosyne now preserves the initiating prompt as ranking context, expands fallback candidate pools, and demotes generic document root matches. A later stricter JSON planner mode would reduce malformed planner output and make tool calls easier to validate.
 
-A public-domain Project Gutenberg memory corpus has been imported as working data: `Memory: How to Develop, Train, and Use It` by William Walker Atkinson. It is labeled `external_corpus`, `public_domain`, and `memory_reference`. The plain-text source is now stripped of Project Gutenberg envelope boilerplate, has an inferred title, and currently contains 302 nodes.
+A public-domain Project Gutenberg memory corpus has been imported as working data: `Memory: How to Develop, Train, and Use It` by William Walker Atkinson. It is labeled `external_corpus`, `public_domain`, and `memory_reference`. Source text is preserved as ingested, including Project Gutenberg front/back matter. It currently contains 357 nodes.
 
-The local AMS domain has been imported as working data. The import found 1,885 Markdown/text paths, inserted 1,868 unique AMS documents into MongoDB, and rejected duplicate paths by SHA-256 checksum. AMS nodes are labeled `ams_domain`, `imported_domain`, and `research_corpus`. The corpus has been rebuilt with the current parser to remove heading-only empty nodes; Mongo currently has 169,995 AMS-labeled nodes and 0 empty AMS nodes.
+The local AMS domain has been imported as working data. The import found 1,885 Markdown/text paths, inserted 1,868 unique AMS documents into MongoDB, and rejected duplicate paths by SHA-256 checksum. AMS nodes are labeled `ams_domain`, `imported_domain`, and `research_corpus`. Source-derived tree shape is preserved, including heading-only sections. Mongo currently has 175,687 AMS-labeled nodes.
 
 ## Immediate Next Step
 
-Continue the Stage 1 interaction slice by improving retrieval ranking for larger corpora. The immediate issue is stronger ranking across the large AMS import, especially distinguishing document-level matches from section-level answers when many versions contain overlapping concepts.
+Continue the Stage 1 interaction slice by making Gemma's Mongo context-gathering loop more flexible and iterative while preserving source content. Proposed changes that alter source preservation, retrieval authority, or agent autonomy should be agreed before implementation.
 
 Duplicate ingestion is rejected by SHA-256 checksum. Accepted files are copied into `data/archive/`, processed inbox requests are moved to `data/staging/processed/`, duplicate inbox requests are moved to `data/dead_letter/duplicate/`, and label meanings are seeded into MongoDB in `label_definitions`.
 

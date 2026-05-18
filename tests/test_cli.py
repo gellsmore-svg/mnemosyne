@@ -6,6 +6,7 @@ from mnemosyne.cli import (
     discover_folder_sources,
     document_ids_for_label,
     existing_document_extra_labels,
+    rebuild_document_from_existing_source,
 )
 
 
@@ -58,6 +59,39 @@ def test_document_ids_for_label_returns_sorted_strings() -> None:
     assert document_ids_for_label(db, "ams_domain") == sorted([str(first), str(second)])
 
 
+def test_rebuild_document_uses_original_source_path_for_adapter_title(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    archive = tmp_path / "abc123.txt"
+    archive.write_text("plain text", encoding="utf-8")
+    document_id = ObjectId()
+    db = FakeDb(
+        [],
+        document={
+            "document_id": str(document_id),
+            "source": {
+                "path": "data/ingest/original-name.txt",
+                "archive_path": str(archive),
+                "checksum_sha256": "abc123",
+            },
+        },
+    )
+    captured = {}
+
+    def fake_rebuild(_db, _document_id, result):
+        captured["title"] = result.title
+        return {"document_id": str(document_id), "replaced": True}
+
+    monkeypatch.setattr("mnemosyne.cli.get_document", lambda _db, _document_id: db.document)
+    monkeypatch.setattr("mnemosyne.cli.rebuild_document", fake_rebuild)
+
+    result = rebuild_document_from_existing_source(db, str(document_id))
+
+    assert result["ok"] is True
+    assert captured["title"] == "original-name"
+
+
 class FakeCollection:
     def __init__(self, rows: list[dict]) -> None:
         self.rows = rows
@@ -77,5 +111,6 @@ class FakeCollection:
 
 
 class FakeDb:
-    def __init__(self, nodes: list[dict]) -> None:
+    def __init__(self, nodes: list[dict], document: dict | None = None) -> None:
         self.nodes = FakeCollection(nodes)
+        self.document = document

@@ -142,8 +142,9 @@ def rebuild_document_from_existing_source(
             "path": str(source_path),
         }
     text, source_kind = read_text_source(source_path)
+    adapter_path = Path(source.get("path") or source_path)
     result = MockIngestionAdapter().process(
-        source_path,
+        adapter_path,
         text,
         source_kind,
         extra_labels=existing_document_extra_labels(db, document_id),
