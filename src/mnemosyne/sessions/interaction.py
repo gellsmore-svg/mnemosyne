@@ -19,6 +19,9 @@ from mnemosyne.retrieval.queries import (
 from mnemosyne.sessions.exchanges import save_exchange
 
 
+TERMINAL_FALLBACK_REASONS = {"memory_agent_decision_failed"}
+
+
 def answer_query(
     db: Database,
     config: AppConfig,
@@ -377,6 +380,7 @@ def run_memory_agent_loop(
                 "error": str(error),
                 "raw_answer": raw_answer,
                 "fallback": True,
+                "fallback_reason": "memory_agent_decision_failed",
             }
 
         tool_calls = decision.get("tool_calls", [])
@@ -390,6 +394,7 @@ def run_memory_agent_loop(
                     "fallback_reason": "memory_agent_failed_after_tool_context",
                 },
                 "stopped": True,
+                "stop_reason": "memory_agent_failed_after_tool_context",
             }
             break
         if not tool_calls and not all_tool_results:
@@ -419,12 +424,19 @@ def run_memory_agent_loop(
                 "tool_results": summarize_tool_results_for_memory_agent(tool_results),
             }
         )
+        step_ok = any(result.get("ok") for result in tool_results) if decision.get("fallback") else True
         step["output"] = {
-            "ok": not decision.get("fallback"),
+            "ok": step_ok,
             "raw_answer": raw_answer,
             "decision": decision,
             "tool_results": tool_results,
         }
+        if decision.get("fallback_reason") in TERMINAL_FALLBACK_REASONS:
+            step["output"]["stopped"] = True
+            step["output"]["stop_reason"] = (
+                "fallback_context_gathered" if step_ok else "fallback_context_unavailable"
+            )
+            break
     return all_tool_results
 
 

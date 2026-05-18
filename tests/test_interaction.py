@@ -238,6 +238,172 @@ def test_agentic_answer_query_falls_back_when_planner_stops_without_tools(monkey
     assert result["process_trace"][1]["output"]["decision"]["fallback_reason"] == (
         "memory_agent_returned_no_initial_tool_calls"
     )
+    assert "stop_reason" not in result["process_trace"][1]["output"]
+    assert result["process_trace"][2]["output"]["stopped"] is True
+    assert [step["step"] for step in result["process_trace"]] == [
+        "user_prompt",
+        "memory_agent_iteration",
+        "memory_agent_iteration",
+        "answer_adapter",
+    ]
+    assert result["answer"] == "final answer"
+    assert "Mnemosyne Tool Results" in prompts[-1]
+
+
+def test_agentic_answer_query_stops_after_parse_failure_fallback_context(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    prompts = []
+    executed = []
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            prompts.append(prompt["prompt_text"])
+            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+                return {
+                    "adapter": "fake",
+                    "answer": "not json",
+                    "used_node_ids": [],
+                }
+            return {
+                "adapter": "fake",
+                "answer": "final answer",
+                "used_node_ids": ["node1"],
+            }
+
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    def fake_execute_tool_calls(_db, calls, original_query=None):
+        executed.extend(calls)
+        return [
+            {
+                "index": 0,
+                "tool": calls[0]["tool"],
+                "arguments": calls[0]["arguments"],
+                "ok": True,
+                "output": {
+                    "matches": [{"node_id": "node1", "title": "Memory"}],
+                    "compiled_contexts": [{"focus_node_id": "node1", "records": []}],
+                },
+            }
+        ]
+
+    monkeypatch.setattr(interaction, "execute_tool_calls", fake_execute_tool_calls)
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+    config = AppConfig(runtime=RuntimeConfig(retrieval_mode="agentic", answer_adapter="fake"))
+
+    result = answer_query(FakeDb(), config, "find memory")
+
+    assert result["ok"] is True
+    assert result["answer"] == "final answer"
+    assert executed == [{"tool": "search_nodes", "arguments": {"query": "find memory", "limit": 5}}]
+    assert len(prompts) == 2
+    assert [step["step"] for step in result["process_trace"]] == [
+        "user_prompt",
+        "memory_agent_iteration",
+        "answer_adapter",
+    ]
+    assert result["process_trace"][1]["output"]["ok"] is True
+    assert result["process_trace"][1]["output"]["decision"]["fallback_reason"] == (
+        "memory_agent_decision_failed"
+    )
+    assert result["process_trace"][1]["output"]["stop_reason"] == "fallback_context_gathered"
+    assert "Mnemosyne Tool Results" in prompts[-1]
+
+
+def test_agentic_answer_query_marks_unavailable_fallback_context(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+                return {
+                    "adapter": "fake",
+                    "answer": "not json",
+                    "used_node_ids": [],
+                }
+            return {
+                "adapter": "fake",
+                "answer": "final answer",
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "execute_tool_calls", lambda *args, **kwargs: [])
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+    config = AppConfig(runtime=RuntimeConfig(retrieval_mode="agentic", answer_adapter="fake"))
+
+    result = answer_query(FakeDb(), config, "find memory")
+
+    assert result["ok"] is True
+    assert result["retrieval_status"] == "agentic_no_tool_context"
+    assert result["process_trace"][1]["output"]["ok"] is False
+    assert result["process_trace"][1]["output"]["stop_reason"] == "fallback_context_unavailable"
+
+
+def test_agentic_answer_query_stops_when_planner_fails_after_context(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    prompts = []
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            prompts.append(prompt["prompt_text"])
+            if len(prompts) == 1:
+                return {
+                    "adapter": "fake",
+                    "answer": '{"status":"continue","tool_calls":[{"tool":"search_nodes","arguments":{"query":"memory"}}]}',
+                    "used_node_ids": [],
+                }
+            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+                return {
+                    "adapter": "fake",
+                    "answer": "not json",
+                    "used_node_ids": [],
+                }
+            return {
+                "adapter": "fake",
+                "answer": "final answer",
+                "used_node_ids": ["node1"],
+            }
+
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(
+        interaction,
+        "execute_tool_calls",
+        lambda _db, calls, original_query=None: [
+            {
+                "index": 0,
+                "tool": calls[0]["tool"],
+                "arguments": calls[0]["arguments"],
+                "ok": True,
+                "output": {
+                    "matches": [{"node_id": "node1", "title": "Memory"}],
+                    "compiled_contexts": [{"focus_node_id": "node1", "records": []}],
+                },
+            }
+        ],
+    )
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+    config = AppConfig(runtime=RuntimeConfig(retrieval_mode="agentic", answer_adapter="fake"))
+
+    result = answer_query(FakeDb(), config, "find memory")
+
+    assert result["ok"] is True
+    assert result["answer"] == "final answer"
+    assert [step["step"] for step in result["process_trace"]] == [
+        "user_prompt",
+        "memory_agent_iteration",
+        "memory_agent_iteration",
+        "answer_adapter",
+    ]
+    assert result["process_trace"][2]["output"]["ok"] is False
+    assert result["process_trace"][2]["output"]["decision"]["fallback_reason"] == (
+        "memory_agent_failed_after_tool_context"
+    )
+    assert result["process_trace"][2]["output"]["stop_reason"] == (
+        "memory_agent_failed_after_tool_context"
+    )
+    assert "Mnemosyne Tool Results" in prompts[-1]
 
 
 def test_parse_memory_agent_decision_accepts_done_status() -> None:
