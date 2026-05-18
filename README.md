@@ -85,9 +85,9 @@ Node search also supports document scoping and created-at bounds. `node-context`
 
 `ask` and `chat` are now the first interactive surfaces. They use the retrieval pipeline, the local Ollama CLI answer adapter by default, and persist exchanges in MongoDB. Sessions can be created and listed from the CLI, and each saved exchange updates its session metadata. The mock answer adapter remains available for deterministic tests and offline diagnostics with `--adapter mock`.
 
-For a real local model call, use the default adapter or pass `--adapter ollama_cli` explicitly. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`. Ollama CLI prompts are sent through stdin and bounded by `runtime.ollama_timeout_seconds`.
+For a real local model call, use the default adapter or pass `--adapter ollama_cli` explicitly. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`. Ollama CLI prompts are sent through stdin, run with word wrapping disabled, and are bounded by `runtime.ollama_timeout_seconds`.
 
-For the first planner-driven flow, pass `--retrieval-mode agentic` or choose `agentic` in the web UI. In this mode Mnemosyne calls the configured model once as a retrieval planner, executes allowed retrieval tools (`search_nodes`, `compile_context`, `list_documents`), and calls the model again to answer from the tool results.
+For the first planner-driven flow, pass `--retrieval-mode agentic` or choose `agentic` in the web UI. In this mode Mnemosyne calls the configured model once as a retrieval planner, executes allowed retrieval tools (`search_nodes`, `compile_context`, `list_documents`), and calls the model again to answer from the top-ranked tool context. The console keeps the fuller tool output for inspection.
 
 ## Web UI
 

@@ -115,6 +115,7 @@ Current early read surface:
 - saved exchange records in MongoDB.
 - first agentic retrieval loop: planner model emits bounded JSON tool calls, Mnemosyne executes allowed retrieval tools, and the answer model replies from tool results.
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
+- agentic search fallback and lexical ranking, with full console tool output but top-ranked context packaged for the answer model.
 
 Minimum build:
 

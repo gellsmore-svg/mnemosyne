@@ -3,6 +3,8 @@ from mnemosyne.sessions.interaction import (
     answer_query,
     execute_search_nodes_tool,
     parse_tool_calls,
+    prepare_tool_results_for_answer,
+    score_node_match,
     select_focus_node,
 )
 
@@ -136,12 +138,69 @@ def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
         return []
 
     monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "compile_context", lambda _db, _node_id: None)
 
-    results, details = execute_search_nodes_tool(
+    output, details = execute_search_nodes_tool(
         FakeDb(),
         query="technical desig\ndesign Mnemosyne",
     )
 
-    assert results == [{"node_id": "node1", "title": "Mnemosyne"}]
+    assert output["matches"] == [{"node_id": "node1", "title": "Mnemosyne"}]
+    assert output["compiled_contexts"] == []
     assert calls[0] == "technical desig design Mnemosyne"
     assert any(item["query"] == "Mnemosyne" for item in details["fallback_queries"])
+
+
+def test_execute_search_nodes_tool_compiles_top_match(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    monkeypatch.setattr(
+        interaction,
+        "search_nodes",
+        lambda *args, **kwargs: [{"node_id": "node1", "title": "Mnemosyne"}],
+    )
+    monkeypatch.setattr(
+        interaction,
+        "compile_context",
+        lambda _db, node_id: {"focus_node_id": node_id, "records": []},
+    )
+
+    output, _details = execute_search_nodes_tool(FakeDb(), query="Mnemosyne")
+
+    assert output["compiled_contexts"] == [{"focus_node_id": "node1", "records": []}]
+
+
+def test_score_node_match_prefers_specific_title_terms() -> None:
+    technical = {
+        "title": "Mnemosyne Technical Design Document",
+        "text_preview": "Architecture notes",
+    }
+    generic = {
+        "title": "Worker Smoke",
+        "text_preview": "Mnemosyne ingestion worker",
+    }
+
+    assert score_node_match(technical, "Mnemosyne technical design") > score_node_match(
+        generic,
+        "Mnemosyne technical design",
+    )
+
+
+def test_prepare_tool_results_for_answer_keeps_only_top_search_context() -> None:
+    prepared = prepare_tool_results_for_answer(
+        [
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "output": {
+                    "matches": [{"node_id": "top"}, {"node_id": "other"}],
+                    "compiled_contexts": [{"focus_node_id": "top"}, {"focus_node_id": "other"}],
+                },
+            }
+        ]
+    )
+
+    assert prepared[0]["output"]["top_match"] == {"node_id": "top"}
+    assert prepared[0]["output"]["top_context"] == {"focus_node_id": "top"}
+    assert prepared[0]["output"]["match_count"] == 2
+    assert "matches" not in prepared[0]["output"]

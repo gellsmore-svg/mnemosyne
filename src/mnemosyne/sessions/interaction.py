@@ -393,6 +393,7 @@ def execute_tool_calls(db: Database, tool_calls: list[dict[str, Any]]) -> list[d
         tool = call["tool"]
         arguments = call["arguments"]
         try:
+            details = {}
             if tool == "search_nodes":
                 output, details = execute_search_nodes_tool(
                     db,
@@ -445,32 +446,38 @@ def execute_search_nodes_tool(
     query: str | None,
     label: str | None = None,
     limit: int = 5,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     cleaned_query = normalize_query_text(query)
-    results = search_nodes(db, query=cleaned_query, label=label, limit=limit)
+    matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
     details: dict[str, Any] = {
         "normalized_query": cleaned_query,
         "fallback_queries": [],
     }
-    if results or not cleaned_query:
-        return results, details
-
-    seen = {row["node_id"] for row in results}
-    for fallback_query in fallback_queries(cleaned_query):
-        fallback_results = search_nodes(db, query=fallback_query, label=label, limit=limit)
-        details["fallback_queries"].append(
-            {
-                "query": fallback_query,
-                "result_count": len(fallback_results),
-            }
-        )
-        for row in fallback_results:
-            if row["node_id"] not in seen:
-                seen.add(row["node_id"])
-                results.append(row)
-            if len(results) >= limit:
-                return results, details
-    return results, details
+    if not matches and cleaned_query:
+        seen = {row["node_id"] for row in matches}
+        for fallback_query in fallback_queries(cleaned_query):
+            fallback_results = search_nodes(db, query=fallback_query, label=label, limit=limit)
+            details["fallback_queries"].append(
+                {
+                    "query": fallback_query,
+                    "result_count": len(fallback_results),
+                }
+            )
+            for row in fallback_results:
+                if row["node_id"] not in seen:
+                    seen.add(row["node_id"])
+                    matches.append(row)
+                if len(matches) >= limit:
+                    break
+            if len(matches) >= limit:
+                break
+    matches.sort(key=lambda row: score_node_match(row, cleaned_query), reverse=True)
+    compiled_contexts = []
+    for match in matches[:2]:
+        context = compile_context(db, match["node_id"])
+        if context:
+            compiled_contexts.append(context)
+    return {"matches": matches, "compiled_contexts": compiled_contexts}, details
 
 
 def normalize_query_text(value: Any) -> str | None:
@@ -492,6 +499,29 @@ def fallback_queries(query: str) -> list[str]:
     return deduped[:5]
 
 
+def score_node_match(row: dict[str, Any], query: str | None) -> int:
+    if not query:
+        return 0
+    terms = [
+        term.lower()
+        for term in re.split(r"[^A-Za-z0-9]+", query)
+        if len(term) >= 4
+    ]
+    title = (row.get("title") or "").lower()
+    text = (row.get("text_preview") or "").lower()
+    score = 0
+    for term in terms:
+        if term in title:
+            score += 5
+        if term in text:
+            score += 2
+    if query.lower() in title:
+        score += 20
+    if query.lower() in text:
+        score += 8
+    return score
+
+
 def build_agentic_answer_envelope(
     query: str,
     tool_results: list[dict[str, Any]],
@@ -503,7 +533,8 @@ def build_agentic_answer_envelope(
         "Prefer retrieved source context over general knowledge. "
         "If the tool results are insufficient, say so plainly."
     )
-    context_text = render_tool_results(tool_results)
+    answer_tool_results = prepare_tool_results_for_answer(tool_results)
+    context_text = render_tool_results(answer_tool_results)
     prompt_text = "\n".join(
         [
             instruction,
@@ -532,7 +563,7 @@ def build_agentic_answer_envelope(
             + reserved_response_tokens,
         },
         "context_metadata": {
-            "included": included_nodes_from_tool_results(tool_results),
+            "included": included_nodes_from_tool_results(answer_tool_results),
             "skipped": [],
             "used_chars": len(context_text),
             "char_budget": len(context_text),
@@ -540,6 +571,32 @@ def build_agentic_answer_envelope(
             "tool_result_count": len(tool_results),
         },
     }
+
+
+def prepare_tool_results_for_answer(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    prepared = []
+    for result in tool_results:
+        if result.get("tool") != "search_nodes" or not result.get("ok"):
+            prepared.append(result)
+            continue
+        output = result.get("output") or {}
+        if isinstance(output, list):
+            matches = output
+            contexts = []
+        else:
+            matches = output.get("matches") or []
+            contexts = output.get("compiled_contexts") or []
+        prepared.append(
+            {
+                **result,
+                "output": {
+                    "top_match": matches[0] if matches else None,
+                    "top_context": contexts[0] if contexts else None,
+                    "match_count": len(matches),
+                },
+            }
+        )
+    return prepared
 
 
 def render_tool_results(tool_results: list[dict[str, Any]]) -> str:

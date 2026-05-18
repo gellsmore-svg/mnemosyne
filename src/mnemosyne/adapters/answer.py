@@ -62,6 +62,7 @@ class OllamaCliAnswerAdapter:
                 [
                     str(self.config.ollama_executable),
                     "run",
+                    "--nowordwrap",
                     self.config.ollama_model,
                 ],
                 input=prompt["prompt_text"],
@@ -129,7 +130,36 @@ def answer_payload(adapter: str, model: str, prompt: dict[str, Any], answer_text
 
 
 def clean_ollama_output(text: str) -> str:
-    without_ansi = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+    rewritten = apply_terminal_rewrites(text)
+    without_ansi = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", rewritten)
     without_spinners = re.sub(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s*", "", without_ansi)
     without_controls = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", without_spinners)
     return without_controls.strip()
+
+
+def apply_terminal_rewrites(text: str) -> str:
+    output: list[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char != "\x1b":
+            output.append(char)
+            index += 1
+            continue
+        match = re.match(r"\x1b\[([0-9]*)([A-Za-z])", text[index:])
+        if not match:
+            index += 1
+            continue
+        amount = int(match.group(1) or "1")
+        command = match.group(2)
+        if command == "D":
+            for _ in range(min(amount, len(output))):
+                output.pop()
+        elif command == "K":
+            while output and output[-1] != "\n":
+                output.pop()
+        elif command == "G":
+            while output and output[-1] != "\n":
+                output.pop()
+        index += len(match.group(0))
+    return "".join(output)

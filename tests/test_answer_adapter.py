@@ -42,6 +42,10 @@ def test_clean_ollama_output_strips_spinner_and_ansi() -> None:
     assert clean_ollama_output("\x1b[?25l⠙ \x1b[Kmnemosyne-ok\n") == "mnemosyne-ok"
 
 
+def test_clean_ollama_output_applies_cursor_rewrites() -> None:
+    assert clean_ollama_output("prompte\x1b[7D\x1b[Kprompted\n") == "prompted"
+
+
 def test_ollama_cli_adapter_passes_prompt_via_stdin(monkeypatch) -> None:
     captured = {}
 
@@ -59,7 +63,7 @@ def test_ollama_cli_adapter_passes_prompt_via_stdin(monkeypatch) -> None:
         }
     )
 
-    assert captured["cmd"][-1] == "gemma3:1b"
+    assert captured["cmd"][-2:] == ["--nowordwrap", "gemma3:1b"]
     assert captured["input"] == "prompt body"
     assert answer["answer"] == "answer"
 
