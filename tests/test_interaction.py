@@ -1,9 +1,11 @@
 from mnemosyne.config import AppConfig, RuntimeConfig
 from mnemosyne.sessions.interaction import (
     answer_query,
+    combined_query_text,
     execute_search_nodes_tool,
     parse_tool_calls,
     prepare_tool_results_for_answer,
+    render_tool_results,
     score_node_match,
     select_focus_node,
 )
@@ -123,7 +125,7 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
     monkeypatch.setattr(
         interaction,
         "execute_tool_calls",
-        lambda _db, calls: [
+        lambda _db, calls, original_query=None: [
             {
                 "index": 0,
                 "tool": calls[0]["tool"],
@@ -175,6 +177,43 @@ def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
     assert any(item["query"] == "Mnemosyne" for item in details["fallback_queries"])
 
 
+def test_execute_search_nodes_tool_uses_original_query_for_intent_terms(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    def fake_search_nodes(_db, query=None, label=None, limit=5):
+        if query == "system":
+            return [
+                {
+                    "node_id": "generic",
+                    "title": "Mnemosyne Technical Design Document",
+                    "text_preview": "Header",
+                    "labels": ["source_root"],
+                },
+                {
+                    "node_id": "concept",
+                    "title": "1. System Name and Concept",
+                    "text_preview": "Mnemosyne is a locally operated memory layer.",
+                    "labels": ["source_section"],
+                },
+            ]
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "compile_context", lambda _db, _node_id: None)
+
+    output, details = execute_search_nodes_tool(
+        FakeDb(),
+        query="Mnemosyne technical design",
+        original_query="What does the Mnemosyne technical design say the system is for?",
+    )
+
+    assert output["matches"][0]["node_id"] == "concept"
+    assert details["ranking_query"] == (
+        "Mnemosyne technical design What does the say system is for"
+    )
+    assert any(item["query"] == "system" for item in details["fallback_queries"])
+
+
 def test_execute_search_nodes_tool_compiles_top_match(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 
@@ -210,6 +249,48 @@ def test_score_node_match_prefers_specific_title_terms() -> None:
     )
 
 
+def test_score_node_match_prefers_intent_section_over_generic_header() -> None:
+    generic = {
+        "title": "Mnemosyne Technical Design Document",
+        "text_preview": "Header",
+        "labels": ["source_root"],
+    }
+    concept = {
+        "title": "1. System Name and Concept",
+        "text_preview": "Mnemosyne is a locally operated memory layer.",
+        "labels": ["source_section"],
+    }
+
+    assert score_node_match(concept, "Mnemosyne technical design system") > score_node_match(
+        generic,
+        "Mnemosyne technical design system",
+    )
+
+
+def test_score_node_match_demotes_document_root() -> None:
+    root = {
+        "title": "Mnemosyne Technical Design Document",
+        "text_preview": "System Name and Concept",
+        "labels": ["source_root"],
+    }
+    section = {
+        "title": "1. System Name and Concept",
+        "text_preview": "Mnemosyne is a memory layer.",
+        "labels": ["source_section"],
+    }
+
+    assert score_node_match(section, "Mnemosyne technical design system") > score_node_match(
+        root,
+        "Mnemosyne technical design system",
+    )
+
+
+def test_combined_query_text_deduplicates_planner_and_original_terms() -> None:
+    assert combined_query_text("memory design", "What memory design does") == (
+        "memory design What does"
+    )
+
+
 def test_prepare_tool_results_for_answer_keeps_only_top_search_context() -> None:
     prepared = prepare_tool_results_for_answer(
         [
@@ -228,3 +309,40 @@ def test_prepare_tool_results_for_answer_keeps_only_top_search_context() -> None
     assert prepared[0]["output"]["top_context"] == {"focus_node_id": "top"}
     assert prepared[0]["output"]["match_count"] == 2
     assert "matches" not in prepared[0]["output"]
+
+
+def test_render_tool_results_renders_context_as_markdown() -> None:
+    rendered = render_tool_results(
+        [
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "arguments": {"query": "system"},
+                "output": {
+                    "match_count": 1,
+                    "top_match": {"node_id": "node1", "title": "System Name"},
+                    "top_context": {
+                        "document": {"title": "Doc", "document_id": "doc1"},
+                        "focus_node_id": "node1",
+                        "records": [
+                            {
+                                "role": "focus",
+                                "distance": 0,
+                                "title": "System Name",
+                                "node_id": "node1",
+                                "labels": ["source_section"],
+                                "endorsement_label": "unreviewed",
+                                "provenance": {},
+                                "text": "Mnemosyne is a memory layer.",
+                            }
+                        ],
+                    },
+                },
+            }
+        ]
+    )
+
+    assert "### search_nodes" in rendered
+    assert "# Mnemosyne Context" in rendered
+    assert "Mnemosyne is a memory layer." in rendered
+    assert '"top_context"' not in rendered

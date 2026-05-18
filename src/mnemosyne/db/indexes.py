@@ -39,6 +39,36 @@ LABEL_DEFINITIONS = [
         "scope": "node",
         "description": "A section-level node derived from markdown headings or deterministic section parsing.",
     },
+    {
+        "key": "external_corpus",
+        "scope": "node",
+        "description": "Imported working-data corpus content from an external source, not canonical project memory.",
+    },
+    {
+        "key": "public_domain",
+        "scope": "node",
+        "description": "Source material identified as public domain for the current working jurisdiction.",
+    },
+    {
+        "key": "memory_reference",
+        "scope": "node",
+        "description": "Reference material about memory, recall, cognition, or related retrieval concepts.",
+    },
+    {
+        "key": "ams_domain",
+        "scope": "node",
+        "description": "Imported source material from the AMS domain repository.",
+    },
+    {
+        "key": "imported_domain",
+        "scope": "node",
+        "description": "Material imported from another local domain into Mnemosyne for retrieval experiments.",
+    },
+    {
+        "key": "research_corpus",
+        "scope": "node",
+        "description": "Research corpus material used as working retrieval data.",
+    },
 ]
 
 

@@ -6,40 +6,53 @@ from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
 
 class MockIngestionAdapter:
-    def process(self, path: Path, text: str, source_kind: str) -> IngestionResult:
+    def process(
+        self,
+        path: Path,
+        text: str,
+        source_kind: str,
+        extra_labels: list[str] | None = None,
+    ) -> IngestionResult:
         title = first_heading(text) or path.stem
         sections = parse_sections(text, title)
-        nodes = [root_node(title, text, len(sections))]
+        labels = normalized_extra_labels(extra_labels)
+        nodes = [with_extra_labels(root_node(title, text, len(sections)), labels)]
         for section_index, section in enumerate(sections, start=1):
             section_key = f"section-{section_index}"
             nodes.append(
-                IngestedNode(
-                    node_key=section_key,
-                    parent_key="root",
-                    title=section["title"],
-                    text=section["text"],
-                    labels=["source_section"],
-                    metadata={
-                        "adapter": "mock",
-                        "chunk_strategy": "markdown_sections",
-                        "section_index": section_index,
-                    },
+                with_extra_labels(
+                    IngestedNode(
+                        node_key=section_key,
+                        parent_key="root",
+                        title=section["title"],
+                        text=section["text"],
+                        labels=["source_section"],
+                        metadata={
+                            "adapter": "mock",
+                            "chunk_strategy": "markdown_sections",
+                            "section_index": section_index,
+                        },
+                    ),
+                    labels,
                 )
             )
             for paragraph_index, paragraph in enumerate(section["paragraphs"], start=1):
                 nodes.append(
-                    IngestedNode(
-                        node_key=f"{section_key}-paragraph-{paragraph_index}",
-                        parent_key=section_key,
-                        title=f"{section['title']} / paragraph {paragraph_index}",
-                        text=paragraph,
-                        labels=["source_chunk"],
-                        metadata={
-                            "adapter": "mock",
-                            "chunk_strategy": "markdown_paragraphs",
-                            "section_index": section_index,
-                            "paragraph_index": paragraph_index,
-                        },
+                    with_extra_labels(
+                        IngestedNode(
+                            node_key=f"{section_key}-paragraph-{paragraph_index}",
+                            parent_key=section_key,
+                            title=f"{section['title']} / paragraph {paragraph_index}",
+                            text=paragraph,
+                            labels=["source_chunk"],
+                            metadata={
+                                "adapter": "mock",
+                                "chunk_strategy": "markdown_paragraphs",
+                                "section_index": section_index,
+                                "paragraph_index": paragraph_index,
+                            },
+                        ),
+                        labels,
                     )
                 )
         return IngestionResult(
@@ -71,6 +84,22 @@ def root_node(title: str, text: str, section_count: int) -> IngestedNode:
             "section_count": section_count,
         },
     )
+
+
+def normalized_extra_labels(labels: list[str] | None) -> list[str]:
+    normalized = []
+    for label in labels or []:
+        cleaned = "_".join(label.strip().lower().split())
+        if cleaned and cleaned not in normalized:
+            normalized.append(cleaned)
+    return normalized
+
+
+def with_extra_labels(node: IngestedNode, extra_labels: list[str]) -> IngestedNode:
+    for label in extra_labels:
+        if label not in node.labels:
+            node.labels.append(label)
+    return node
 
 
 def parse_sections(text: str, fallback_title: str) -> list[dict]:

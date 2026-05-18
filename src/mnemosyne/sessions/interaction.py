@@ -13,6 +13,7 @@ from mnemosyne.retrieval.queries import (
     build_prompt_envelope_without_context,
     compile_context,
     list_documents,
+    render_context_document,
     search_nodes,
 )
 from mnemosyne.sessions.exchanges import save_exchange
@@ -222,7 +223,7 @@ def answer_query_agentic(
         "output": {},
     }
     process_trace.append(tool_step)
-    tool_results = execute_tool_calls(db, tool_calls)
+    tool_results = execute_tool_calls(db, tool_calls, original_query=query)
     tool_step["output"] = {
         "tool_results": tool_results,
     }
@@ -315,7 +316,12 @@ def ranked_focus_matches(
     if cleaned_query:
         seen = {row["node_id"] for row in matches}
         for fallback_query in fallback_queries(cleaned_query):
-            fallback_results = search_nodes(db, query=fallback_query, label=label, limit=limit)
+            fallback_results = search_nodes(
+                db,
+                query=fallback_query,
+                label=label,
+                limit=fallback_candidate_limit(limit),
+            )
             for row in fallback_results:
                 if row["node_id"] not in seen:
                     seen.add(row["node_id"])
@@ -336,6 +342,7 @@ def build_planner_prompt(query: str, focus_node_id: str | None = None) -> str:
             "",
             "Rules:",
             "- Use search_nodes for ordinary text queries.",
+            "- Preserve the user's substantive intent terms in search_nodes queries.",
             "- Use compile_context when a focus_node_id is provided or a specific node id is known.",
             "- Use list_documents only when the user asks what documents are available.",
             "- Use at most 3 tool calls.",
@@ -407,7 +414,11 @@ def normalize_tool_call(call: Any) -> dict[str, Any]:
     return {"tool": tool, "arguments": arguments}
 
 
-def execute_tool_calls(db: Database, tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def execute_tool_calls(
+    db: Database,
+    tool_calls: list[dict[str, Any]],
+    original_query: str | None = None,
+) -> list[dict[str, Any]]:
     results = []
     for index, call in enumerate(tool_calls):
         tool = call["tool"]
@@ -418,6 +429,7 @@ def execute_tool_calls(db: Database, tool_calls: list[dict[str, Any]]) -> list[d
                 output, details = execute_search_nodes_tool(
                     db,
                     query=arguments.get("query"),
+                    original_query=original_query,
                     label=arguments.get("label"),
                     limit=bounded_limit(arguments.get("limit"), default=5),
                 )
@@ -461,22 +473,34 @@ def bounded_limit(value: Any, default: int = 5, maximum: int = 10) -> int:
     return max(1, min(maximum, parsed))
 
 
+def fallback_candidate_limit(result_limit: int) -> int:
+    return max(result_limit * 4, 20)
+
+
 def execute_search_nodes_tool(
     db: Database,
     query: str | None,
+    original_query: str | None = None,
     label: str | None = None,
     limit: int = 5,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     cleaned_query = normalize_query_text(query)
+    ranking_query = combined_query_text(cleaned_query, original_query)
     matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
     details: dict[str, Any] = {
         "normalized_query": cleaned_query,
+        "ranking_query": ranking_query,
         "fallback_queries": [],
     }
-    if not matches and cleaned_query:
+    if not matches and ranking_query:
         seen = {row["node_id"] for row in matches}
-        for fallback_query in fallback_queries(cleaned_query):
-            fallback_results = search_nodes(db, query=fallback_query, label=label, limit=limit)
+        for fallback_query in fallback_queries(ranking_query):
+            fallback_results = search_nodes(
+                db,
+                query=fallback_query,
+                label=label,
+                limit=fallback_candidate_limit(limit),
+            )
             details["fallback_queries"].append(
                 {
                     "query": fallback_query,
@@ -487,7 +511,7 @@ def execute_search_nodes_tool(
                 if row["node_id"] not in seen:
                     seen.add(row["node_id"])
                     matches.append(row)
-    matches.sort(key=lambda row: score_node_match(row, cleaned_query), reverse=True)
+    matches.sort(key=lambda row: score_node_match(row, ranking_query), reverse=True)
     top_matches = matches[:limit]
     compiled_contexts = []
     for match in top_matches[:2]:
@@ -504,10 +528,35 @@ def normalize_query_text(value: Any) -> str | None:
     return cleaned or None
 
 
+def combined_query_text(query: str | None, original_query: str | None) -> str | None:
+    parts = [part for part in [query, normalize_query_text(original_query)] if part]
+    if not parts:
+        return None
+    terms = []
+    seen = set()
+    for term in re.findall(r"[A-Za-z0-9]+", " ".join(parts)):
+        key = term.lower()
+        if key not in seen:
+            seen.add(key)
+            terms.append(term)
+    return " ".join(terms)
+
+
 def fallback_queries(query: str) -> list[str]:
     terms = []
     for term in re.split(r"[^A-Za-z0-9]+", query):
-        if len(term) >= 4 and term.lower() not in {"what", "does", "with", "from", "that", "this"}:
+        if len(term) >= 4 and term.lower() not in {
+            "what",
+            "does",
+            "with",
+            "from",
+            "that",
+            "this",
+            "when",
+            "where",
+            "which",
+            "says",
+        }:
             terms.append(term)
     deduped = []
     for term in sorted(terms, key=len, reverse=True):
@@ -532,10 +581,21 @@ def score_node_match(row: dict[str, Any], query: str | None) -> int:
             score += 5
         if term in text:
             score += 2
+        if term in {"system", "purpose", "concept", "function", "role"}:
+            if term in title:
+                score += 10
+            if term in text:
+                score += 3
     if query.lower() in title:
         score += 20
     if query.lower() in text:
         score += 8
+    if row.get("labels") and "source_section" in row.get("labels", []):
+        score += 3
+    if row.get("labels") and "source_root" in row.get("labels", []):
+        score -= 20
+    if text.strip() in {"", "---"}:
+        score -= 8
     return score
 
 
@@ -617,7 +677,32 @@ def prepare_tool_results_for_answer(tool_results: list[dict[str, Any]]) -> list[
 
 
 def render_tool_results(tool_results: list[dict[str, Any]]) -> str:
-    return json.dumps(tool_results, indent=2, default=str)
+    blocks = []
+    for result in tool_results:
+        if result.get("tool") == "search_nodes" and result.get("ok"):
+            output = result.get("output") or {}
+            top_match = output.get("top_match") or {}
+            top_context = output.get("top_context")
+            lines = [
+                "### search_nodes",
+                "",
+                f"- Query: {result.get('arguments', {}).get('query') or '<none>'}",
+                f"- Match count: {output.get('match_count', 0)}",
+            ]
+            if top_match:
+                lines.extend(
+                    [
+                        f"- Top match: {top_match.get('title') or '<untitled>'}",
+                        f"- Top node ID: {top_match.get('node_id')}",
+                    ]
+                )
+            if top_context:
+                rendered = render_context_document(top_context, char_budget=4000)
+                lines.extend(["", rendered["text"].strip()])
+            blocks.append("\n".join(lines))
+            continue
+        blocks.append(json.dumps(result, indent=2, default=str))
+    return "\n\n".join(blocks)
 
 
 def included_nodes_from_tool_results(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:

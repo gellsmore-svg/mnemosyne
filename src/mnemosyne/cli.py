@@ -36,6 +36,70 @@ from mnemosyne.sessions.interaction import answer_query
 from mnemosyne.sessions.registry import create_session, list_sessions
 
 
+SUPPORTED_FOLDER_SUFFIXES = {".md", ".txt"}
+
+
+def discover_folder_sources(root: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in SUPPORTED_FOLDER_SUFFIXES
+        and ".git" not in path.parts
+    )
+
+
+def ingest_source_path(db, config, path: Path, labels: list[str]) -> dict:
+    checksum = sha256_file(path)
+    duplicate = find_duplicate_by_checksum(db, checksum)
+    if duplicate:
+        return {
+            "ok": False,
+            "path": str(path),
+            "status": "rejected",
+            "reason": "duplicate_checksum",
+            "checksum_sha256": checksum,
+            "existing_document_id": str(duplicate["_id"]),
+            "message": "File rejected because identical content has already been ingested.",
+        }
+
+    text, source_kind = read_text_source(path)
+    result = MockIngestionAdapter().process(
+        path,
+        text,
+        source_kind,
+        extra_labels=labels,
+    )
+    archived_path = archive_source(path, config.paths.archive, checksum)
+    result.source.checksum_sha256 = checksum
+    result.source.archive_path = str(archived_path)
+    try:
+        inserted = commit_ingestion(db, result)
+    except DuplicateSourceError as error:
+        return {
+            "ok": False,
+            "path": str(path),
+            "status": "rejected",
+            "reason": "duplicate_checksum",
+            "checksum_sha256": error.checksum,
+            "existing_document_id": str(error.existing_document_id),
+            "message": "File rejected because identical content has already been ingested.",
+        }
+    inserted["ok"] = True
+    inserted["path"] = str(path)
+    inserted["archive_path"] = str(archived_path)
+    inserted["checksum_sha256"] = checksum
+    return inserted
+
+
+def rejection_reason_counts(results: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for result in results:
+        reason = result.get("reason", "unknown")
+        counts[reason] = counts.get(reason, 0) + 1
+    return counts
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="mnemosyne")
     parser.add_argument("--config", default="config.yaml")
@@ -131,6 +195,32 @@ def main() -> None:
 
     ingest_one = subcommands.add_parser("ingest-one")
     ingest_one.add_argument("path")
+    ingest_one.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        help="Additional node label to apply to every ingested node. May be repeated.",
+    )
+
+    ingest_folder = subcommands.add_parser("ingest-folder")
+    ingest_folder.add_argument("path")
+    ingest_folder.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        help="Additional node label to apply to every ingested node. May be repeated.",
+    )
+    ingest_folder.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional maximum number of files to ingest from the folder.",
+    )
+    ingest_folder.add_argument(
+        "--include-results",
+        action="store_true",
+        help="Include every per-file result in the JSON output. By default only a summary is printed.",
+    )
 
     rebuild_doc = subcommands.add_parser("rebuild-document")
     rebuild_doc.add_argument("document_id")
@@ -484,51 +574,32 @@ def main() -> None:
 
     if args.command == "ingest-one":
         ensure_indexes(db)
-        path = Path(args.path)
-        checksum = sha256_file(path)
-        duplicate = find_duplicate_by_checksum(db, checksum)
-        if duplicate:
-            print(
-                json.dumps(
-                    {
-                        "ok": False,
-                        "status": "rejected",
-                        "reason": "duplicate_checksum",
-                        "checksum_sha256": checksum,
-                        "existing_document_id": str(duplicate["_id"]),
-                        "message": "File rejected because identical content has already been ingested.",
-                    },
-                    indent=2,
-                )
-            )
-            return
+        print(json.dumps(ingest_source_path(db, config, Path(args.path), args.label), indent=2))
+        return
 
-        text, source_kind = read_text_source(path)
-        result = MockIngestionAdapter().process(path, text, source_kind)
-        archived_path = archive_source(path, config.paths.archive, checksum)
-        result.source.checksum_sha256 = checksum
-        result.source.archive_path = str(archived_path)
-        try:
-            inserted = commit_ingestion(db, result)
-        except DuplicateSourceError as error:
-            print(
-                json.dumps(
-                    {
-                        "ok": False,
-                        "status": "rejected",
-                        "reason": "duplicate_checksum",
-                        "checksum_sha256": error.checksum,
-                        "existing_document_id": str(error.existing_document_id),
-                        "message": "File rejected because identical content has already been ingested.",
-                    },
-                    indent=2,
-                )
-            )
-            return
-        inserted["ok"] = True
-        inserted["archive_path"] = str(archived_path)
-        inserted["checksum_sha256"] = checksum
-        print(json.dumps(inserted, indent=2))
+    if args.command == "ingest-folder":
+        ensure_indexes(db)
+        root = Path(args.path)
+        results = []
+        sources = discover_folder_sources(root)
+        if args.limit is not None:
+            sources = sources[: args.limit]
+        for path in sources:
+            results.append(ingest_source_path(db, config, path, args.label))
+        rejected = [result for result in results if not result.get("ok")]
+        output = {
+            "ok": True,
+            "root": str(root),
+            "file_count": len(sources),
+            "inserted": sum(1 for result in results if result.get("ok")),
+            "rejected": len(rejected),
+            "rejection_reasons": rejection_reason_counts(rejected),
+        }
+        if args.include_results:
+            output["results"] = results
+        print(
+            json.dumps(output, indent=2)
+        )
         return
 
     if args.command == "rebuild-document":

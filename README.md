@@ -30,6 +30,8 @@ The domain is in early scaffold mode. The imported requirements and design docum
 ```bash
 .venv/bin/mnemosyne db-ping
 .venv/bin/mnemosyne ingest-one LLM_Memory_Architecture_Requirements_v0.3.md
+.venv/bin/mnemosyne ingest-one data/ingest/source.txt --label external_corpus --label memory_reference
+.venv/bin/mnemosyne ingest-folder /home/cello/domains/AMS --label ams_domain --label imported_domain --label research_corpus
 .venv/bin/mnemosyne backfill-source-metadata
 .venv/bin/mnemosyne enqueue-inbox
 .venv/bin/mnemosyne process-next
@@ -62,9 +64,19 @@ The domain is in early scaffold mode. The imported requirements and design docum
 .venv/bin/mnemosyne history --limit 5
 ```
 
+## Current Findings
+
+Stage 1 now has enough working data to test retrieval behavior against both project memory and a larger imported corpus.
+
+Agentic mode is useful because it lets the first model call decide which Mnemosyne retrieval tools to use before the answer call. The current weak point is still planner/search discipline: the planner can choose broad or lossy search text, so Mnemosyne now preserves the initiating prompt as ranking context, expands fallback candidate pools, and demotes generic document root matches. A later stricter JSON planner mode would reduce malformed planner output and make tool calls easier to validate.
+
+A public-domain Project Gutenberg memory corpus has been imported as working data: `Memory: How to Develop, Train, and Use It` by William Walker Atkinson. It is labeled `external_corpus`, `public_domain`, and `memory_reference`. It inserted one document and 357 nodes.
+
+The local AMS domain has been imported as working data. The import found 1,885 Markdown/text paths, inserted 1,868 unique AMS documents into MongoDB, and rejected duplicate paths by SHA-256 checksum. AMS nodes are labeled `ams_domain`, `imported_domain`, and `research_corpus`; Mongo currently has 175,687 AMS-labeled nodes.
+
 ## Immediate Next Step
 
-Continue the Stage 1 interaction slice by improving retrieval ranking for natural prompts, especially when broad project terms like `Mnemosyne` and `technical design` should lead to a more specific section such as `System Name and Concept`.
+Continue the Stage 1 interaction slice by improving retrieval ranking and source preparation for larger corpora. The immediate issues are Gutenberg header/footer cleanup, title inference for plain text sources, and stronger ranking across the large AMS import.
 
 Duplicate ingestion is rejected by SHA-256 checksum. Accepted files are copied into `data/archive/`, processed inbox requests are moved to `data/staging/processed/`, duplicate inbox requests are moved to `data/dead_letter/duplicate/`, and label meanings are seeded into MongoDB in `label_definitions`.
 
@@ -106,7 +118,7 @@ Open `http://127.0.0.1:8765/`.
 
 The web UI can create/select sessions, search nodes, focus a node, ask questions with the default `ollama_cli` adapter or the diagnostic `mock` adapter, choose an Ollama model per request, show recent exchanges, show queue status, process `data/ingest/`, and list recent jobs. To call a local LLM from the browser, leave the adapter on default, choose a model such as `gemma3:1b`, optionally focus a node, and press Ask.
 
-If no Mongo node matches the prompt and no focus node is selected, Mnemosyne still sends the submitted prompt to the selected answer adapter. The answer panel includes a console trace showing ordered step input/output data for prompt intake, planner calls when enabled, tool execution, retrieval/context compilation, and answer adapter execution.
+If no additional Mongo node is retrieved and no focus node is selected, Mnemosyne still sends the submitted prompt context to the selected answer adapter. The answer panel includes a console trace showing ordered step input/output data for prompt intake, planner calls when enabled, tool execution, retrieval/context compilation, and answer adapter execution.
 
 ## Restart
 

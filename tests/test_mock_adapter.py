@@ -33,3 +33,15 @@ def test_mock_adapter_creates_multiple_sections() -> None:
         "section-2",
         "section-2-paragraph-1",
     ]
+
+
+def test_mock_adapter_applies_extra_labels_to_all_nodes() -> None:
+    result = MockIngestionAdapter().process(
+        Path("sample.md"),
+        "# One\n\nA",
+        "md",
+        extra_labels=["External Corpus", "public_domain"],
+    )
+
+    assert all("external_corpus" in node.labels for node in result.nodes)
+    assert all("public_domain" in node.labels for node in result.nodes)
