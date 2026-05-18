@@ -25,9 +25,13 @@ class RuntimeConfig(BaseModel):
     retrieval_mode: str = "direct"
     ollama_model: str = "gemma3:1b"
     memory_agent_model: str | None = None
+    ollama_format: str | None = None
+    memory_agent_ollama_format: str | None = "json"
+    ollama_think: bool | str | None = False
+    ollama_hide_thinking: bool = True
     ollama_base_url: str = "http://localhost:11434"
     ollama_executable: Path = Path("/mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe")
-    ollama_timeout_seconds: int = 45
+    ollama_timeout_seconds: int = 180
 
 
 class QueueConfig(BaseModel):

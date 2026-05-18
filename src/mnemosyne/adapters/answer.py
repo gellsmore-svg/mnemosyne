@@ -57,14 +57,35 @@ class OllamaCliAnswerAdapter:
         env = os.environ.copy()
         env.setdefault("NO_COLOR", "1")
         env.setdefault("TERM", "dumb")
+        cmd = ollama_cli_command(self.config)
         try:
             completed = subprocess.run(
-                [
-                    str(self.config.ollama_executable),
-                    "run",
-                    "--nowordwrap",
-                    self.config.ollama_model,
-                ],
+                cmd,
+                input=prompt["prompt_text"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=self.config.ollama_timeout_seconds,
+                env=env,
+            )
+        except subprocess.CalledProcessError as error:
+            if not uses_optional_ollama_flags(cmd) or not is_unsupported_flag_error(error):
+                raise RuntimeError(ollama_error_message(error)) from error
+            completed = self._run_without_optional_flags(prompt, env)
+        except subprocess.TimeoutExpired as error:
+            raise TimeoutError(
+                f"Ollama CLI timed out after {self.config.ollama_timeout_seconds}s "
+                f"while running {self.config.ollama_model}."
+            ) from error
+        answer_text = clean_ollama_output(completed.stdout)
+        if not answer_text:
+            raise RuntimeError("Ollama CLI returned an empty response.")
+        return answer_payload(self.name, self.config.ollama_model, prompt, answer_text)
+
+    def _run_without_optional_flags(self, prompt: dict[str, Any], env: dict[str, str]):
+        try:
+            return subprocess.run(
+                ollama_cli_command(self.config, include_optional_flags=False),
                 input=prompt["prompt_text"],
                 check=True,
                 capture_output=True,
@@ -77,10 +98,8 @@ class OllamaCliAnswerAdapter:
                 f"Ollama CLI timed out after {self.config.ollama_timeout_seconds}s "
                 f"while running {self.config.ollama_model}."
             ) from error
-        answer_text = clean_ollama_output(completed.stdout)
-        if not answer_text:
-            raise RuntimeError("Ollama CLI returned an empty response.")
-        return answer_payload(self.name, self.config.ollama_model, prompt, answer_text)
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(ollama_error_message(error)) from error
 
 
 class OllamaHttpAnswerAdapter:
@@ -90,13 +109,17 @@ class OllamaHttpAnswerAdapter:
         self.config = config
 
     def answer(self, prompt: dict[str, Any]) -> dict[str, Any]:
-        payload = json.dumps(
-            {
-                "model": self.config.ollama_model,
-                "prompt": prompt["prompt_text"],
-                "stream": False,
-            }
-        ).encode("utf-8")
+        request_body = {
+            "model": self.config.ollama_model,
+            "prompt": prompt["prompt_text"],
+            "stream": False,
+        }
+        if self.config.ollama_format:
+            request_body["format"] = self.config.ollama_format
+        think_value = ollama_think_http_value(self.config.ollama_think)
+        if think_value is not None:
+            request_body["think"] = think_value
+        payload = json.dumps(request_body).encode("utf-8")
         req = request.Request(
             f"{self.config.ollama_base_url.rstrip('/')}/api/generate",
             data=payload,
@@ -116,6 +139,65 @@ def answer_adapter(config: RuntimeConfig):
     if config.answer_adapter == "ollama_http":
         return OllamaHttpAnswerAdapter(config)
     raise ValueError(f"Unknown answer adapter: {config.answer_adapter}")
+
+
+def ollama_cli_command(config: RuntimeConfig, include_optional_flags: bool = True) -> list[str]:
+    cmd = [
+        str(config.ollama_executable),
+        "run",
+        "--nowordwrap",
+    ]
+    if include_optional_flags:
+        if config.ollama_format:
+            cmd.extend(["--format", config.ollama_format])
+        think_value = ollama_think_cli_value(config.ollama_think)
+        if think_value is not None:
+            cmd.append(f"--think={think_value}")
+        if config.ollama_hide_thinking:
+            cmd.append("--hidethinking")
+    cmd.append(config.ollama_model)
+    return cmd
+
+
+def ollama_think_cli_value(value: bool | str | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return str(value).lower()
+    return value.strip().lower()
+
+
+def ollama_think_http_value(value: bool | str | None) -> bool | str | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    lowered = value.strip().lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    return lowered
+
+
+def uses_optional_ollama_flags(cmd: list[str]) -> bool:
+    return any(
+        item == "--format" or item == "--hidethinking" or item.startswith("--think=")
+        for item in cmd
+    )
+
+
+def is_unsupported_flag_error(error: subprocess.CalledProcessError) -> bool:
+    text = "\n".join(str(part or "") for part in [error.stderr, error.stdout, error])
+    lowered = text.lower()
+    return "unknown flag" in lowered or "flag provided but not defined" in lowered
+
+
+def ollama_error_message(error: subprocess.CalledProcessError) -> str:
+    detail = clean_ollama_output("\n".join(str(part or "") for part in [error.stderr, error.stdout]))
+    if detail:
+        return f"Ollama CLI failed: {detail}"
+    return f"Ollama CLI failed with exit code {error.returncode}."
 
 
 def answer_payload(adapter: str, model: str, prompt: dict[str, Any], answer_text: str) -> dict[str, Any]:

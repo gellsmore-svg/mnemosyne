@@ -5,6 +5,7 @@ import pytest
 from mnemosyne.adapters.answer import (
     MockAnswerAdapter,
     OllamaCliAnswerAdapter,
+    OllamaHttpAnswerAdapter,
     clean_ollama_output,
     repair_duplicate_wrap_fragments,
     summarize_context_text,
@@ -82,9 +83,40 @@ def test_ollama_cli_adapter_passes_prompt_via_stdin(monkeypatch) -> None:
         }
     )
 
-    assert captured["cmd"][-2:] == ["--nowordwrap", "gemma3:1b"]
+    assert captured["cmd"][-4:] == ["--nowordwrap", "--think=false", "--hidethinking", "gemma3:1b"]
     assert captured["input"] == "prompt body"
     assert answer["answer"] == "answer"
+
+
+def test_ollama_cli_adapter_can_request_json_format(monkeypatch) -> None:
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout='{"ok":true}\n', stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    answer = OllamaCliAnswerAdapter(
+        RuntimeConfig(ollama_model="qwen3.6:latest", ollama_format="json")
+    ).answer(
+        {
+            "prompt_text": "return json",
+            "context_metadata": {"included": []},
+        }
+    )
+
+    assert captured["cmd"] == [
+        str(RuntimeConfig().ollama_executable),
+        "run",
+        "--nowordwrap",
+        "--format",
+        "json",
+        "--think=false",
+        "--hidethinking",
+        "qwen3.6:latest",
+    ]
+    assert answer["answer"] == '{"ok":true}'
 
 
 def test_ollama_cli_adapter_reports_timeout(monkeypatch) -> None:
@@ -100,3 +132,120 @@ def test_ollama_cli_adapter_reports_timeout(monkeypatch) -> None:
                 "context_metadata": {"included": []},
             }
         )
+
+
+def test_ollama_cli_adapter_retries_without_optional_flags_for_old_ollama(monkeypatch) -> None:
+    captured = []
+
+    def fake_run(cmd, **kwargs):
+        captured.append(cmd)
+        if len(captured) == 1:
+            raise subprocess.CalledProcessError(
+                returncode=1,
+                cmd=cmd,
+                stderr="Error: unknown flag: --think",
+            )
+        return subprocess.CompletedProcess(cmd, 0, stdout="answer\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    answer = OllamaCliAnswerAdapter(RuntimeConfig(ollama_model="gemma3:1b")).answer(
+        {
+            "prompt_text": "prompt body",
+            "context_metadata": {"included": []},
+        }
+    )
+
+    assert "--think=false" in captured[0]
+    assert "--hidethinking" in captured[0]
+    assert captured[1] == [
+        str(RuntimeConfig().ollama_executable),
+        "run",
+        "--nowordwrap",
+        "gemma3:1b",
+    ]
+    assert answer["answer"] == "answer"
+
+
+def test_ollama_cli_adapter_wraps_fallback_failure(monkeypatch) -> None:
+    def fake_run(cmd, **kwargs):
+        if "--think=false" in cmd:
+            raise subprocess.CalledProcessError(
+                returncode=1,
+                cmd=cmd,
+                stderr="Error: unknown flag: --think",
+            )
+        raise subprocess.CalledProcessError(
+            returncode=2,
+            cmd=cmd,
+            stderr="Error: model failed",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="model failed"):
+        OllamaCliAnswerAdapter(RuntimeConfig(ollama_model="gemma3:1b")).answer(
+            {
+                "prompt_text": "prompt body",
+                "context_metadata": {"included": []},
+            }
+        )
+
+
+def test_ollama_cli_adapter_can_omit_optional_flags(monkeypatch) -> None:
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="answer\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    OllamaCliAnswerAdapter(
+        RuntimeConfig(ollama_think=None, ollama_hide_thinking=False)
+    ).answer(
+        {
+            "prompt_text": "prompt body",
+            "context_metadata": {"included": []},
+        }
+    )
+
+    assert "--think=false" not in captured["cmd"]
+    assert "--hidethinking" not in captured["cmd"]
+
+
+def test_ollama_http_adapter_sends_format_and_think(monkeypatch) -> None:
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return b'{"response":"answer"}'
+
+    def fake_urlopen(req, timeout):
+        captured["body"] = req.data
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    import mnemosyne.adapters.answer as answer_module
+
+    monkeypatch.setattr(answer_module.request, "urlopen", fake_urlopen)
+
+    answer = OllamaHttpAnswerAdapter(
+        RuntimeConfig(ollama_format="json", ollama_think=False)
+    ).answer(
+        {
+            "prompt_text": "prompt body",
+            "context_metadata": {"included": []},
+        }
+    )
+
+    assert b'"format": "json"' in captured["body"]
+    assert b'"think": false' in captured["body"]
+    assert captured["timeout"] == RuntimeConfig().ollama_timeout_seconds
+    assert answer["answer"] == "answer"

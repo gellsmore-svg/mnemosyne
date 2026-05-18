@@ -51,6 +51,7 @@ runtime:
   memory_agent_adapter: ollama_http
   ollama_model: final-model
   memory_agent_model: memory-model
+  memory_agent_ollama_format: json
 """,
         encoding="utf-8",
     )
@@ -61,3 +62,19 @@ runtime:
     assert config.runtime.memory_agent_adapter == "ollama_http"
     assert config.runtime.ollama_model == "final-model"
     assert config.runtime.memory_agent_model == "memory-model"
+    assert config.runtime.memory_agent_ollama_format == "json"
+
+
+def test_load_config_accepts_unquoted_ollama_think_false(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+runtime:
+  ollama_think: false
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_file)
+
+    assert config.runtime.ollama_think is False

@@ -380,6 +380,27 @@ def run_memory_agent_loop(
             }
 
         tool_calls = decision.get("tool_calls", [])
+        if decision.get("fallback") and all_tool_results:
+            step["output"] = {
+                "ok": False,
+                "raw_answer": raw_answer,
+                "decision": {
+                    **decision,
+                    "tool_calls": [],
+                    "fallback_reason": "memory_agent_failed_after_tool_context",
+                },
+                "stopped": True,
+            }
+            break
+        if not tool_calls and not all_tool_results:
+            decision = {
+                **decision,
+                "status": "continue",
+                "tool_calls": [{"tool": "search_nodes", "arguments": {"query": query, "limit": 5}}],
+                "fallback": True,
+                "fallback_reason": "memory_agent_returned_no_initial_tool_calls",
+            }
+            tool_calls = decision["tool_calls"]
         if decision.get("status") == "done" or not tool_calls:
             step["output"] = {
                 "ok": True,
@@ -411,6 +432,7 @@ def memory_agent_runtime_config(runtime_config):
     memory_runtime = runtime_config.model_copy()
     memory_runtime.answer_adapter = runtime_config.memory_agent_adapter or runtime_config.answer_adapter
     memory_runtime.ollama_model = runtime_config.memory_agent_model or runtime_config.ollama_model
+    memory_runtime.ollama_format = runtime_config.memory_agent_ollama_format
     return memory_runtime
 
 
@@ -501,11 +523,26 @@ def extract_json_object(text: str) -> str:
         stripped = re.sub(r"^```(?:json)?", "", stripped).strip()
         stripped = re.sub(r"```$", "", stripped).strip()
     if stripped.startswith("{") and stripped.endswith("}"):
-        return stripped
-    match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
-    if not match:
-        raise ValueError("Planner did not return a JSON object.")
-    return match.group(0)
+        try:
+            json.loads(stripped, strict=False)
+            return stripped
+        except json.JSONDecodeError:
+            pass
+    candidates = []
+    decoder = json.JSONDecoder(strict=False)
+    for match in re.finditer(r"\{", stripped):
+        try:
+            parsed, end_index = decoder.raw_decode(stripped[match.start() :])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            candidate = stripped[match.start() : match.start() + end_index]
+            if "tool_calls" in parsed or "status" in parsed:
+                return candidate
+            candidates.append(candidate)
+    if candidates:
+        return candidates[0]
+    raise ValueError("Planner did not return a JSON object.")
 
 
 def normalize_tool_call(call: Any) -> dict[str, Any]:
@@ -681,6 +718,12 @@ def score_node_match(row: dict[str, Any], query: str | None) -> int:
     ]
     title = (row.get("title") or "").lower()
     text = (row.get("text_preview") or "").lower()
+    source_path = (
+        (row.get("provenance") or {}).get("source_path")
+        or (row.get("provenance") or {}).get("archive_path")
+        or ""
+    ).lower()
+    searchable = " ".join([title, text, source_path])
     score = 0
     for term in terms:
         if term in title:
@@ -692,6 +735,37 @@ def score_node_match(row: dict[str, Any], query: str | None) -> int:
                 score += 10
             if term in text:
                 score += 3
+    anchor_terms = [
+        term.lower()
+        for term in re.findall(r"\b[A-Z][A-Za-z0-9]{3,}\b", query)
+        if term.lower()
+        not in {
+            "what",
+            "does",
+            "this",
+            "that",
+            "with",
+            "from",
+            "will",
+            "your",
+            "find",
+            "list",
+            "show",
+            "tell",
+            "give",
+            "help",
+            "compare",
+            "note",
+            "when",
+            "where",
+            "which",
+        }
+    ]
+    for anchor in set(anchor_terms):
+        if anchor in searchable:
+            score += 18
+        else:
+            score -= 12
     if query.lower() in title:
         score += 20
     if query.lower() in text:
@@ -699,7 +773,7 @@ def score_node_match(row: dict[str, Any], query: str | None) -> int:
     if row.get("labels") and "source_section" in row.get("labels", []):
         score += 3
     if row.get("labels") and "source_root" in row.get("labels", []):
-        score -= 20
+        score -= 30
     if text.strip() in {"", "---"}:
         score -= 8
     return score

@@ -103,6 +103,29 @@ def test_parse_tool_calls_allows_model_newlines_inside_strings() -> None:
     assert calls[0]["arguments"]["query"] == "technical\n design"
 
 
+def test_parse_tool_calls_skips_thinking_json_fragments() -> None:
+    calls = parse_tool_calls(
+        'Thinking about {"draft": true}.\n'
+        '{"tool_calls":[{"tool":"search_nodes","arguments":{"query":"memory"}}]}'
+    )
+
+    assert calls == [
+        {
+            "tool": "search_nodes",
+            "arguments": {"query": "memory"},
+        }
+    ]
+
+
+def test_parse_tool_calls_scans_invalid_whole_object_response() -> None:
+    calls = parse_tool_calls(
+        '{"draft": true}\n'
+        '{"tool_calls":[{"tool":"search_nodes","arguments":{"query":"memory"}}]}'
+    )
+
+    assert calls[0]["arguments"]["query"] == "memory"
+
+
 def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 
@@ -161,6 +184,62 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
     assert "Mnemosyne Tool Results" in prompts[2]
 
 
+def test_agentic_answer_query_falls_back_when_planner_stops_without_tools(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    prompts = []
+    executed = []
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            prompts.append(prompt["prompt_text"])
+            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+                return {
+                    "adapter": "fake",
+                    "answer": '{"status":"done","tool_calls":[],"compiled_context_notes":"none"}',
+                    "used_node_ids": [],
+                }
+            return {
+                "adapter": "fake",
+                "answer": "final answer",
+                "used_node_ids": ["node1"],
+            }
+
+    def fake_execute_tool_calls(_db, calls, original_query=None):
+        executed.extend(calls)
+        return [
+            {
+                "index": 0,
+                "tool": calls[0]["tool"],
+                "arguments": calls[0]["arguments"],
+                "ok": True,
+                "output": {
+                    "matches": [{"node_id": "node1", "title": "Memory"}],
+                    "compiled_contexts": [{"focus_node_id": "node1", "records": []}],
+                },
+            }
+        ]
+
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "execute_tool_calls", fake_execute_tool_calls)
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+    config = AppConfig(
+        runtime=RuntimeConfig(
+            retrieval_mode="agentic",
+            answer_adapter="fake",
+            memory_agent_ollama_format=None,
+        )
+    )
+
+    result = answer_query(FakeDb(), config, "find memory")
+
+    assert result["ok"] is True
+    assert executed == [{"tool": "search_nodes", "arguments": {"query": "find memory", "limit": 5}}]
+    assert result["process_trace"][1]["output"]["decision"]["fallback_reason"] == (
+        "memory_agent_returned_no_initial_tool_calls"
+    )
+
+
 def test_parse_memory_agent_decision_accepts_done_status() -> None:
     decision = parse_memory_agent_decision(
         '{"status":"done","tool_calls":[],"compiled_context_notes":"sufficient"}'
@@ -179,14 +258,17 @@ def test_memory_agent_runtime_can_differ_from_answer_runtime() -> None:
         ollama_model="final",
         memory_agent_adapter="ollama_http",
         memory_agent_model="memory",
+        memory_agent_ollama_format="json",
     )
 
     memory_runtime = memory_agent_runtime_config(runtime)
 
     assert memory_runtime.answer_adapter == "ollama_http"
     assert memory_runtime.ollama_model == "memory"
+    assert memory_runtime.ollama_format == "json"
     assert runtime.answer_adapter == "ollama_cli"
     assert runtime.ollama_model == "final"
+    assert runtime.ollama_format is None
 
 
 def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
@@ -302,6 +384,72 @@ def test_score_node_match_prefers_intent_section_over_generic_header() -> None:
         generic,
         "Mnemosyne technical design system",
     )
+
+
+def test_score_node_match_keeps_named_project_above_broad_corpus_hits() -> None:
+    ams_system = {
+        "title": "2. It strengthens whole-system reading",
+        "text_preview": "Coherence helps explain system-level dependence.",
+        "labels": ["source_section", "ams_domain"],
+        "provenance": {"source_path": "/home/cello/domains/AMS/coherence.md"},
+    }
+    mnemosyne_concept = {
+        "title": "1. System Name and Concept",
+        "text_preview": "Mnemosyne is a locally operated memory layer.",
+        "labels": ["source_section"],
+        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+    }
+
+    assert score_node_match(
+        mnemosyne_concept,
+        "What does the Mnemosyne technical design say the system is for?",
+    ) > score_node_match(
+        ams_system,
+        "What does the Mnemosyne technical design say the system is for?",
+    )
+
+
+def test_score_node_match_allows_partial_multi_anchor_matches() -> None:
+    partial = {
+        "title": "Mnemosyne Technical Design Document",
+        "text_preview": "Architecture notes.",
+        "labels": ["source_section"],
+        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+    }
+    weak = {
+        "title": "Technical notes",
+        "text_preview": "Generic notes.",
+        "labels": ["source_section"],
+        "provenance": {"source_path": "notes.md"},
+    }
+
+    assert score_node_match(
+        partial,
+        "Compare AMS Mnemosyne Technical design notes",
+    ) > score_node_match(
+        weak,
+        "Compare AMS Mnemosyne Technical design notes",
+    )
+
+
+def test_score_node_match_ignores_sentence_initial_stopword_anchor() -> None:
+    row = {
+        "title": "Mnemosyne Configuration",
+        "text_preview": "Configuration notes.",
+        "labels": ["source_section"],
+    }
+
+    assert score_node_match(row, "This Mnemosyne configuration") > 0
+
+
+def test_score_node_match_ignores_command_verb_anchor() -> None:
+    row = {
+        "title": "Mnemosyne Configuration",
+        "text_preview": "Configuration notes.",
+        "labels": ["source_section"],
+    }
+
+    assert score_node_match(row, "Find Mnemosyne configuration") > 0
 
 
 def test_score_node_match_demotes_document_root() -> None:
