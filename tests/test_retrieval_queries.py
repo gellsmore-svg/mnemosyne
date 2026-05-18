@@ -2,7 +2,9 @@ from datetime import datetime, timezone
 
 from mnemosyne.retrieval.queries import (
     build_prompt_envelope,
+    build_prompt_envelope_without_context,
     context_record,
+    default_no_context_system_instruction,
     estimate_tokens,
     nearby_siblings,
     parse_iso_datetime,
@@ -208,3 +210,12 @@ def test_build_prompt_envelope_includes_query_budget_and_context() -> None:
     assert "context body" in envelope["prompt_text"]
     assert envelope["budget"]["available_context_tokens"] < 175
     assert envelope["budget"]["estimated_total_with_reserved_response_tokens"] <= 200
+
+
+def test_build_prompt_envelope_without_context_uses_no_context_instruction() -> None:
+    envelope = build_prompt_envelope_without_context("What is stored?")
+
+    assert envelope["system_instruction"] == default_no_context_system_instruction()
+    assert "No retrieved Mongo context matched this request." in envelope["prompt_text"]
+    assert "do not imply that the answer comes from Mnemosyne memory" in envelope["prompt_text"]
+    assert envelope["context_metadata"]["included"] == []

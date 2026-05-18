@@ -234,7 +234,7 @@ def build_prompt_envelope_without_context(
     token_budget: int = 2000,
     reserved_response_tokens: int = 500,
 ) -> dict[str, Any]:
-    instruction = system_instruction or default_system_instruction()
+    instruction = system_instruction or default_no_context_system_instruction()
     context_text = "\n".join(
         [
             "# Mnemosyne Context",
@@ -289,6 +289,15 @@ def default_system_instruction() -> str:
         "Use the retrieved Mnemosyne context to answer the user query. "
         "Prefer explicitly endorsed material when present, preserve provenance, "
         "and say when the retrieved context is insufficient."
+    )
+
+
+def default_no_context_system_instruction() -> str:
+    return (
+        "Answer the user query directly. No retrieved Mongo context is available for this request, "
+        "so do not imply that the answer comes from Mnemosyne memory. If the user asks about "
+        "stored project knowledge, provenance, or what Mnemosyne has indexed, say that no "
+        "matching Mongo context was retrieved before giving any general answer."
     )
 
 
