@@ -1,6 +1,7 @@
 from mnemosyne.config import AppConfig, RuntimeConfig
 from mnemosyne.sessions.interaction import (
     answer_query,
+    build_memory_agent_prompt,
     build_query_assembly,
     combined_query_text,
     execute_search_nodes_tool,
@@ -438,6 +439,20 @@ def test_memory_agent_runtime_can_differ_from_answer_runtime() -> None:
     assert runtime.answer_adapter == "ollama_cli"
     assert runtime.ollama_model == "final"
     assert runtime.ollama_format is None
+
+
+def test_build_memory_agent_prompt_includes_query_assembly_guidance() -> None:
+    prompt = build_memory_agent_prompt(
+        query="What does the Mnemosyne technical design say the system is for?",
+        focus_node_id=None,
+        history=[],
+    )
+
+    assert "Query assembly:" in prompt
+    assert "- Lexical terms: Mnemosyne, technical, design, system" in prompt
+    assert "- Exact phrases: Mnemosyne technical, technical design, design system" in prompt
+    assert "- Named anchors: Mnemosyne" in prompt
+    assert "- Suggested fallback searches: Mnemosyne technical" in prompt
 
 
 def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
@@ -880,6 +895,17 @@ def test_render_tool_results_renders_context_as_markdown() -> None:
                 "tool": "search_nodes",
                 "ok": True,
                 "arguments": {"query": "system"},
+                "details": {
+                    "query_assembly": {
+                        "lexical_terms": ["system", "Mnemosyne"],
+                        "exact_phrases": ["Mnemosyne system"],
+                        "anchor_terms": ["Mnemosyne"],
+                    },
+                    "fallback_queries": [
+                        {"query": "Mnemosyne system", "result_count": 2},
+                        {"query": "system", "result_count": 5},
+                    ],
+                },
                 "output": {
                     "match_count": 1,
                     "top_match": {"node_id": "node1", "title": "System Name"},
@@ -928,6 +954,10 @@ def test_render_tool_results_renders_context_as_markdown() -> None:
     assert "It assembles context." in rendered
     assert "Compiled context 1:" in rendered
     assert "Compiled context 2:" in rendered
+    assert "- Lexical terms: system, Mnemosyne" in rendered
+    assert "- Exact phrases: Mnemosyne system" in rendered
+    assert "- Named anchors: Mnemosyne" in rendered
+    assert "- Fallback searches: Mnemosyne system (2), system (5)" in rendered
     assert "#### Mnemosyne Context" in rendered
     assert "\n# Mnemosyne Context" not in rendered
     assert "#### Compiled context" not in rendered

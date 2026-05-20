@@ -332,6 +332,7 @@ def build_memory_agent_prompt(
     focus_node_id: str | None,
     history: list[dict[str, Any]],
 ) -> str:
+    query_assembly = build_query_assembly(query)
     return "\n".join(
         [
             "You are the Mnemosyne memory-agent.",
@@ -353,6 +354,9 @@ def build_memory_agent_prompt(
             "- Stop only when context is sufficient, clearly insufficient, or no further read-only tool call is useful.",
             "",
             f"focus_node_id: {focus_node_id or 'none'}",
+            "",
+            "Query assembly:",
+            render_query_assembly_guidance(query_assembly),
             "",
             "Prior memory-agent iterations:",
             json.dumps(history, indent=2, default=str),
@@ -763,6 +767,23 @@ def build_query_assembly(
     }
 
 
+def render_query_assembly_guidance(assembly: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            f"- Lexical terms: {format_list_for_prompt(assembly.get('lexical_terms'))}",
+            f"- Exact phrases: {format_list_for_prompt(assembly.get('exact_phrases'))}",
+            f"- Named anchors: {format_list_for_prompt(assembly.get('anchor_terms'))}",
+            f"- Suggested fallback searches: {format_list_for_prompt(fallback_queries(assembly))}",
+        ]
+    )
+
+
+def format_list_for_prompt(values: Any) -> str:
+    if not values:
+        return "none"
+    return ", ".join(str(value) for value in values)
+
+
 def is_query_content_term(term: str) -> bool:
     return len(term) >= 4 and term.lower() not in QUERY_STOPWORDS
 
@@ -987,10 +1008,36 @@ def render_tool_results(tool_results: list[dict[str, Any]]) -> str:
                     remaining_chars = max(0, remaining_chars - rendered["used_chars"])
                 if remaining_chars <= 0:
                     break
+            lines.extend(render_search_details_lines(result.get("details") or {}))
             blocks.append("\n".join(lines))
             continue
         blocks.append(json.dumps(result, indent=2, default=str))
     return "\n\n".join(blocks)
+
+
+def render_search_details_lines(details: dict[str, Any]) -> list[str]:
+    assembly = details.get("query_assembly") or {}
+    lines = []
+    if assembly:
+        lines.append("")
+        lines.extend(
+            [
+                "Search diagnostics:",
+                f"- Lexical terms: {format_list_for_prompt(assembly.get('lexical_terms'))}",
+                f"- Exact phrases: {format_list_for_prompt(assembly.get('exact_phrases'))}",
+                f"- Named anchors: {format_list_for_prompt(assembly.get('anchor_terms'))}",
+            ]
+        )
+    fallback_details = details.get("fallback_queries") or []
+    if fallback_details:
+        probes = []
+        for item in fallback_details[:5]:
+            query = item.get("query")
+            if query:
+                probes.append(f"{query} ({item.get('result_count', 0)})")
+        if probes:
+            lines.append(f"- Fallback searches: {format_list_for_prompt(probes)}")
+    return lines
 
 
 def assemble_search_contexts(
