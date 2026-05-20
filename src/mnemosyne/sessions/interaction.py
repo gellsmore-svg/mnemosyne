@@ -14,12 +14,14 @@ from mnemosyne.retrieval.queries import (
     compile_context,
     list_documents,
     render_context_document,
+    render_record,
     search_nodes,
 )
 from mnemosyne.sessions.exchanges import save_exchange
 
 
 TERMINAL_FALLBACK_REASONS = {"memory_agent_decision_failed"}
+ANSWER_CONTEXT_CHAR_BUDGET = 4000
 
 
 def answer_query(
@@ -804,6 +806,17 @@ def build_agentic_answer_envelope(
     )
     answer_tool_results = prepare_tool_results_for_answer(tool_results)
     context_text = render_tool_results(answer_tool_results)
+    overhead_text = "\n".join(
+        [
+            instruction,
+            "",
+            "## User Query",
+            query,
+            "",
+            "## Mnemosyne Tool Results",
+            "",
+        ]
+    )
     prompt_text = "\n".join(
         [
             instruction,
@@ -823,7 +836,7 @@ def build_agentic_answer_envelope(
         "budget": {
             "token_budget": token_budget,
             "reserved_response_tokens": reserved_response_tokens,
-            "estimated_overhead_tokens": 0,
+            "estimated_overhead_tokens": len(overhead_text) // 4 + 1,
             "available_context_tokens": max(0, token_budget - reserved_response_tokens),
             "estimated_prompt_tokens": len(prompt_text) // 4 + 1,
             "estimated_context_tokens": len(context_text) // 4 + 1,
@@ -835,7 +848,7 @@ def build_agentic_answer_envelope(
             "included": included_nodes_from_tool_results(answer_tool_results),
             "skipped": [],
             "used_chars": len(context_text),
-            "char_budget": len(context_text),
+            "char_budget": ANSWER_CONTEXT_CHAR_BUDGET,
             "retrieval_status": "agentic_tool_context",
             "tool_result_count": len(tool_results),
         },
@@ -860,7 +873,10 @@ def prepare_tool_results_for_answer(tool_results: list[dict[str, Any]]) -> list[
                 **result,
                 "output": {
                     "top_match": matches[0] if matches else None,
-                    "top_context": contexts[0] if contexts else None,
+                    "top_contexts": assemble_search_contexts(
+                        contexts[:2],
+                        char_budget=ANSWER_CONTEXT_CHAR_BUDGET,
+                    ),
                     "match_count": len(matches),
                 },
             }
@@ -874,7 +890,7 @@ def render_tool_results(tool_results: list[dict[str, Any]]) -> str:
         if result.get("tool") == "search_nodes" and result.get("ok"):
             output = result.get("output") or {}
             top_match = output.get("top_match") or {}
-            top_context = output.get("top_context")
+            top_contexts = output.get("top_contexts") or []
             lines = [
                 "### search_nodes",
                 "",
@@ -888,13 +904,60 @@ def render_tool_results(tool_results: list[dict[str, Any]]) -> str:
                         f"- Top node ID: {top_match.get('node_id')}",
                     ]
                 )
-            if top_context:
-                rendered = render_context_document(top_context, char_budget=4000)
-                lines.extend(["", rendered["text"].strip()])
+            remaining_chars = ANSWER_CONTEXT_CHAR_BUDGET
+            for index, context in enumerate(top_contexts, start=1):
+                rendered = render_context_document(
+                    context,
+                    char_budget=remaining_chars,
+                    heading_level=4,
+                )
+                text = rendered["text"].strip()
+                if text:
+                    lines.extend(["", f"Compiled context {index}:", "", text])
+                    remaining_chars = max(0, remaining_chars - rendered["used_chars"])
+                if remaining_chars <= 0:
+                    break
             blocks.append("\n".join(lines))
             continue
         blocks.append(json.dumps(result, indent=2, default=str))
     return "\n\n".join(blocks)
+
+
+def assemble_search_contexts(
+    contexts: list[dict[str, Any]],
+    char_budget: int = 4000,
+) -> list[dict[str, Any]]:
+    assembled = []
+    seen_nodes: set[str] = set()
+    remaining = char_budget
+    for context in contexts:
+        records = []
+        header_chars = len(
+            render_context_document(
+                {**context, "records": []},
+                char_budget=remaining,
+                heading_level=4,
+            )["text"]
+        )
+        context_remaining = remaining - header_chars
+        if context_remaining <= 0:
+            break
+        for record in context.get("records", []):
+            node_id = str(record.get("node_id") or "")
+            if not node_id or node_id in seen_nodes:
+                continue
+            block_chars = len(render_record(record))
+            if block_chars > context_remaining:
+                continue
+            seen_nodes.add(node_id)
+            records.append(record)
+            context_remaining -= block_chars
+        if records:
+            remaining = context_remaining
+            assembled.append({**context, "records": records})
+        if remaining <= 0:
+            break
+    return assembled
 
 
 def included_nodes_from_tool_results(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:

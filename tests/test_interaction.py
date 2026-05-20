@@ -8,6 +8,7 @@ from mnemosyne.sessions.interaction import (
     parse_tool_calls,
     prepare_tool_results_for_answer,
     render_tool_results,
+    included_nodes_from_tool_results,
     score_node_match,
     select_focus_node,
 )
@@ -642,7 +643,7 @@ def test_combined_query_text_deduplicates_planner_and_original_terms() -> None:
     )
 
 
-def test_prepare_tool_results_for_answer_keeps_only_top_search_context() -> None:
+def test_prepare_tool_results_for_answer_keeps_top_two_search_contexts() -> None:
     prepared = prepare_tool_results_for_answer(
         [
             {
@@ -650,16 +651,145 @@ def test_prepare_tool_results_for_answer_keeps_only_top_search_context() -> None
                 "ok": True,
                 "output": {
                     "matches": [{"node_id": "top"}, {"node_id": "other"}],
-                    "compiled_contexts": [{"focus_node_id": "top"}, {"focus_node_id": "other"}],
+                    "compiled_contexts": [
+                        {
+                            "focus_node_id": "top",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Top",
+                                    "node_id": "top",
+                                    "labels": [],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Top text.",
+                                }
+                            ],
+                        },
+                        {
+                            "focus_node_id": "other",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Other",
+                                    "node_id": "other",
+                                    "labels": [],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Other text.",
+                                }
+                            ],
+                        },
+                    ],
                 },
             }
         ]
     )
 
     assert prepared[0]["output"]["top_match"] == {"node_id": "top"}
-    assert prepared[0]["output"]["top_context"] == {"focus_node_id": "top"}
+    assert [context["focus_node_id"] for context in prepared[0]["output"]["top_contexts"]] == [
+        "top",
+        "other",
+    ]
     assert prepared[0]["output"]["match_count"] == 2
     assert "matches" not in prepared[0]["output"]
+
+
+def test_prepare_tool_results_for_answer_deduplicates_context_records() -> None:
+    prepared = prepare_tool_results_for_answer(
+        [
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "output": {
+                    "matches": [{"node_id": "top"}, {"node_id": "other"}],
+                    "compiled_contexts": [
+                        {
+                            "focus_node_id": "top",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Top",
+                                    "node_id": "shared",
+                                    "labels": [],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Shared text.",
+                                }
+                            ],
+                        },
+                        {
+                            "focus_node_id": "other",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Shared",
+                                    "node_id": "shared",
+                                    "labels": [],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Shared text.",
+                                },
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Other",
+                                    "node_id": "other",
+                                    "labels": [],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Other text.",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            }
+        ]
+    )
+
+    contexts = prepared[0]["output"]["top_contexts"]
+    assert [record["node_id"] for context in contexts for record in context["records"]] == [
+        "shared",
+        "other",
+    ]
+
+
+def test_prepare_tool_results_for_answer_skips_contexts_over_budget() -> None:
+    prepared = prepare_tool_results_for_answer(
+        [
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "output": {
+                    "matches": [{"node_id": "top"}],
+                    "compiled_contexts": [
+                        {
+                            "focus_node_id": "top",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Oversized",
+                                    "node_id": "large",
+                                    "labels": [],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "x" * 5000,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert prepared[0]["output"]["top_contexts"] == []
 
 
 def test_render_tool_results_renders_context_as_markdown() -> None:
@@ -672,22 +802,40 @@ def test_render_tool_results_renders_context_as_markdown() -> None:
                 "output": {
                     "match_count": 1,
                     "top_match": {"node_id": "node1", "title": "System Name"},
-                    "top_context": {
-                        "document": {"title": "Doc", "document_id": "doc1"},
-                        "focus_node_id": "node1",
-                        "records": [
-                            {
-                                "role": "focus",
-                                "distance": 0,
-                                "title": "System Name",
-                                "node_id": "node1",
-                                "labels": ["source_section"],
-                                "endorsement_label": "unreviewed",
-                                "provenance": {},
-                                "text": "Mnemosyne is a memory layer.",
-                            }
-                        ],
-                    },
+                    "top_contexts": [
+                        {
+                            "document": {"title": "Doc", "document_id": "doc1"},
+                            "focus_node_id": "node1",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "System Name",
+                                    "node_id": "node1",
+                                    "labels": ["source_section"],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Mnemosyne is a memory layer.",
+                                }
+                            ],
+                        },
+                        {
+                            "document": {"title": "Doc", "document_id": "doc1"},
+                            "focus_node_id": "node2",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Purpose",
+                                    "node_id": "node2",
+                                    "labels": ["source_section"],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "It assembles context.",
+                                }
+                            ],
+                        },
+                    ],
                 },
             }
         ]
@@ -696,4 +844,93 @@ def test_render_tool_results_renders_context_as_markdown() -> None:
     assert "### search_nodes" in rendered
     assert "# Mnemosyne Context" in rendered
     assert "Mnemosyne is a memory layer." in rendered
-    assert '"top_context"' not in rendered
+    assert "It assembles context." in rendered
+    assert "Compiled context 1:" in rendered
+    assert "Compiled context 2:" in rendered
+    assert "#### Mnemosyne Context" in rendered
+    assert "\n# Mnemosyne Context" not in rendered
+    assert "#### Compiled context" not in rendered
+    assert '"top_contexts"' not in rendered
+
+
+def test_render_tool_results_handles_empty_top_contexts() -> None:
+    rendered = render_tool_results(
+        [
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "arguments": {"query": "missing"},
+                "output": {
+                    "match_count": 0,
+                    "top_match": None,
+                    "top_contexts": [],
+                },
+            }
+        ]
+    )
+
+    assert "### search_nodes" in rendered
+    assert "Compiled context" not in rendered
+
+
+def test_included_nodes_from_tool_results_collects_multiple_contexts() -> None:
+    included = included_nodes_from_tool_results(
+        [
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "output": {
+                    "top_contexts": [
+                        {"focus_node_id": "node1", "records": []},
+                        {"focus_node_id": "node2", "records": []},
+                    ]
+                },
+            }
+        ]
+    )
+
+    assert {row["node_id"] for row in included} == {"node1", "node2"}
+
+
+def test_prepare_tool_results_for_answer_applies_aggregate_context_budget() -> None:
+    record_text = "x" * 2600
+    contexts = []
+    for index in range(3):
+        contexts.append(
+            {
+                "document": {"title": f"Doc {index}", "document_id": f"doc{index}"},
+                "focus_node_id": f"node{index}",
+                "records": [
+                    {
+                        "role": "focus",
+                        "distance": 0,
+                        "title": f"Node {index}",
+                        "node_id": f"node{index}",
+                        "labels": [],
+                        "endorsement_label": "unreviewed",
+                        "provenance": {},
+                        "text": record_text,
+                    }
+                ],
+            }
+        )
+
+    prepared = prepare_tool_results_for_answer(
+        [
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "output": {
+                    "matches": [{"node_id": "node0"}, {"node_id": "node1"}, {"node_id": "node2"}],
+                    "compiled_contexts": contexts,
+                },
+            }
+        ]
+    )
+
+    assembled = prepared[0]["output"]["top_contexts"]
+    rendered = render_tool_results(prepared)
+
+    assert len(assembled) == 1
+    assert assembled[0]["focus_node_id"] == "node0"
+    assert len(rendered) < 5000

@@ -156,16 +156,22 @@ def compile_context(
     }
 
 
-def render_context_document(context: dict[str, Any], char_budget: int = 4000) -> dict[str, Any]:
+def render_context_document(
+    context: dict[str, Any],
+    char_budget: int = 4000,
+    heading_level: int = 1,
+) -> dict[str, Any]:
     document = context.get("document") or {}
+    title_marker = "#" * max(1, heading_level)
+    section_marker = "#" * max(1, heading_level + 1)
     header = [
-        "# Mnemosyne Context",
+        f"{title_marker} Mnemosyne Context",
         "",
         f"Document: {document.get('title') or '<unknown>'}",
         f"Document ID: {document.get('document_id') or '<unknown>'}",
         f"Focus Node ID: {context.get('focus_node_id')}",
         "",
-        "## Context Records",
+        f"{section_marker} Context Records",
         "",
     ]
     parts = ["\n".join(header)]
