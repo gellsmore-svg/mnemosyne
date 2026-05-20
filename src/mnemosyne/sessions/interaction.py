@@ -965,8 +965,54 @@ def included_nodes_from_tool_results(tool_results: list[dict[str, Any]]) -> list
     for result in tool_results:
         if not result.get("ok"):
             continue
-        collect_included_nodes(result.get("output"), included)
+        if result.get("tool") == "search_nodes":
+            collect_included_search_context_records(result.get("output"), included)
+        else:
+            collect_included_nodes(result.get("output"), included)
     return list(included.values())
+
+
+def collect_included_search_context_records(
+    output: Any,
+    included: dict[str, dict[str, Any]],
+) -> None:
+    if not isinstance(output, dict):
+        return
+    has_context_records = False
+    for context in output.get("top_contexts") or []:
+        for record in context.get("records", []):
+            has_context_records = True
+            node_id = str(record.get("node_id") or "")
+            if not node_id or node_id in included:
+                continue
+            included[node_id] = {
+                "node_id": node_id,
+                "role": record.get("role") or "context_record",
+                "distance": record.get("distance", 0),
+                "chars": len(render_record(record)),
+            }
+    if not has_context_records:
+        collect_included_search_top_match(output, included)
+
+
+def collect_included_search_top_match(
+    output: dict[str, Any],
+    included: dict[str, dict[str, Any]],
+) -> None:
+    top_match = output.get("top_match")
+    if not isinstance(top_match, dict):
+        return
+    node_id = str(top_match.get("node_id") or "")
+    if not node_id or node_id in included:
+        return
+    title = str(top_match.get("title") or "")
+    rendered_summary = f"- Top match: {title}\n- Top node ID: {node_id}"
+    included[node_id] = {
+        "node_id": node_id,
+        "role": top_match.get("role") or "search_match",
+        "distance": top_match.get("distance", 0),
+        "chars": len(rendered_summary),
+    }
 
 
 def collect_included_nodes(value: Any, included: dict[str, dict[str, Any]]) -> None:

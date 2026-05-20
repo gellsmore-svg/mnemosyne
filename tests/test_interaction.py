@@ -880,9 +880,38 @@ def test_included_nodes_from_tool_results_collects_multiple_contexts() -> None:
                 "tool": "search_nodes",
                 "ok": True,
                 "output": {
+                    "top_match": {"node_id": "match-only"},
                     "top_contexts": [
-                        {"focus_node_id": "node1", "records": []},
-                        {"focus_node_id": "node2", "records": []},
+                        {
+                            "focus_node_id": "node1",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Node 1",
+                                    "node_id": "node1",
+                                    "labels": [],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "First rendered record.",
+                                }
+                            ],
+                        },
+                        {
+                            "focus_node_id": "node2",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Node 2",
+                                    "node_id": "node2",
+                                    "labels": [],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Second rendered record.",
+                                }
+                            ],
+                        },
                     ]
                 },
             }
@@ -890,6 +919,121 @@ def test_included_nodes_from_tool_results_collects_multiple_contexts() -> None:
     )
 
     assert {row["node_id"] for row in included} == {"node1", "node2"}
+    assert all(row["chars"] < 500 for row in included)
+
+
+def test_included_nodes_from_tool_results_falls_back_to_top_match_without_contexts() -> None:
+    included = included_nodes_from_tool_results(
+        [
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "output": {
+                    "top_match": {"node_id": "match-only", "title": "Visible Search Hit"},
+                    "top_contexts": [],
+                },
+            }
+        ]
+    )
+
+    assert included == [
+        {
+            "node_id": "match-only",
+            "role": "search_match",
+            "distance": 0,
+            "chars": len("- Top match: Visible Search Hit\n- Top node ID: match-only"),
+        }
+    ]
+
+
+def test_included_nodes_from_tool_results_does_not_fall_back_when_context_records_duplicate() -> None:
+    record = {
+        "role": "focus",
+        "distance": 0,
+        "title": "Shared Node",
+        "node_id": "shared-node",
+        "labels": [],
+        "endorsement_label": "unreviewed",
+        "provenance": {},
+        "text": "Shared rendered record.",
+    }
+
+    included = included_nodes_from_tool_results(
+        [
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "output": {
+                    "top_match": {"node_id": "shared-node", "title": "Shared Node"},
+                    "top_contexts": [{"records": [record]}],
+                },
+            },
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "output": {
+                    "top_match": {"node_id": "second-match", "title": "Second Match"},
+                    "top_contexts": [{"records": [record]}],
+                },
+            },
+        ]
+    )
+
+    assert {row["node_id"] for row in included} == {"shared-node"}
+    assert included[0]["role"] == "focus"
+
+
+def test_included_nodes_from_tool_results_preserves_non_search_tool_nodes() -> None:
+    included = included_nodes_from_tool_results(
+        [
+            {
+                "tool": "compile_context",
+                "ok": True,
+                "output": {
+                    "focus_node_id": "focus-node",
+                    "records": [
+                        {
+                            "node_id": "record-node",
+                            "role": "focus",
+                            "distance": 0,
+                            "text": "Compiled context text.",
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert {row["node_id"] for row in included} == {"focus-node", "record-node"}
+
+
+def test_included_nodes_from_tool_results_combines_search_and_non_search_nodes() -> None:
+    included = included_nodes_from_tool_results(
+        [
+            {
+                "tool": "search_nodes",
+                "ok": True,
+                "output": {
+                    "top_match": {"node_id": "match-node", "title": "Search Match"},
+                    "top_contexts": [],
+                },
+            },
+            {
+                "tool": "compile_context",
+                "ok": True,
+                "output": {
+                    "focus_node_id": "focus-node",
+                    "records": [{"node_id": "record-node", "role": "focus"}],
+                },
+            },
+        ]
+    )
+
+    assert {row["node_id"] for row in included} == {
+        "match-node",
+        "focus-node",
+        "record-node",
+    }
 
 
 def test_prepare_tool_results_for_answer_applies_aggregate_context_budget() -> None:
