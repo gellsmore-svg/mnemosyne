@@ -22,6 +22,33 @@ from mnemosyne.sessions.exchanges import save_exchange
 
 TERMINAL_FALLBACK_REASONS = {"memory_agent_decision_failed"}
 ANSWER_CONTEXT_CHAR_BUDGET = 4000
+QUERY_STOPWORDS = {
+    "what",
+    "does",
+    "with",
+    "from",
+    "that",
+    "this",
+    "when",
+    "where",
+    "which",
+    "says",
+    "for",
+    "the",
+    "and",
+    "into",
+    "about",
+    "find",
+    "list",
+    "show",
+    "tell",
+    "give",
+    "help",
+    "compare",
+    "note",
+    "your",
+    "will",
+}
 
 
 def answer_query(
@@ -277,10 +304,11 @@ def ranked_focus_matches(
     limit: int,
 ) -> list[dict[str, Any]]:
     cleaned_query = normalize_query_text(query)
+    assembly = build_query_assembly(cleaned_query)
     matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
     if cleaned_query:
         seen = {row["node_id"] for row in matches}
-        for fallback_query in fallback_queries(cleaned_query):
+        for fallback_query in fallback_queries(assembly):
             fallback_results = search_nodes(
                 db,
                 query=fallback_query,
@@ -291,7 +319,7 @@ def ranked_focus_matches(
                 if row["node_id"] not in seen:
                     seen.add(row["node_id"])
                     matches.append(row)
-    matches.sort(key=lambda row: score_node_match(row, cleaned_query), reverse=True)
+    matches.sort(key=lambda row: score_node_match(row, assembly), reverse=True)
     return matches[:limit]
 
 
@@ -643,15 +671,17 @@ def execute_search_nodes_tool(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     cleaned_query = normalize_query_text(query)
     ranking_query = combined_query_text(cleaned_query, original_query)
+    query_assembly = build_query_assembly(cleaned_query, original_query)
     matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
     details: dict[str, Any] = {
         "normalized_query": cleaned_query,
         "ranking_query": ranking_query,
+        "query_assembly": query_assembly,
         "fallback_queries": [],
     }
     if not matches and ranking_query:
         seen = {row["node_id"] for row in matches}
-        for fallback_query in fallback_queries(ranking_query):
+        for fallback_query in fallback_queries(query_assembly):
             fallback_results = search_nodes(
                 db,
                 query=fallback_query,
@@ -668,7 +698,7 @@ def execute_search_nodes_tool(
                 if row["node_id"] not in seen:
                     seen.add(row["node_id"])
                     matches.append(row)
-    matches.sort(key=lambda row: score_node_match(row, ranking_query), reverse=True)
+    matches.sort(key=lambda row: score_node_match(row, query_assembly), reverse=True)
     top_matches = matches[:limit]
     compiled_contexts = []
     for match in top_matches[:2]:
@@ -699,37 +729,80 @@ def combined_query_text(query: str | None, original_query: str | None) -> str | 
     return " ".join(terms)
 
 
-def fallback_queries(query: str) -> list[str]:
-    terms = []
-    for term in re.split(r"[^A-Za-z0-9]+", query):
-        if len(term) >= 4 and term.lower() not in {
-            "what",
-            "does",
-            "with",
-            "from",
-            "that",
-            "this",
-            "when",
-            "where",
-            "which",
-            "says",
-        }:
-            terms.append(term)
-    deduped = []
-    for term in sorted(terms, key=len, reverse=True):
-        if term.lower() not in {seen.lower() for seen in deduped}:
-            deduped.append(term)
-    return deduped[:5]
+def build_query_assembly(
+    query: str | None,
+    original_query: str | None = None,
+) -> dict[str, Any]:
+    ranking_query = combined_query_text(query, original_query)
+    if not ranking_query:
+        return {
+            "ranking_query": None,
+            "lexical_terms": [],
+            "exact_phrases": [],
+            "anchor_terms": [],
+        }
+    tokens = re.findall(r"[A-Za-z0-9]+", ranking_query)
+    lexical_terms = dedupe_preserve_order(
+        token for token in tokens if is_query_content_term(token)
+    )
+    exact_phrases = dedupe_preserve_order(
+        phrase
+        for source in [query, original_query]
+        for phrase in adjacent_content_phrases(source)
+    )[:4]
+    anchor_terms = dedupe_preserve_order(
+        term
+        for term in re.findall(r"\b[A-Z][A-Za-z0-9]{3,}\b", ranking_query)
+        if term.lower() not in QUERY_STOPWORDS
+    )
+    return {
+        "ranking_query": ranking_query,
+        "lexical_terms": lexical_terms,
+        "exact_phrases": exact_phrases,
+        "anchor_terms": anchor_terms,
+    }
 
 
-def score_node_match(row: dict[str, Any], query: str | None) -> int:
-    if not query:
-        return 0
+def is_query_content_term(term: str) -> bool:
+    return len(term) >= 4 and term.lower() not in QUERY_STOPWORDS
+
+
+def adjacent_content_phrases(value: str | None) -> list[str]:
     terms = [
-        term.lower()
-        for term in re.split(r"[^A-Za-z0-9]+", query)
-        if len(term) >= 4
+        token
+        for token in re.findall(r"[A-Za-z0-9]+", value or "")
+        if is_query_content_term(token)
     ]
+    return [f"{left} {right}" for left, right in zip(terms, terms[1:])]
+
+
+def dedupe_preserve_order(values) -> list[str]:
+    deduped = []
+    seen = set()
+    for value in values:
+        key = str(value).lower()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(str(value))
+    return deduped
+
+
+def fallback_queries(query: str | dict[str, Any]) -> list[str]:
+    assembly = query if isinstance(query, dict) else build_query_assembly(query)
+    candidates = list(assembly.get("exact_phrases") or [])
+    candidates.extend(
+        sorted(assembly.get("lexical_terms") or [], key=len, reverse=True)
+    )
+    return dedupe_preserve_order(candidates)[:8]
+
+
+def score_node_match(row: dict[str, Any], query: str | dict[str, Any] | None) -> int:
+    assembly = query if isinstance(query, dict) else build_query_assembly(query)
+    ranking_query = assembly.get("ranking_query")
+    if not ranking_query:
+        return 0
+    terms = [term.lower() for term in assembly.get("lexical_terms", [])]
+    phrases = [phrase.lower() for phrase in assembly.get("exact_phrases", [])]
     title = (row.get("title") or "").lower()
     text = (row.get("text_preview") or "").lower()
     source_path = (
@@ -739,6 +812,11 @@ def score_node_match(row: dict[str, Any], query: str | None) -> int:
     ).lower()
     searchable = " ".join([title, text, source_path])
     score = 0
+    for phrase in phrases:
+        if phrase in title:
+            score += 14
+        if phrase in text:
+            score += 5
     for term in terms:
         if term in title:
             score += 5
@@ -749,48 +827,40 @@ def score_node_match(row: dict[str, Any], query: str | None) -> int:
                 score += 10
             if term in text:
                 score += 3
-    anchor_terms = [
-        term.lower()
-        for term in re.findall(r"\b[A-Z][A-Za-z0-9]{3,}\b", query)
-        if term.lower()
-        not in {
-            "what",
-            "does",
-            "this",
-            "that",
-            "with",
-            "from",
-            "will",
-            "your",
-            "find",
-            "list",
-            "show",
-            "tell",
-            "give",
-            "help",
-            "compare",
-            "note",
-            "when",
-            "where",
-            "which",
-        }
-    ]
+    anchor_terms = [term.lower() for term in assembly.get("anchor_terms", [])]
     for anchor in set(anchor_terms):
         if anchor in searchable:
             score += 18
         else:
             score -= 12
-    if query.lower() in title:
+    if ranking_query.lower() in title:
         score += 20
-    if query.lower() in text:
+    if ranking_query.lower() in text:
         score += 8
     if row.get("labels") and "source_section" in row.get("labels", []):
         score += 3
     if row.get("labels") and "source_root" in row.get("labels", []):
         score -= 30
-    if text.strip() in {"", "---"}:
-        score -= 8
+    if is_document_metadata_match(title, text):
+        score -= 35
+    if is_low_content_match(row, text):
+        score -= 40
     return score
+
+
+def is_document_metadata_match(title: str, text: str) -> bool:
+    metadata_markers = ["**version:**", "**status:**", "**date:**"]
+    has_metadata_markers = sum(1 for marker in metadata_markers if marker in text) >= 2
+    return has_metadata_markers and any(
+        marker in title for marker in ["technical design document", "requirements document"]
+    )
+
+
+def is_low_content_match(row: dict[str, Any], text: str) -> bool:
+    if text.strip() not in {"", "---"}:
+        return False
+    labels = row.get("labels") or []
+    return "source_chunk" in labels or "source_section" in labels
 
 
 def build_agentic_answer_envelope(

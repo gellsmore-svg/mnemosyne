@@ -1,8 +1,10 @@
 from mnemosyne.config import AppConfig, RuntimeConfig
 from mnemosyne.sessions.interaction import (
     answer_query,
+    build_query_assembly,
     combined_query_text,
     execute_search_nodes_tool,
+    fallback_queries,
     memory_agent_runtime_config,
     parse_memory_agent_decision,
     parse_tool_calls,
@@ -460,6 +462,7 @@ def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
     assert output["matches"] == [{"node_id": "node1", "title": "Mnemosyne"}]
     assert output["compiled_contexts"] == []
     assert calls[0] == "technical desig design Mnemosyne"
+    assert "desig design" in details["query_assembly"]["exact_phrases"]
     assert any(item["query"] == "Mnemosyne" for item in details["fallback_queries"])
 
 
@@ -497,6 +500,12 @@ def test_execute_search_nodes_tool_uses_original_query_for_intent_terms(monkeypa
     assert details["ranking_query"] == (
         "Mnemosyne technical design What does the say system is for"
     )
+    assert details["query_assembly"]["lexical_terms"] == [
+        "Mnemosyne",
+        "technical",
+        "design",
+        "system",
+    ]
     assert any(item["query"] == "system" for item in details["fallback_queries"])
 
 
@@ -637,10 +646,82 @@ def test_score_node_match_demotes_document_root() -> None:
     )
 
 
+def test_score_node_match_demotes_document_metadata_section_below_concept() -> None:
+    metadata_section = {
+        "title": "Mnemosyne Technical Design Document",
+        "text_preview": "**Version:** 0.1\n**Status:** For Review\n**Date:** May 2026",
+        "labels": ["source_section"],
+        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+    }
+    concept = {
+        "title": "1. System Name and Concept",
+        "text_preview": "Mnemosyne is a locally operated memory layer.",
+        "labels": ["source_section"],
+        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+    }
+
+    assert score_node_match(
+        concept,
+        "What does the Mnemosyne technical design say the system is for?",
+    ) > score_node_match(
+        metadata_section,
+        "What does the Mnemosyne technical design say the system is for?",
+    )
+
+
+def test_score_node_match_demotes_separator_only_chunks() -> None:
+    separator = {
+        "title": "Mnemosyne Technical Design Document / paragraph 2",
+        "text_preview": "---",
+        "labels": ["source_chunk"],
+        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+    }
+    concept = {
+        "title": "1. System Name and Concept",
+        "text_preview": "Mnemosyne is a locally operated memory layer.",
+        "labels": ["source_section"],
+        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+    }
+
+    assert score_node_match(
+        concept,
+        "What does the Mnemosyne technical design say the system is for?",
+    ) > score_node_match(
+        separator,
+        "What does the Mnemosyne technical design say the system is for?",
+    )
+
+
 def test_combined_query_text_deduplicates_planner_and_original_terms() -> None:
     assert combined_query_text("memory design", "What memory design does") == (
         "memory design What does"
     )
+
+
+def test_build_query_assembly_extracts_terms_phrases_and_anchors() -> None:
+    assembly = build_query_assembly(
+        "technical design",
+        "What does the Mnemosyne technical design say the system is for?",
+    )
+
+    assert assembly["ranking_query"] == (
+        "technical design What does the Mnemosyne say system is for"
+    )
+    assert assembly["lexical_terms"] == ["technical", "design", "Mnemosyne", "system"]
+    assert assembly["exact_phrases"][:3] == [
+        "technical design",
+        "Mnemosyne technical",
+        "design system",
+    ]
+    assert assembly["anchor_terms"] == ["Mnemosyne"]
+
+
+def test_fallback_queries_prefers_phrases_before_single_terms() -> None:
+    assert fallback_queries("Mnemosyne technical design system")[:3] == [
+        "Mnemosyne technical",
+        "technical design",
+        "design system",
+    ]
 
 
 def test_prepare_tool_results_for_answer_keeps_top_two_search_contexts() -> None:
