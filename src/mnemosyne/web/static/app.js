@@ -10,10 +10,20 @@ function text(value) {
   return value == null || value === "" ? "none" : String(value);
 }
 
-function item(html) {
+function html(value) {
+  return text(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
+}
+
+function item(contentHtml) {
   const div = document.createElement("div");
   div.className = "item";
-  div.innerHTML = html;
+  div.innerHTML = contentHtml;
   return div;
 }
 
@@ -68,7 +78,7 @@ async function loadDocuments() {
   const data = await api("/api/documents?limit=6");
   $("documents").replaceChildren(
     ...data.documents.map((doc) =>
-      item(`<strong>${doc.title}</strong><div class="muted">${doc.document_id}</div>`)
+      item(`<strong>${html(doc.title)}</strong><div class="muted">${html(doc.document_id)}</div>`)
     )
   );
 }
@@ -93,13 +103,17 @@ async function loadSessions() {
 }
 
 async function loadHistory() {
+  const params = new URLSearchParams();
+  params.set("limit", $("historyLimit").value || "6");
   const sessionValue = $("historySession").value || $("sessionId").value;
-  const session = encodeURIComponent(sessionValue);
-  const suffix = session ? `&session_id=${session}` : "";
-  const data = await api(`/api/history?limit=6${suffix}`);
+  if (sessionValue) params.set("session_id", sessionValue);
+  if ($("historyQuery").value) params.set("q", $("historyQuery").value);
+  if ($("historyAdapter").value) params.set("adapter", $("historyAdapter").value);
+  if ($("historyModel").value) params.set("model", $("historyModel").value);
+  const data = await api(`/api/history?${params.toString()}`);
   $("history").replaceChildren(
     ...data.exchanges.map((ex) =>
-      item(`<strong>${ex.query}</strong><div>${text(ex.answer).slice(0, 180)}</div><div class="muted">${ex.adapter} ${text(ex.model)}</div>`)
+      item(`<strong>${html(ex.query)}</strong><div>${html(text(ex.answer).slice(0, 180))}</div><div class="muted">${html(ex.session_id)} | ${html(ex.adapter)} ${html(ex.model)} | ${html(ex.created_at)}</div>`)
     )
   );
 }
@@ -113,10 +127,15 @@ async function loadQueue() {
 }
 
 async function loadJobs() {
-  const data = await api("/api/jobs?limit=6");
+  const params = new URLSearchParams();
+  params.set("limit", $("jobLimit").value || "6");
+  if ($("jobStatus").value) params.set("status", $("jobStatus").value);
+  if ($("jobQuery").value) params.set("q", $("jobQuery").value);
+  if ($("jobReason").value) params.set("reason", $("jobReason").value);
+  const data = await api(`/api/jobs?${params.toString()}`);
   $("jobs").replaceChildren(
     ...data.jobs.map((job) =>
-      item(`<strong>${job.status}</strong> <span class="muted">${job.reason || ""}</span><div>${job.path}</div><div class="muted">${job._id}</div>`)
+      item(`<strong>${html(job.status)}</strong> <span class="muted">${job.reason ? html(job.reason) : ""}</span><div>${html(job.path)}</div><div class="muted">${html(job._id)} | attempts ${html(job.attempts)} | ${html(job.updated_at)}</div>`)
     )
   );
 }
@@ -126,7 +145,7 @@ async function searchNodes() {
   const data = await api(`/api/search?query=${query}&limit=8`);
   $("nodes").replaceChildren(
     ...data.nodes.map((node) => {
-      const el = item(`<strong>${node.title}</strong><div>${node.text_preview}</div><div class="muted">${node.node_id}</div>`);
+      const el = item(`<strong>${html(node.title)}</strong><div>${html(node.text_preview)}</div><div class="muted">${html(node.node_id)}</div>`);
       const button = document.createElement("button");
       button.textContent = "Focus";
       button.addEventListener("click", () => {
@@ -182,7 +201,7 @@ async function ask() {
       return;
     }
     $("answerText").textContent = data.answer;
-    $("answerMeta").innerHTML = `<div class="muted">exchange ${data.exchange_id} | ${data.adapter} ${text(data.model)}</div>`;
+    $("answerMeta").innerHTML = `<div class="muted">exchange ${html(data.exchange_id)} | ${html(data.adapter)} ${html(data.model)}</div>`;
     renderConsole(data.process_trace);
     await Promise.all([loadSessions(), loadHistory()]);
   } catch (error) {
@@ -245,10 +264,34 @@ $("search").addEventListener("click", searchNodes);
 $("refresh").addEventListener("click", refresh);
 $("processInbox").addEventListener("click", processInbox);
 $("loadHistory").addEventListener("click", loadHistory);
+$("loadJobs").addEventListener("click", loadJobs);
 $("sessionId").addEventListener("change", () => {
   $("historySession").value = $("sessionId").value;
   loadHistory();
 });
+$("historyQuery").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") loadHistory();
+});
+$("historySession").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") loadHistory();
+});
+$("historyModel").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") loadHistory();
+});
+$("historyLimit").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") loadHistory();
+});
+$("historyAdapter").addEventListener("change", loadHistory);
+$("jobQuery").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") loadJobs();
+});
+$("jobReason").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") loadJobs();
+});
+$("jobLimit").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") loadJobs();
+});
+$("jobStatus").addEventListener("change", loadJobs);
 $("query").addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") ask();
 });

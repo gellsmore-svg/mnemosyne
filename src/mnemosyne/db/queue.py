@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -134,12 +135,43 @@ def queue_summary(db: Database) -> dict[str, Any]:
     }
 
 
-def recent_jobs(db: Database, limit: int = 10, status: str | None = None) -> list[dict[str, Any]]:
-    query: dict[str, Any] = {}
-    if status:
-        query["status"] = status
+def recent_jobs(
+    db: Database,
+    limit: int = 10,
+    status: str | None = None,
+    query_text: str | None = None,
+    reason: str | None = None,
+) -> list[dict[str, Any]]:
+    query = job_filter_query(status=status, query_text=query_text, reason=reason)
     return list(
         db.queue.find(query)
         .sort("updated_at", -1)
-        .limit(limit)
+        .limit(bounded_limit(limit))
     )
+
+
+def job_filter_query(
+    status: str | None = None,
+    query_text: str | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    query: dict[str, Any] = {}
+    if status:
+        query["status"] = status
+    if reason:
+        query["reason"] = reason
+    if query_text:
+        pattern = re.compile(re.escape(query_text), re.IGNORECASE)
+        text_filters = [
+            {"path": pattern},
+            {"checksum_sha256": pattern},
+            {"details.dead_letter_path": pattern},
+        ]
+        if not reason:
+            text_filters.append({"reason": pattern})
+        query["$or"] = text_filters
+    return query
+
+
+def bounded_limit(value: int, maximum: int = 100) -> int:
+    return max(1, min(maximum, int(value)))

@@ -102,9 +102,14 @@ def create_app() -> FastAPI:
         return {"ok": True, **summary}
 
     @app.get("/api/jobs")
-    def jobs(limit: int = 10, status: str | None = None) -> dict[str, Any]:
+    def jobs(
+        limit: int = 10,
+        status: str | None = None,
+        q: str | None = None,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
         rows = []
-        for job in recent_jobs(db, limit=limit, status=status):
+        for job in recent_jobs(db, limit=limit, status=status, query_text=q, reason=reason):
             job["_id"] = str(job["_id"])
             if job.get("existing_document_id"):
                 job["existing_document_id"] = str(job["existing_document_id"])
@@ -160,8 +165,24 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/api/history")
-    def history(limit: int = 10, session_id: str | None = None) -> dict[str, Any]:
-        return {"ok": True, "exchanges": recent_exchanges(db, limit=limit, session_id=session_id)}
+    def history(
+        limit: int = 10,
+        session_id: str | None = None,
+        q: str | None = None,
+        adapter: str | None = None,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "exchanges": recent_exchanges(
+                db,
+                limit=limit,
+                session_id=session_id,
+                query_text=q,
+                adapter=adapter,
+                model=model,
+            ),
+        }
 
     return app
 

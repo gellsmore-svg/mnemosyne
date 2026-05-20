@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -40,11 +41,47 @@ def save_exchange(
     return str(result.inserted_id)
 
 
-def recent_exchanges(db: Database, limit: int = 10, session_id: str | None = None) -> list[dict]:
-    query = {}
+def recent_exchanges(
+    db: Database,
+    limit: int = 10,
+    session_id: str | None = None,
+    query_text: str | None = None,
+    adapter: str | None = None,
+    model: str | None = None,
+) -> list[dict]:
+    query = exchange_filter_query(
+        session_id=session_id,
+        query_text=query_text,
+        adapter=adapter,
+        model=model,
+    )
+    return [
+        serialize_exchange(row)
+        for row in db.exchanges.find(query).sort("created_at", -1).limit(bounded_limit(limit))
+    ]
+
+
+def exchange_filter_query(
+    session_id: str | None = None,
+    query_text: str | None = None,
+    adapter: str | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
+    query: dict[str, Any] = {}
     if session_id:
         query["session_id"] = session_id
-    return [serialize_exchange(row) for row in db.exchanges.find(query).sort("created_at", -1).limit(limit)]
+    if adapter:
+        query["answer.adapter"] = adapter
+    if model:
+        query["answer.model"] = model
+    if query_text:
+        pattern = re.compile(re.escape(query_text), re.IGNORECASE)
+        query["$or"] = [{"query": pattern}, {"answer.answer": pattern}]
+    return query
+
+
+def bounded_limit(value: int, maximum: int = 100) -> int:
+    return max(1, min(maximum, int(value)))
 
 
 def serialize_exchange(row: dict[str, Any]) -> dict[str, Any]:

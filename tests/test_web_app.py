@@ -1,5 +1,10 @@
+from datetime import datetime, timezone
+
+from bson import ObjectId
 from fastapi.testclient import TestClient
 
+from mnemosyne.config import load_config
+from mnemosyne.db.client import get_database
 from mnemosyne.web.app import app
 
 
@@ -59,3 +64,108 @@ def test_session_endpoints() -> None:
         session["session_id"] == "web-test-session"
         for session in listed.json()["sessions"]
     )
+
+
+def test_history_endpoint_filters_seeded_rows() -> None:
+    client = TestClient(app)
+    db = get_database(load_config().mongo)
+    session_id = "web-filter-test"
+    db.exchanges.delete_many({"session_id": session_id})
+    now = datetime.now(timezone.utc)
+    db.exchanges.insert_many(
+        [
+            {
+                "schema_version": 1,
+                "session_id": session_id,
+                "focus_node_id": None,
+                "query": "Mnemosyne design purpose",
+                "answer": {
+                    "adapter": "ollama_cli",
+                    "model": "qwen3.6:latest",
+                    "answer": "graph memory layer",
+                    "used_node_ids": [],
+                },
+                "created_at": now,
+            },
+            {
+                "schema_version": 1,
+                "session_id": session_id,
+                "focus_node_id": None,
+                "query": "Other prompt",
+                "answer": {
+                    "adapter": "mock_answer",
+                    "model": None,
+                    "answer": "unrelated",
+                    "used_node_ids": [],
+                },
+                "created_at": now,
+            },
+        ]
+    )
+
+    try:
+        response = client.get(
+            "/api/history",
+            params={
+                "limit": 3,
+                "session_id": session_id,
+                "q": "Mnemosyne",
+                "adapter": "ollama_cli",
+                "model": "qwen3.6:latest",
+            },
+        )
+    finally:
+        db.exchanges.delete_many({"session_id": session_id})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert [row["query"] for row in data["exchanges"]] == ["Mnemosyne design purpose"]
+
+
+def test_jobs_endpoint_filters_seeded_rows() -> None:
+    client = TestClient(app)
+    db = get_database(load_config().mongo)
+    marker = ObjectId().binary.hex()
+    db.queue.delete_many({"path": {"$regex": marker}})
+    now = datetime.now(timezone.utc)
+    db.queue.insert_many(
+        [
+            {
+                "path": f"data/ingest/{marker}-missing.md",
+                "checksum_sha256": f"{marker}aaa",
+                "status": "failed",
+                "reason": "source_missing",
+                "attempts": 1,
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "path": f"data/ingest/{marker}-duplicate.md",
+                "checksum_sha256": f"{marker}bbb",
+                "status": "rejected",
+                "reason": "duplicate_checksum",
+                "attempts": 0,
+                "created_at": now,
+                "updated_at": now,
+            },
+        ]
+    )
+
+    try:
+        response = client.get(
+            "/api/jobs",
+            params={
+                "limit": 3,
+                "status": "failed",
+                "q": marker,
+                "reason": "source_missing",
+            },
+        )
+    finally:
+        db.queue.delete_many({"path": {"$regex": marker}})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert [row["reason"] for row in data["jobs"]] == ["source_missing"]

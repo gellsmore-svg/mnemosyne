@@ -256,11 +256,16 @@ def main() -> None:
 
     history = subcommands.add_parser("history")
     history.add_argument("--session-id", default=None)
+    history.add_argument("--query", default=None)
+    history.add_argument("--adapter", default=None)
+    history.add_argument("--model", default=None)
     history.add_argument("--limit", type=int, default=10)
 
     queue_recent = subcommands.add_parser("queue-recent")
     queue_recent.add_argument("--limit", type=int, default=10)
     queue_recent.add_argument("--status", default=None)
+    queue_recent.add_argument("--query", default=None)
+    queue_recent.add_argument("--reason", default=None)
 
     show_tree = subcommands.add_parser("show-tree")
     show_tree.add_argument("document_id")
@@ -599,6 +604,9 @@ def main() -> None:
                         db,
                         limit=args.limit,
                         session_id=args.session_id,
+                        query_text=args.query,
+                        adapter=args.adapter,
+                        model=args.model,
                     ),
                 },
                 indent=2,
@@ -614,7 +622,13 @@ def main() -> None:
     if args.command == "queue-recent":
         ensure_indexes(db)
         jobs = []
-        for job in recent_jobs(db, limit=args.limit, status=args.status):
+        for job in recent_jobs(
+            db,
+            limit=args.limit,
+            status=args.status,
+            query_text=args.query,
+            reason=args.reason,
+        ):
             job["_id"] = str(job["_id"])
             if job.get("existing_document_id"):
                 job["existing_document_id"] = str(job["existing_document_id"])

@@ -79,8 +79,17 @@
 
         <section>
           <h2>History</h2>
-          <div class="row">
+          <div class="filter-grid">
             <input id="historySession" placeholder="Session filter" />
+            <input id="historyQuery" placeholder="Query or answer text" />
+            <select id="historyAdapter">
+              <option value="">any adapter</option>
+              <option value="mock_answer">mock_answer</option>
+              <option value="ollama_cli">ollama_cli</option>
+              <option value="ollama_http">ollama_http</option>
+            </select>
+            <input id="historyModel" placeholder="Model filter" />
+            <input id="historyLimit" type="number" min="1" max="100" value="6" />
             <button id="loadHistory">Load</button>
           </div>
           <div id="history" class="list"></div>
@@ -88,6 +97,20 @@
 
         <section>
           <h2>Recent Jobs</h2>
+          <div class="filter-grid">
+            <select id="jobStatus">
+              <option value="">any status</option>
+              <option value="pending">pending</option>
+              <option value="processing">processing</option>
+              <option value="completed">completed</option>
+              <option value="rejected">rejected</option>
+              <option value="failed">failed</option>
+            </select>
+            <input id="jobQuery" placeholder="Path, reason, checksum" />
+            <input id="jobReason" placeholder="Exact reason" />
+            <input id="jobLimit" type="number" min="1" max="100" value="6" />
+            <button id="loadJobs">Load</button>
+          </div>
           <div id="jobs" class="list"></div>
         </section>
       </aside>
