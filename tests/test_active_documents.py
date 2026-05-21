@@ -56,6 +56,8 @@ class FakeCollection:
 
 class FakeDb:
     def __init__(self, document_id, node_id):
+        other_node_id = ObjectId()
+        self.other_node_id = other_node_id
         self.documents = FakeCollection(
             [
                 {
@@ -72,6 +74,13 @@ class FakeDb:
                     "document_id": document_id,
                     "title": "System Name",
                     "labels": ["source_section", "mnemosyne"],
+                    "provenance": {},
+                },
+                {
+                    "_id": other_node_id,
+                    "document_id": document_id,
+                    "title": "Retrieval Notes",
+                    "labels": ["retrieval_note"],
                     "provenance": {},
                 }
             ]
@@ -101,6 +110,20 @@ def test_record_active_documents_upserts_session_document_registry() -> None:
     assert row["source"] == {"path": "design.md"}
     assert row["labels"] == ["mnemosyne", "source_section"]
     assert row["node_ids"] == [str(node_id)]
+    assert row["reference_count"] == 2
+
+
+def test_record_active_documents_accumulates_labels_across_references() -> None:
+    document_id = ObjectId()
+    node_id = ObjectId()
+    db = FakeDb(document_id, node_id)
+
+    record_active_documents(db, "session-1", [str(node_id)])
+    record_active_documents(db, "session-1", [str(db.other_node_id)])
+
+    row = db.active_documents.rows[0]
+    assert row["node_ids"] == [str(node_id), str(db.other_node_id)]
+    assert row["labels"] == ["mnemosyne", "source_section", "retrieval_note"]
     assert row["reference_count"] == 2
 
 

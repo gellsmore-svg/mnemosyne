@@ -115,6 +115,7 @@ Current early read surface:
 - optional Ollama CLI answer adapter for real local model calls;
 - saved exchange records in MongoDB.
 - active document records are updated from answer `used_node_ids`, preserving session/document/source/node references for later continuity and endorsement work.
+- active document records accumulate referenced node IDs and labels across repeated session references.
 - saved exchanges increment `usage_score` and `last_used_at` on the used non-rejected nodes, giving retrieval feedback a first persisted signal.
 - direct retrieval applies a capped usage-score boost and last-used tie-breaker, while keeping rejection/provenance penalties dominant.
 - direct retrieval uses active document scoping for reference-shaped session prompts such as "this document" or "previous source", falling back to the active document root when no topical node matches.

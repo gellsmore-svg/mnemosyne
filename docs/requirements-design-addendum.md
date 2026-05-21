@@ -95,6 +95,7 @@ The current implementation has added several scaffold features and operational d
 - Saved exchanges increment `usage_score` and update `last_used_at` on used non-rejected nodes after the exchange row exists; exchange history records the number of nodes updated as `scored_node_count`.
 - Serialized node search results expose `usage_score` and `last_used_at` for retrieval diagnostics.
 - Active document records preserve document ID, title, source metadata, labels, referenced node IDs, and reference counts.
+- Active document label metadata accumulates across repeated references instead of being overwritten by the latest used-node batch.
 - Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.
 - Direct retrieval scopes reference-shaped session prompts such as "this document" or "previous source" to the session's active documents before falling back to broad corpus retrieval, and can use the active document root/default node when the prompt has no topical match.
 - Saved answer text is captured in `output_ingestion_queue` as pending `llm_answer` work with exchange/session provenance, used node IDs, active document IDs, adapter/model metadata, and a content hash.

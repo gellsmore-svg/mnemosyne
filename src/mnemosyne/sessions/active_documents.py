@@ -59,11 +59,11 @@ def record_active_documents(
                 "$set": {
                     "title": metadata.get("title"),
                     "source": metadata.get("source") or {},
-                    "labels": sorted(grouped_labels[document_id]),
                     "last_referenced_at": now,
                 },
                 "$addToSet": {
                     "node_ids": {"$each": sorted(grouped_node_ids[document_id])},
+                    "labels": {"$each": sorted(grouped_labels[document_id])},
                 },
                 "$inc": {"reference_count": 1},
             },
