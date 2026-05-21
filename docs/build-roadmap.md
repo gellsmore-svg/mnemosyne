@@ -117,6 +117,7 @@ Current early read surface:
 - active document records are updated from answer `used_node_ids`, preserving session/document/source/node references for later continuity and endorsement work.
 - saved answer text is queued as pending LLM-output ingestion work, linked back to the originating exchange and session.
 - pending LLM-output ingestion jobs can be processed into unreviewed graph documents with generated-output labels and exchange/session provenance.
+- generated-output nodes can be explicitly reviewed through CLI/API and marked `unreviewed`, `implicit_endorsed`, `explicit_endorsed`, or `rejected`, updating node provenance and review history.
 - first iterative memory-agent retrieval loop: memory-agent model emits bounded JSON tool calls, Mnemosyne executes allowed retrieval tools, feeds observations back to the memory-agent, and only then calls the final answer model.
 - memory-agent prompts include the current session ID and compact active document summaries; the read-only tool surface includes `list_active_documents`.
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
@@ -130,7 +131,7 @@ Known gaps after reconciliation:
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
 - the compiled context corpus does not yet match the full technical design schema;
 - active document registry is only a first skeleton populated from used nodes and visible to the memory-agent; it does not yet drive deterministic retrieval, endorsement, or restart state.
-- output ingestion is implemented only as conservative graph insertion of unreviewed answer documents; endorsement, relation extraction, restart state node, traversal scoring, and REM consolidation are not started.
+- output ingestion is implemented only as conservative graph insertion plus explicit review labels; natural-language endorsement detection, relation extraction, restart state node, traversal scoring, and REM consolidation are not started.
 
 Minimum build:
 

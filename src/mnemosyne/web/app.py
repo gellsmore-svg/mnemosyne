@@ -18,6 +18,10 @@ from mnemosyne.retrieval.queries import list_documents, search_nodes
 from mnemosyne.sessions.exchanges import recent_exchanges
 from mnemosyne.sessions.interaction import answer_query
 from mnemosyne.sessions.active_documents import list_active_documents
+from mnemosyne.sessions.endorsements import (
+    list_generated_output_nodes,
+    update_node_endorsement,
+)
 from mnemosyne.sessions.output_ingestion import (
     list_output_ingestion_jobs,
     process_next_output_ingestion,
@@ -37,6 +41,13 @@ class AskRequest(BaseModel):
 class CreateSessionRequest(BaseModel):
     title: str | None = None
     session_id: str | None = None
+
+
+class EndorseNodeRequest(BaseModel):
+    node_id: str
+    endorsement: str
+    reviewer: str = "user"
+    note: str | None = None
 
 
 def create_app() -> FastAPI:
@@ -112,6 +123,30 @@ def create_app() -> FastAPI:
     @app.post("/api/process-output-ingestion")
     def process_output_ingestion() -> dict[str, Any]:
         return process_next_output_ingestion(db)
+
+    @app.get("/api/review/generated-output")
+    def generated_output_review(
+        limit: int = 20,
+        endorsement: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "nodes": list_generated_output_nodes(
+                db,
+                limit=limit,
+                endorsement_label=endorsement,
+            ),
+        }
+
+    @app.post("/api/review/endorse-node")
+    def endorse_node(request: EndorseNodeRequest) -> dict[str, Any]:
+        return update_node_endorsement(
+            db,
+            node_id=request.node_id,
+            endorsement_label=request.endorsement,
+            reviewer=request.reviewer,
+            note=request.note,
+        )
 
     @app.post("/api/sessions")
     def new_session(request: CreateSessionRequest) -> dict[str, Any]:

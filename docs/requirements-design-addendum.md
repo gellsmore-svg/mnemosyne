@@ -94,6 +94,7 @@ The current implementation has added several scaffold features and operational d
 - Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.
 - Saved answer text is captured in `output_ingestion_queue` as pending `llm_answer` work with exchange/session provenance, used node IDs, active document IDs, adapter/model metadata, and a content hash.
 - Pending output-ingestion jobs can be processed into unreviewed graph documents, trees, and nodes labelled `generated_output` and `llm_answer`.
+- Generated-output nodes can be explicitly reviewed through CLI/API, updating `endorsement_label`, `provenance.endorsement_label`, and node review metadata/history.
 - Output ingestion does not yet infer endorsement, semantic relations, proximity, or REM consolidation from generated text.
 - Web and CLI answer calls expose structured process traces.
 - Process traces include prompt intake, memory-agent iterations, tool calls, retrieval/context assembly, and answer adapter execution.
@@ -250,7 +251,7 @@ The following are still deferred and should not be implied as complete:
 - embedding/vector search;
 - active document registry beyond the current used-node capture and read-only memory-agent visibility skeleton;
 - graph-backed restart state node;
-- natural-language endorsement writes;
+- natural-language endorsement detection/writes beyond explicit review controls;
 - traversal scoring feedback;
 - REM consolidation;
 - output ingestion beyond conservative unreviewed graph insertion;

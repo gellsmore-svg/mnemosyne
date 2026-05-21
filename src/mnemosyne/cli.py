@@ -35,6 +35,11 @@ from mnemosyne.retrieval.queries import (
 )
 from mnemosyne.sessions.active_documents import list_active_documents
 from mnemosyne.sessions.exchanges import recent_exchanges
+from mnemosyne.sessions.endorsements import (
+    ENDORSEMENT_LABELS,
+    list_generated_output_nodes,
+    update_node_endorsement,
+)
 from mnemosyne.sessions.interaction import answer_query
 from mnemosyne.sessions.output_ingestion import (
     list_output_ingestion_jobs,
@@ -201,6 +206,16 @@ def main() -> None:
     output_jobs.add_argument("--status", default=None)
     output_jobs.add_argument("--limit", type=int, default=20)
     subcommands.add_parser("process-output-ingestion")
+
+    review_outputs = subcommands.add_parser("review-generated-output")
+    review_outputs.add_argument("--endorsement", default=None, choices=sorted(ENDORSEMENT_LABELS))
+    review_outputs.add_argument("--limit", type=int, default=20)
+
+    endorse_node = subcommands.add_parser("endorse-node")
+    endorse_node.add_argument("node_id")
+    endorse_node.add_argument("--endorsement", required=True, choices=sorted(ENDORSEMENT_LABELS))
+    endorse_node.add_argument("--reviewer", default="user")
+    endorse_node.add_argument("--note", default=None)
 
     create_session_cmd = subcommands.add_parser("create-session")
     create_session_cmd.add_argument("--title", default=None)
@@ -480,6 +495,39 @@ def main() -> None:
     if args.command == "process-output-ingestion":
         ensure_indexes(db)
         print(json.dumps(process_next_output_ingestion(db), indent=2))
+        return
+
+    if args.command == "review-generated-output":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "nodes": list_generated_output_nodes(
+                        db,
+                        limit=args.limit,
+                        endorsement_label=args.endorsement,
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "endorse-node":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                update_node_endorsement(
+                    db,
+                    node_id=args.node_id,
+                    endorsement_label=args.endorsement,
+                    reviewer=args.reviewer,
+                    note=args.note,
+                ),
+                indent=2,
+            )
+        )
         return
 
     if args.command == "create-session":

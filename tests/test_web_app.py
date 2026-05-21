@@ -155,6 +155,61 @@ def test_process_output_ingestion_endpoint(monkeypatch) -> None:
     assert response.json() == {"ok": True, "status": "idle"}
 
 
+def test_generated_output_review_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_generated_output_nodes",
+        lambda _db, limit=20, endorsement_label=None: [
+            {"node_id": "node1", "endorsement_label": endorsement_label, "limit": limit}
+        ],
+    )
+
+    response = client.get(
+        "/api/review/generated-output",
+        params={"endorsement": "unreviewed", "limit": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["nodes"] == [
+        {"node_id": "node1", "endorsement_label": "unreviewed", "limit": 1}
+    ]
+
+
+def test_endorse_node_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.update_node_endorsement",
+        lambda _db, node_id, endorsement_label, reviewer="user", note=None: {
+            "ok": True,
+            "node_id": node_id,
+            "endorsement_label": endorsement_label,
+            "reviewer": reviewer,
+            "note": note,
+        },
+    )
+
+    response = client.post(
+        "/api/review/endorse-node",
+        json={
+            "node_id": "node1",
+            "endorsement": "rejected",
+            "reviewer": "tester",
+            "note": "bad answer",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "node_id": "node1",
+        "endorsement_label": "rejected",
+        "reviewer": "tester",
+        "note": "bad answer",
+    }
+
+
 def test_history_endpoint_filters_seeded_rows() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)
