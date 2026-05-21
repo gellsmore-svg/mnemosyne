@@ -4,6 +4,7 @@ from mnemosyne.config import AppConfig, RuntimeConfig
 from mnemosyne.sessions.interaction import (
     active_document_default_node_id,
     active_document_reference_query,
+    active_document_vocabulary_values,
     answer_query,
     build_memory_agent_prompt,
     build_query_assembly,
@@ -867,6 +868,101 @@ def test_execute_tool_calls_can_list_active_documents(monkeypatch) -> None:
             "document_id": "doc1",
             "title": "Active Doc",
         }
+    ]
+
+
+def test_active_document_vocabulary_values_extracts_titles_sources_and_labels() -> None:
+    assert active_document_vocabulary_values(
+        [
+            {
+                "title": "Technical Design",
+                "source": {"path": "/tmp/Mnemosyne_Technical_Design.md"},
+                "labels": ["mnemosyne_design"],
+            }
+        ]
+    ) == [
+        "Technical Design",
+        "/tmp/Mnemosyne_Technical_Design.md",
+        "mnemosyne_design",
+    ]
+
+
+def test_memory_agent_prompt_uses_active_documents_for_near_match_guidance() -> None:
+    prompt = build_memory_agent_prompt(
+        query="tecnical desgin",
+        focus_node_id=None,
+        session_id="s1",
+        active_documents=[
+            {
+                "title": "Technical Design",
+                "source": {"path": "/tmp/design.md"},
+                "labels": [],
+            }
+        ],
+        history=[],
+    )
+
+    assert "Near-match terms: tecnical->Technical" in prompt
+    assert "desgin->Design" in prompt
+
+
+def test_execute_search_nodes_tool_uses_session_active_documents_for_near_match_terms(
+    monkeypatch,
+) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    calls = []
+
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
+        calls.append(query)
+        if query == "Technical":
+            return [{"node_id": "node1", "title": "Technical Design"}]
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "compile_context", lambda _db, _node_id: None)
+    monkeypatch.setattr(
+        interaction,
+        "list_active_documents",
+        lambda _db, session_id, limit=20: [
+            {
+                "session_id": session_id,
+                "title": "Technical Design",
+                "source": {"path": "/tmp/design.md"},
+                "labels": [],
+            }
+        ],
+    )
+
+    output, details = execute_search_nodes_tool(FakeVocabularyDb(), query="tecnical", session_id="s1")
+
+    assert output["matches"] == [{"node_id": "node1", "title": "Technical Design"}]
+    assert calls[:2] == ["tecnical", "Technical"]
+    assert details["query_assembly"]["near_match_terms"][0]["candidate_term"] == "Technical"
+
+
+def test_near_match_vocabulary_can_use_active_documents_without_document_collection(
+    monkeypatch,
+) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    monkeypatch.setattr(
+        interaction,
+        "list_active_documents",
+        lambda _db, session_id, limit=20: [
+            {
+                "session_id": session_id,
+                "title": "Session Technical Notes",
+                "source": {},
+                "labels": [],
+            }
+        ],
+    )
+
+    assert near_match_vocabulary(FakeDb(), session_id="s1")[:3] == [
+        "Session",
+        "Technical",
+        "Notes",
     ]
 
 

@@ -470,7 +470,10 @@ def build_memory_agent_prompt(
     active_documents: list[dict[str, Any]],
     history: list[dict[str, Any]],
 ) -> str:
-    query_assembly = build_query_assembly(query)
+    query_assembly = build_query_assembly(
+        query,
+        vocabulary=vocabulary_terms(active_document_vocabulary_values(active_documents)),
+    )
     return "\n".join(
         [
             "You are the Mnemosyne memory-agent.",
@@ -817,6 +820,7 @@ def execute_tool_calls(
                     original_query=original_query,
                     label=arguments.get("label"),
                     limit=bounded_limit(arguments.get("limit"), default=5),
+                    session_id=session_id,
                 )
             elif tool == "compile_context":
                 node_id = arguments.get("node_id")
@@ -874,6 +878,7 @@ def execute_search_nodes_tool(
     original_query: str | None = None,
     label: str | None = None,
     limit: int = 5,
+    session_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     cleaned_query = normalize_query_text(query)
     ranking_query = combined_query_text(cleaned_query, original_query)
@@ -889,7 +894,9 @@ def execute_search_nodes_tool(
         query_assembly = build_query_assembly(
             cleaned_query,
             original_query,
-            vocabulary=near_match_vocabulary(db),
+            vocabulary=near_match_vocabulary(db, session_id=session_id)
+            if session_id
+            else near_match_vocabulary(db),
         )
         details["query_assembly"] = query_assembly
         seen = {row["node_id"] for row in matches}
@@ -1111,10 +1118,16 @@ def score_node_match(row: dict[str, Any], query: str | dict[str, Any] | None) ->
     return score
 
 
-def near_match_vocabulary(db: Database, limit: int = NEAR_MATCH_MAX_VOCABULARY) -> list[str]:
+def near_match_vocabulary(
+    db: Database,
+    limit: int = NEAR_MATCH_MAX_VOCABULARY,
+    session_id: str | None = None,
+) -> list[str]:
     values = []
+    if session_id:
+        values.extend(active_document_vocabulary_values(list_active_documents(db, session_id, limit=20)))
     if not hasattr(db, "documents"):
-        return []
+        return vocabulary_terms(values, limit=limit)
     if hasattr(db, "label_definitions"):
         for definition in db.label_definitions.find({}, {"key": 1, "description": 1}).limit(limit):
             values.append(definition.get("key"))
@@ -1126,6 +1139,16 @@ def near_match_vocabulary(db: Database, limit: int = NEAR_MATCH_MAX_VOCABULARY) 
         source = document.get("source") or {}
         values.append(source.get("path"))
     return vocabulary_terms(values, limit=limit)
+
+
+def active_document_vocabulary_values(active_documents: list[dict[str, Any]]) -> list[Any]:
+    values = []
+    for document in active_documents:
+        values.append(document.get("title"))
+        source = document.get("source") or {}
+        values.append(source.get("path"))
+        values.extend(document.get("labels") or [])
+    return values
 
 
 def vocabulary_terms(values: list[Any], limit: int = NEAR_MATCH_MAX_VOCABULARY) -> list[str]:

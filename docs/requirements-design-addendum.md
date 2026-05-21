@@ -63,6 +63,7 @@ The current implementation has added several scaffold features and operational d
 - Agentic mode separates the memory-agent role from the final answer role at the configuration/orchestration layer.
 - Memory-agent calls can use a separate adapter/model from the final answer adapter/model.
 - Memory-agent prompts include the current session ID and compact active document summaries.
+- Memory-agent query guidance uses active document titles, source paths, and labels as bounded near-match vocabulary for the current session.
 - The memory-agent receives an injected tool interface for:
   - `search_nodes`;
   - `compile_context`;
@@ -222,6 +223,7 @@ Implemented first adaptation:
 - query assembly now has `near_match_terms`;
 - near matches are generated only against a bounded vocabulary, currently label definitions, existing node labels, document titles, and source paths;
 - near-match candidates are used only after an empty initial search in direct focus selection and agentic/tool search;
+- session active documents are included in memory-agent near-match guidance and agentic/tool fallback vocabulary;
 - fallback probes try exact phrases first, then near-match candidates, then original single terms;
 - process traces and prompts expose near matches as diagnostics.
 
@@ -230,7 +232,7 @@ Recommended next adaptation:
 1. Do not port `jscompare` directly into production retrieval.
 2. Keep the Python helper behind the query assembly layer.
 3. Use standard-library or maintained Python options before adding a new dependency.
-4. Extend near-match vocabulary gradually to active documents and other bounded title/source candidates.
+4. Extend near-match vocabulary gradually to other bounded title/source candidates after active documents.
 5. Use near-match expansion only for candidate generation and fallback probes.
 6. Cap comparisons aggressively to avoid O(n*m) scans across the full corpus.
 7. Keep exact source/provenance ranking above near-token similarity.
@@ -289,7 +291,7 @@ As of 2026-05-21:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `168 passed`.
+- Current automated suite at last full run: `172 passed`.
 
 ## Recommended Next Work
 
