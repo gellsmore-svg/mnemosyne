@@ -8,12 +8,15 @@ from mnemosyne.retrieval.queries import (
     estimate_tokens,
     nearby_siblings,
     node_search_score,
+    node_search_sort_key,
     parse_iso_datetime,
     prioritize_records,
     render_context_document,
     render_record,
     serialize_document,
     serialize_node,
+    text_query_filters,
+    text_query_terms,
 )
 
 
@@ -62,6 +65,54 @@ def test_parse_iso_datetime_accepts_z_suffix() -> None:
     parsed = parse_iso_datetime("2026-01-01T00:00:00Z")
 
     assert parsed.isoformat() == "2026-01-01T00:00:00+00:00"
+
+
+def test_text_query_terms_extracts_natural_query_content_terms() -> None:
+    assert text_query_terms(
+        "Who commissioned the Taj Mahal, and who was it built to commemorate?"
+    ) == ["commissioned", "Taj", "Mahal", "built", "commemorate"]
+
+
+def test_text_query_filters_combines_exact_query_and_content_terms() -> None:
+    filters = text_query_filters("Who commissioned the Taj Mahal?")
+
+    assert len(filters) == 8
+    assert [set(query_filter) for query_filter in filters] == [
+        {"title"},
+        {"text"},
+        {"title"},
+        {"text"},
+        {"title"},
+        {"text"},
+        {"title"},
+        {"text"},
+    ]
+    assert filters[0]["title"].pattern == "Who\\ commissioned\\ the\\ Taj\\ Mahal\\?"
+    assert filters[2]["title"].pattern == "\\bcommissioned\\b"
+    assert filters[4]["title"].pattern == "\\bTaj\\b"
+    assert filters[6]["title"].pattern == "\\bMahal\\b"
+
+
+def test_text_query_filters_deduplicates_single_term_query() -> None:
+    assert len(text_query_filters("Mahal")) == 2
+
+
+def test_node_search_score_uses_whole_terms_for_query_tokens() -> None:
+    exact_term = {
+        "title": "Construction note",
+        "text": "The tomb was built as an object.",
+        "labels": ["source_chunk"],
+    }
+    substring_only = {
+        "title": "Construction note",
+        "text": "The tomb was rebuilt as an object.",
+        "labels": ["source_chunk"],
+    }
+
+    assert node_search_score(exact_term, "built object") > node_search_score(
+        substring_only,
+        "built object",
+    )
 
 
 def test_context_record_adds_role_and_distance() -> None:
@@ -282,3 +333,43 @@ def test_node_search_score_prefers_human_endorsed_nodes() -> None:
     }
 
     assert node_search_score(endorsed, "memory") > node_search_score(unreviewed, "memory")
+
+
+def test_node_search_score_prefers_specific_chunk_over_large_container_section() -> None:
+    query = "Taj Mahal commissioned Shah Jahan Mumtaz"
+    large_section = {
+        "title": "Taj Mahal - Wikipedia Extract",
+        "text": "Taj Mahal commissioned Shah Jahan Mumtaz " + ("background " * 400),
+        "labels": ["source_section"],
+    }
+    specific_chunk = {
+        "title": "Taj Mahal - Wikipedia Extract / paragraph 6",
+        "text": "The Taj Mahal was commissioned by Shah Jahan for Mumtaz Mahal.",
+        "labels": ["source_chunk"],
+    }
+
+    assert node_search_score(specific_chunk, query) > node_search_score(
+        large_section,
+        query,
+    )
+
+
+def test_node_search_sort_key_breaks_score_ties_toward_compact_nodes() -> None:
+    concise = {
+        "title": "Taj Mahal - Wikipedia Extract / paragraph 6",
+        "text": "The Taj Mahal was commissioned by Shah Jahan for Mumtaz Mahal.",
+        "labels": ["source_chunk"],
+    }
+    broad = {
+        **concise,
+        "text": concise["text"] + (" Construction details." * 100),
+    }
+
+    assert node_search_score(concise, "Taj Mahal commissioned Mumtaz") == node_search_score(
+        broad,
+        "Taj Mahal commissioned Mumtaz",
+    )
+    assert node_search_sort_key(concise, "Taj Mahal commissioned Mumtaz") > node_search_sort_key(
+        broad,
+        "Taj Mahal commissioned Mumtaz",
+    )

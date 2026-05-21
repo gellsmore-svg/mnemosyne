@@ -8,6 +8,31 @@ from bson import ObjectId
 from pymongo.database import Database
 
 
+SEARCH_STOPWORDS = {
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "whom",
+    "whose",
+    "does",
+    "did",
+    "was",
+    "were",
+    "are",
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "that",
+    "this",
+    "into",
+    "about",
+}
+
+
 def list_documents(db: Database, limit: int = 20) -> list[dict[str, Any]]:
     documents = db.documents.find({}).sort("created_at", -1).limit(limit)
     return [serialize_document(document) for document in documents]
@@ -35,8 +60,7 @@ def search_nodes(
 ) -> list[dict[str, Any]]:
     filters: dict[str, Any] = {}
     if query:
-        pattern = re.compile(re.escape(query), re.IGNORECASE)
-        filters["$or"] = [{"title": pattern}, {"text": pattern}]
+        filters["$or"] = text_query_filters(query)
     if label:
         filters["labels"] = label
     if endorsement_label:
@@ -54,8 +78,36 @@ def search_nodes(
     candidate_limit = max(limit * 5, 50) if query else limit
     nodes = list(db.nodes.find(filters).sort("created_at", -1).limit(candidate_limit))
     if query:
-        nodes.sort(key=lambda node: node_search_score(node, query), reverse=True)
+        nodes.sort(key=lambda node: node_search_sort_key(node, query), reverse=True)
     return [serialize_node(node) for node in nodes[:limit]]
+
+
+def text_query_filters(query: str) -> list[dict[str, Any]]:
+    exact_pattern = re.compile(re.escape(query), re.IGNORECASE)
+    filters = [{"title": exact_pattern}, {"text": exact_pattern}]
+    exact_key = query.strip().lower()
+    for term in text_query_terms(query):
+        if term.lower() == exact_key:
+            continue
+        term_pattern = text_term_pattern(term)
+        filters.extend([{"title": term_pattern}, {"text": term_pattern}])
+    return filters
+
+
+def text_term_pattern(term: str) -> re.Pattern:
+    return re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
+
+
+def text_query_terms(query: str) -> list[str]:
+    terms = []
+    seen = set()
+    for term in re.findall(r"[A-Za-z0-9]+", query):
+        key = term.lower()
+        if len(key) < 3 or key in SEARCH_STOPWORDS or key in seen:
+            continue
+        seen.add(key)
+        terms.append(term)
+    return terms[:8]
 
 
 def node_search_score(node: dict[str, Any], query: str) -> int:
@@ -63,23 +115,26 @@ def node_search_score(node: dict[str, Any], query: str) -> int:
     text = str(node.get("text") or "").lower()
     labels = node.get("labels", [])
     query_lower = query.lower()
-    terms = [term.lower() for term in re.findall(r"[A-Za-z0-9]+", query)]
+    terms = [term.lower() for term in text_query_terms(query)]
     score = 0
     if query_lower in title:
         score += 50
     if query_lower in text:
         score += 15
     for term in terms:
-        if term in title:
+        pattern = text_term_pattern(term)
+        if pattern.search(title):
             score += 8
-        if term in text:
+        if pattern.search(text):
             score += 2
     if "source_section" in labels:
         score += 4
     if "source_chunk" in labels:
-        score += 1
+        score += 5
     if "source_root" in labels:
         score -= 12
+    if "source_section" in labels and len(text) > 2500 and query_lower not in title:
+        score -= 20
     if not str(node.get("text") or "").strip():
         score -= 25
     endorsement_label = node.get("endorsement_label")
@@ -88,6 +143,10 @@ def node_search_score(node: dict[str, Any], query: str) -> int:
     elif endorsement_label == "implicit_endorsed":
         score += 10
     return score
+
+
+def node_search_sort_key(node: dict[str, Any], query: str) -> tuple[int, int]:
+    return (node_search_score(node, query), -len(str(node.get("text") or "")))
 
 
 def node_context(db: Database, node_id: str, child_limit: int = 20) -> dict[str, Any] | None:
