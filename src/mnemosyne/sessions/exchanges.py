@@ -8,11 +8,24 @@ from bson import ObjectId
 from pymongo.database import Database
 
 from mnemosyne.sessions.active_documents import record_active_documents
+from mnemosyne.sessions.output_ingestion import queue_exchange_output
 from mnemosyne.sessions.registry import touch_session
 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def dedupe_ids(values: list[str]) -> list[str]:
+    deduped = []
+    seen = set()
+    for value in values:
+        key = str(value)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(key)
+    return deduped
 
 
 def save_exchange(
@@ -29,6 +42,7 @@ def save_exchange(
     used_node_ids = [str(node_id) for node_id in answer.get("used_node_ids", [])]
     if focus_node_id:
         used_node_ids.append(focus_node_id)
+    used_node_ids = dedupe_ids(used_node_ids)
     active_document_ids = record_active_documents(db, session_id, used_node_ids)
     result = db.exchanges.insert_one(
         {
@@ -44,7 +58,22 @@ def save_exchange(
             "created_at": now,
         }
     )
-    return str(result.inserted_id)
+    exchange_id = str(result.inserted_id)
+    output_job_id = queue_exchange_output(
+        db,
+        exchange_id=exchange_id,
+        session_id=session_id,
+        query=query,
+        answer=answer,
+        used_node_ids=used_node_ids,
+        active_document_ids=active_document_ids,
+    )
+    if output_job_id:
+        db.exchanges.update_one(
+            {"_id": result.inserted_id},
+            {"$set": {"output_ingestion_job_id": output_job_id}},
+        )
+    return exchange_id
 
 
 def recent_exchanges(
@@ -100,5 +129,6 @@ def serialize_exchange(row: dict[str, Any]) -> dict[str, Any]:
         "adapter": row.get("answer", {}).get("adapter"),
         "model": row.get("answer", {}).get("model"),
         "used_node_ids": row.get("answer", {}).get("used_node_ids", []),
+        "output_ingestion_job_id": row.get("output_ingestion_job_id"),
         "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
     }

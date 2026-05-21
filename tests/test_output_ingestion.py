@@ -1,0 +1,173 @@
+from datetime import datetime, timezone
+
+from bson import ObjectId
+
+from mnemosyne.sessions.exchanges import save_exchange
+from mnemosyne.sessions.output_ingestion import (
+    answer_output_text,
+    list_output_ingestion_jobs,
+    output_content_hash,
+    queue_exchange_output,
+)
+
+
+def test_answer_output_text_strips_answer_body() -> None:
+    assert answer_output_text({"answer": "  useful memory  "}) == "useful memory"
+    assert answer_output_text({}) == ""
+
+
+def test_output_content_hash_is_stable() -> None:
+    assert output_content_hash("s1", "question", "answer") == output_content_hash(
+        "s1",
+        "question",
+        "answer",
+    )
+
+
+def test_queue_exchange_output_stores_pending_job() -> None:
+    db = FakeDb()
+
+    job_id = queue_exchange_output(
+        db,
+        exchange_id="exchange1",
+        session_id="session1",
+        query="What changed?",
+        answer={"answer": "A new memory.", "adapter": "mock", "model": "test"},
+        used_node_ids=["node1"],
+        active_document_ids=["doc1"],
+    )
+
+    assert job_id == str(db.output_ingestion_queue.rows[0]["_id"])
+    row = db.output_ingestion_queue.rows[0]
+    assert row["status"] == "pending"
+    assert row["source_type"] == "llm_answer"
+    assert row["exchange_id"] == "exchange1"
+    assert row["answer_text"] == "A new memory."
+    assert row["used_node_ids"] == ["node1"]
+    assert row["active_document_ids"] == ["doc1"]
+
+
+def test_queue_exchange_output_skips_empty_answer() -> None:
+    db = FakeDb()
+
+    assert queue_exchange_output(db, "exchange1", "session1", "q", {"answer": " "}, [], []) is None
+    assert db.output_ingestion_queue.rows == []
+
+
+def test_save_exchange_links_output_ingestion_job() -> None:
+    db = FakeDb()
+    node_id = str(ObjectId())
+
+    exchange_id = save_exchange(
+        db,
+        query="What should be remembered?",
+        answer={"answer": "Remember this.", "used_node_ids": [node_id]},
+        prompt={"budget": {}, "context_metadata": {}},
+        focus_node_id=node_id,
+        session_id="session1",
+    )
+
+    exchange = db.exchanges.rows[0]
+    job = db.output_ingestion_queue.rows[0]
+    assert exchange_id == str(exchange["_id"])
+    assert exchange["output_ingestion_job_id"] == str(job["_id"])
+    assert job["exchange_id"] == exchange_id
+    assert job["answer_text"] == "Remember this."
+    assert job["used_node_ids"] == [node_id]
+
+
+def test_list_output_ingestion_jobs_filters_and_serializes() -> None:
+    db = FakeDb()
+    now = datetime.now(timezone.utc)
+    db.output_ingestion_queue.rows = [
+        {
+            "_id": ObjectId(),
+            "schema_version": 1,
+            "status": "pending",
+            "source_type": "llm_answer",
+            "exchange_id": "exchange1",
+            "session_id": "s1",
+            "query": "q",
+            "answer_text": "A" * 600,
+            "used_node_ids": [],
+            "active_document_ids": [],
+            "content_hash_sha256": "hash",
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "_id": ObjectId(),
+            "schema_version": 1,
+            "status": "completed",
+            "source_type": "llm_answer",
+            "exchange_id": "exchange2",
+            "session_id": "s2",
+            "query": "q",
+            "answer_text": "other",
+            "created_at": now,
+            "updated_at": now,
+        },
+    ]
+
+    jobs = list_output_ingestion_jobs(db, status="pending", session_id="s1")
+
+    assert len(jobs) == 1
+    assert jobs[0]["exchange_id"] == "exchange1"
+    assert len(jobs[0]["answer_preview"]) == 500
+
+
+class FakeInsertResult:
+    def __init__(self, inserted_id):
+        self.inserted_id = inserted_id
+
+
+class FakeCursor(list):
+    def sort(self, field, direction):
+        reverse = direction < 0
+        self[:] = sorted(self, key=lambda row: row.get(field), reverse=reverse)
+        return self
+
+    def limit(self, limit):
+        return FakeCursor(self[:limit])
+
+
+class FakeCollection:
+    def __init__(self, rows=None):
+        self.rows = list(rows or [])
+
+    def insert_one(self, row):
+        row = dict(row)
+        row["_id"] = ObjectId()
+        self.rows.append(row)
+        return FakeInsertResult(row["_id"])
+
+    def find(self, query=None, projection=None):
+        rows = [row for row in self.rows if matches(row, query or {})]
+        return FakeCursor([dict(row) for row in rows])
+
+    def update_one(self, filter_query, update, upsert=False):
+        row = next((item for item in self.rows if matches(item, filter_query)), None)
+        if row is None:
+            if not upsert:
+                return None
+            row = dict(filter_query)
+            row.update(update.get("$setOnInsert", {}))
+            self.rows.append(row)
+        row.update(update.get("$set", {}))
+        for field, value in update.get("$inc", {}).items():
+            row[field] = row.get(field, 0) + value
+        return None
+
+
+class FakeDb:
+    def __init__(self):
+        self.sessions = FakeCollection()
+        self.exchanges = FakeCollection()
+        self.output_ingestion_queue = FakeCollection()
+
+
+def matches(row, query):
+    for key, expected in query.items():
+        if row.get(key) != expected:
+            return False
+    return True

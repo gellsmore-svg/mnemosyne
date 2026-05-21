@@ -102,6 +102,45 @@ def test_active_documents_endpoint_filters_by_session() -> None:
     assert data["documents"][0]["title"] == "Active Doc"
 
 
+def test_output_ingestion_endpoint_filters_by_session() -> None:
+    client = TestClient(app)
+    db = get_database(load_config().mongo)
+    session_id = "web-output-ingestion-test"
+    db.output_ingestion_queue.delete_many({"session_id": session_id})
+    now = datetime.now(timezone.utc)
+    db.output_ingestion_queue.insert_one(
+        {
+            "schema_version": 1,
+            "status": "pending",
+            "source_type": "llm_answer",
+            "exchange_id": str(ObjectId()),
+            "session_id": session_id,
+            "query": "What changed?",
+            "answer_text": "Captured output.",
+            "used_node_ids": [],
+            "active_document_ids": [],
+            "content_hash_sha256": "hash",
+            "attempts": 0,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+
+    try:
+        response = client.get(
+            "/api/output-ingestion",
+            params={"session_id": session_id, "status": "pending", "limit": 5},
+        )
+    finally:
+        db.output_ingestion_queue.delete_many({"session_id": session_id})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["jobs"][0]["source_type"] == "llm_answer"
+    assert data["jobs"][0]["answer_preview"] == "Captured output."
+
+
 def test_history_endpoint_filters_seeded_rows() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)

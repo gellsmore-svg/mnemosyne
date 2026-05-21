@@ -92,6 +92,8 @@ The current implementation has added several scaffold features and operational d
 - Saved exchanges update a session-scoped active document registry from answer `used_node_ids`.
 - Active document records preserve document ID, title, source metadata, labels, referenced node IDs, and reference counts.
 - Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.
+- Saved answer text is captured in `output_ingestion_queue` as pending `llm_answer` work with exchange/session provenance, used node IDs, active document IDs, adapter/model metadata, and a content hash.
+- Output ingestion is currently capture-only; these jobs do not yet create graph documents, trees, nodes, endorsements, or relations.
 - Web and CLI answer calls expose structured process traces.
 - Process traces include prompt intake, memory-agent iterations, tool calls, retrieval/context assembly, and answer adapter execution.
 - `.restart.md` is maintained manually as a working restart note; it is still not the required graph-backed restart state source of truth.
@@ -250,7 +252,7 @@ The following are still deferred and should not be implied as complete:
 - natural-language endorsement writes;
 - traversal scoring feedback;
 - REM consolidation;
-- output ingestion back into the memory graph;
+- output ingestion beyond pending queue capture into the memory graph;
 - source-document fallback after retrieval failure;
 - optional web search queued for ingestion.
 

@@ -36,6 +36,7 @@ from mnemosyne.retrieval.queries import (
 from mnemosyne.sessions.active_documents import list_active_documents
 from mnemosyne.sessions.exchanges import recent_exchanges
 from mnemosyne.sessions.interaction import answer_query
+from mnemosyne.sessions.output_ingestion import list_output_ingestion_jobs
 from mnemosyne.sessions.registry import create_session, list_sessions
 
 
@@ -191,6 +192,11 @@ def main() -> None:
     active_documents = subcommands.add_parser("active-documents")
     active_documents.add_argument("--session-id", default="default")
     active_documents.add_argument("--limit", type=int, default=20)
+
+    output_jobs = subcommands.add_parser("output-ingestion")
+    output_jobs.add_argument("--session-id", default=None)
+    output_jobs.add_argument("--status", default=None)
+    output_jobs.add_argument("--limit", type=int, default=20)
 
     create_session_cmd = subcommands.add_parser("create-session")
     create_session_cmd.add_argument("--title", default=None)
@@ -442,6 +448,24 @@ def main() -> None:
                         db,
                         session_id=args.session_id,
                         limit=args.limit,
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "output-ingestion":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "jobs": list_output_ingestion_jobs(
+                        db,
+                        limit=args.limit,
+                        status=args.status,
+                        session_id=args.session_id,
                     ),
                 },
                 indent=2,

@@ -1,4 +1,4 @@
-from mnemosyne.sessions.exchanges import bounded_limit, exchange_filter_query
+from mnemosyne.sessions.exchanges import bounded_limit, dedupe_ids, exchange_filter_query
 
 
 def test_exchange_filter_query_combines_session_runtime_and_text_filters() -> None:
@@ -19,3 +19,7 @@ def test_exchange_filter_query_combines_session_runtime_and_text_filters() -> No
 def test_exchange_filter_limit_is_bounded() -> None:
     assert bounded_limit(0) == 1
     assert bounded_limit(500) == 100
+
+
+def test_dedupe_ids_preserves_order() -> None:
+    assert dedupe_ids(["node1", "node2", "node1"]) == ["node1", "node2"]
