@@ -80,6 +80,7 @@ Python derives:
 - lexical terms: `Mnemosyne`, `technical`, `design`, `system`
 - exact phrases: `Mnemosyne technical`, `technical design`, `design system`
 - named anchors: `Mnemosyne`
+- near-match terms: bounded typo/near-token candidates when an initial search misses and a comparison vocabulary is available
 - suggested fallback searches: phrase probes first, then individual lexical terms
 
 This gives the memory-agent stable search handles without letting it invent or lose the user's substantive terms.
@@ -137,7 +138,7 @@ It:
 2. Combines planner query and original user query into a ranking query.
 3. Builds query assembly from both query surfaces.
 4. Calls `search_nodes()` against MongoDB.
-5. If no matches are found, tries fallback phrases and terms from query assembly.
+5. If no matches are found, augments query assembly with bounded near-match terms from document-title/source-path vocabulary, then tries fallback phrases, near-match candidates, and terms from query assembly.
 6. Records fallback probe counts.
 7. Deduplicates candidate nodes by `node_id`.
 8. Reranks candidates with `score_node_match()`.
@@ -233,6 +234,7 @@ Diagnostics include:
 - lexical terms;
 - exact phrases;
 - named anchors;
+- near-match terms;
 - fallback searches with result counts.
 
 This ordering keeps the answer model focused on source evidence while still exposing why retrieval selected the context it did.

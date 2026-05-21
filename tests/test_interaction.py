@@ -8,14 +8,17 @@ from mnemosyne.sessions.interaction import (
     execute_search_nodes_tool,
     fallback_queries,
     memory_agent_runtime_config,
+    near_match_terms,
     parse_memory_agent_decision,
     parse_tool_calls,
     prepare_tool_results_for_answer,
+    ranked_focus_matches,
     render_tool_results,
     included_nodes_from_tool_results,
     score_node_match,
     select_focus_node,
     summarize_tool_results_for_memory_agent,
+    vocabulary_terms,
 )
 
 
@@ -454,6 +457,7 @@ def test_build_memory_agent_prompt_includes_query_assembly_guidance() -> None:
     assert "- Lexical terms: Mnemosyne, technical, design, system" in prompt
     assert "- Exact phrases: Mnemosyne technical, technical design, design system" in prompt
     assert "- Named anchors: Mnemosyne" in prompt
+    assert "- Near-match terms: none" in prompt
     assert "- Suggested fallback searches: Mnemosyne technical" in prompt
 
 
@@ -479,6 +483,7 @@ def test_memory_agent_tool_summary_includes_search_diagnostics() -> None:
                         "lexical_terms": ["technical", "design"],
                         "exact_phrases": ["technical design"],
                         "anchor_terms": ["Mnemosyne"],
+                        "near_match_terms": [],
                     },
                     "fallback_queries": [
                         {"query": "technical design", "result_count": 3},
@@ -493,6 +498,7 @@ def test_memory_agent_tool_summary_includes_search_diagnostics() -> None:
         "lexical_terms": ["technical", "design"],
         "exact_phrases": ["technical design"],
         "anchor_terms": ["Mnemosyne"],
+        "near_match_terms": [],
     }
     assert summary[0]["fallback_queries"] == [
         {"query": "technical design", "result_count": 3},
@@ -577,6 +583,30 @@ def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
     assert any(item["query"] == "Mnemosyne" for item in details["fallback_queries"])
 
 
+def test_execute_search_nodes_tool_uses_near_match_terms_after_empty_search(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    calls = []
+
+    def fake_search_nodes(_db, query=None, label=None, limit=5):
+        calls.append(query)
+        if query == "technical":
+            return [{"node_id": "node1", "title": "Technical Design"}]
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "compile_context", lambda _db, _node_id: None)
+    monkeypatch.setattr(interaction, "near_match_vocabulary", lambda _db: ["technical"])
+
+    output, details = execute_search_nodes_tool(FakeDb(), query="tecnical")
+
+    assert output["matches"] == [{"node_id": "node1", "title": "Technical Design"}]
+    assert {"source_term": "tecnical", "candidate_term": "technical", "score": 0.94, "reason": "near_token_match"} in details[
+        "query_assembly"
+    ]["near_match_terms"]
+    assert "technical" in calls
+
+
 def test_execute_search_nodes_tool_uses_original_query_for_intent_terms(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 
@@ -618,6 +648,33 @@ def test_execute_search_nodes_tool_uses_original_query_for_intent_terms(monkeypa
         "system",
     ]
     assert any(item["query"] == "system" for item in details["fallback_queries"])
+
+
+def test_ranked_focus_matches_uses_near_match_terms_after_empty_search(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    calls = []
+
+    def fake_search_nodes(_db, query=None, label=None, limit=5):
+        calls.append(query)
+        if query == "technical":
+            return [
+                {
+                    "node_id": "node1",
+                    "title": "Technical Design",
+                    "text_preview": "Technical design note.",
+                    "labels": ["source_section"],
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "near_match_vocabulary", lambda _db: ["technical"])
+
+    matches = ranked_focus_matches(FakeDb(), query="tecnical", label=None, limit=3)
+
+    assert matches[0]["node_id"] == "node1"
+    assert "technical" in calls
 
 
 def test_execute_search_nodes_tool_compiles_top_match(monkeypatch) -> None:
@@ -825,6 +882,41 @@ def test_build_query_assembly_extracts_terms_phrases_and_anchors() -> None:
         "design system",
     ]
     assert assembly["anchor_terms"] == ["Mnemosyne"]
+    assert assembly["near_match_terms"] == []
+
+
+def test_build_query_assembly_can_include_near_match_terms() -> None:
+    assembly = build_query_assembly(
+        "tecnical desgin",
+        vocabulary=["technical", "design", "memory"],
+    )
+
+    assert assembly["near_match_terms"] == [
+        {
+            "source_term": "tecnical",
+            "candidate_term": "technical",
+            "score": 0.94,
+            "reason": "near_token_match",
+        },
+        {
+            "source_term": "desgin",
+            "candidate_term": "design",
+            "score": 0.83,
+            "reason": "near_token_match",
+        },
+    ]
+
+
+def test_near_match_terms_skips_exact_matches_and_low_scores() -> None:
+    assert near_match_terms(["technical", "zzzzzz"], ["technical", "design"]) == []
+
+
+def test_vocabulary_terms_extracts_bounded_content_terms() -> None:
+    assert vocabulary_terms(["Mnemosyne Technical Design", "/tmp/source.md"], limit=3) == [
+        "Mnemosyne",
+        "Technical",
+        "Design",
+    ]
 
 
 def test_fallback_queries_prefers_phrases_before_single_terms() -> None:
@@ -832,6 +924,18 @@ def test_fallback_queries_prefers_phrases_before_single_terms() -> None:
         "Mnemosyne technical",
         "technical design",
         "design system",
+    ]
+
+
+def test_fallback_queries_tries_near_matches_before_original_single_terms() -> None:
+    assembly = build_query_assembly("tecnical desgin", vocabulary=["technical", "design"])
+
+    assert fallback_queries(assembly) == [
+        "tecnical desgin",
+        "technical",
+        "design",
+        "tecnical",
+        "desgin",
     ]
 
 
@@ -1053,6 +1157,7 @@ def test_render_tool_results_renders_context_as_markdown() -> None:
     assert "- Lexical terms: system, Mnemosyne" in rendered
     assert "- Exact phrases: Mnemosyne system" in rendered
     assert "- Named anchors: Mnemosyne" in rendered
+    assert "- Near-match terms: none" in rendered
     assert "- Fallback searches: Mnemosyne system (2), system (5)" in rendered
     assert "#### Mnemosyne Context" in rendered
     assert "\n# Mnemosyne Context" not in rendered

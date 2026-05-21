@@ -78,6 +78,7 @@ The current implementation has added several scaffold features and operational d
   - lexical content terms;
   - adjacent exact phrases;
   - named anchors;
+  - bounded near-match terms when a comparison vocabulary is available;
   - suggested fallback searches.
 - Query assembly is injected into memory-agent prompts.
 - Query assembly and fallback probe counts are surfaced in process traces and final answer diagnostics.
@@ -120,8 +121,9 @@ Reason:
 - Tool traces need a compact explanation of why a search ran and how it was ranked.
 - Later semantic expansion can attach to the same contract instead of adding another opaque layer.
 
-Potential future fields:
+Current and potential future fields:
 
+- near-match token candidates;
 - fuzzy token variants;
 - synonym/sense candidates;
 - embedding candidate IDs;
@@ -202,15 +204,23 @@ However, it is relevant as a design pattern for semantic elasticity:
 - keep fuzzy matching deterministic and bounded;
 - treat fuzzy lexical results as candidate expansion, not final truth.
 
-Recommended adaptation for Mnemosyne:
+Implemented first adaptation:
+
+- query assembly now has `near_match_terms`;
+- near matches are generated only against a bounded vocabulary, currently document titles and source paths;
+- near-match candidates are used only after an empty initial search in direct focus selection and agentic/tool search;
+- fallback probes try exact phrases first, then near-match candidates, then original single terms;
+- process traces and prompts expose near matches as diagnostics.
+
+Recommended next adaptation:
 
 1. Do not port `jscompare` directly into production retrieval.
-2. Implement a Python fuzzy lexical helper behind the query assembly layer.
+2. Keep the Python helper behind the query assembly layer.
 3. Use standard-library or maintained Python options before adding a new dependency.
-4. Emit fuzzy variants in query assembly as a separate field, for example `fuzzy_terms`.
-5. Use fuzzy expansion only for candidate generation and fallback probes.
+4. Extend near-match vocabulary gradually to labels, active documents, and bounded title/source candidates.
+5. Use near-match expansion only for candidate generation and fallback probes.
 6. Cap comparisons aggressively to avoid O(n*m) scans across the full corpus.
-7. Keep exact source/provenance ranking above fuzzy similarity.
+7. Keep exact source/provenance ranking above near-token similarity.
 
 Possible first implementation:
 
@@ -266,7 +276,7 @@ As of 2026-05-21:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `114 passed`.
+- Current automated suite at last full run: `120 passed`.
 
 ## Recommended Next Work
 
@@ -279,7 +289,7 @@ Near-term consolidation:
 
 Next implementation candidates:
 
-1. Add fuzzy lexical query assembly field inspired by `jscompare`.
+1. Broaden near-match vocabulary carefully, starting with labels and active documents.
 2. Add source-document fallback when Mongo node retrieval fails.
 3. Add active document registry skeleton.
 4. Add graph edge schema and first typed relation writes.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from difflib import SequenceMatcher
 from typing import Any
 
 from pymongo.database import Database
@@ -22,6 +23,8 @@ from mnemosyne.sessions.exchanges import save_exchange
 
 TERMINAL_FALLBACK_REASONS = {"memory_agent_decision_failed"}
 ANSWER_CONTEXT_CHAR_BUDGET = 4000
+NEAR_MATCH_MIN_SCORE = 0.78
+NEAR_MATCH_MAX_VOCABULARY = 2000
 QUERY_STOPWORDS = {
     "what",
     "does",
@@ -319,6 +322,22 @@ def ranked_focus_matches(
                 if row["node_id"] not in seen:
                     seen.add(row["node_id"])
                     matches.append(row)
+        if not matches:
+            assembly = build_query_assembly(
+                cleaned_query,
+                vocabulary=near_match_vocabulary(db),
+            )
+            for fallback_query in fallback_queries(assembly):
+                fallback_results = search_nodes(
+                    db,
+                    query=fallback_query,
+                    label=label,
+                    limit=fallback_candidate_limit(limit),
+                )
+                for row in fallback_results:
+                    if row["node_id"] not in seen:
+                        seen.add(row["node_id"])
+                        matches.append(row)
     matches.sort(key=lambda row: score_node_match(row, assembly), reverse=True)
     return matches[:limit]
 
@@ -525,6 +544,7 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
                     "lexical_terms": query_assembly.get("lexical_terms") or [],
                     "exact_phrases": query_assembly.get("exact_phrases") or [],
                     "anchor_terms": query_assembly.get("anchor_terms") or [],
+                    "near_match_terms": query_assembly.get("near_match_terms") or [],
                 }
             fallback_queries = compact_fallback_query_details(
                 details.get("fallback_queries") or []
@@ -546,7 +566,7 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
 def query_assembly_has_values(assembly: dict[str, Any]) -> bool:
     return any(
         assembly.get(key)
-        for key in ["lexical_terms", "exact_phrases", "anchor_terms"]
+        for key in ["lexical_terms", "exact_phrases", "anchor_terms", "near_match_terms"]
     )
 
 
@@ -721,6 +741,12 @@ def execute_search_nodes_tool(
         "fallback_queries": [],
     }
     if not matches and ranking_query:
+        query_assembly = build_query_assembly(
+            cleaned_query,
+            original_query,
+            vocabulary=near_match_vocabulary(db),
+        )
+        details["query_assembly"] = query_assembly
         seen = {row["node_id"] for row in matches}
         for fallback_query in fallback_queries(query_assembly):
             fallback_results = search_nodes(
@@ -773,6 +799,7 @@ def combined_query_text(query: str | None, original_query: str | None) -> str | 
 def build_query_assembly(
     query: str | None,
     original_query: str | None = None,
+    vocabulary: list[str] | None = None,
 ) -> dict[str, Any]:
     ranking_query = combined_query_text(query, original_query)
     if not ranking_query:
@@ -781,6 +808,7 @@ def build_query_assembly(
             "lexical_terms": [],
             "exact_phrases": [],
             "anchor_terms": [],
+            "near_match_terms": [],
         }
     tokens = re.findall(r"[A-Za-z0-9]+", ranking_query)
     lexical_terms = dedupe_preserve_order(
@@ -801,6 +829,7 @@ def build_query_assembly(
         "lexical_terms": lexical_terms,
         "exact_phrases": exact_phrases,
         "anchor_terms": anchor_terms,
+        "near_match_terms": near_match_terms(lexical_terms, vocabulary or []),
     }
 
 
@@ -810,6 +839,7 @@ def render_query_assembly_guidance(assembly: dict[str, Any]) -> str:
             f"- Lexical terms: {format_list_for_prompt(assembly.get('lexical_terms'))}",
             f"- Exact phrases: {format_list_for_prompt(assembly.get('exact_phrases'))}",
             f"- Named anchors: {format_list_for_prompt(assembly.get('anchor_terms'))}",
+            f"- Near-match terms: {format_near_matches_for_prompt(assembly.get('near_match_terms'))}",
             f"- Suggested fallback searches: {format_list_for_prompt(fallback_queries(assembly))}",
         ]
     )
@@ -819,6 +849,21 @@ def format_list_for_prompt(values: Any) -> str:
     if not values:
         return "none"
     return ", ".join(str(value) for value in values)
+
+
+def format_near_matches_for_prompt(values: Any) -> str:
+    if not values:
+        return "none"
+    formatted = []
+    for item in values:
+        if not isinstance(item, dict):
+            continue
+        source = item.get("source_term")
+        candidate = item.get("candidate_term")
+        score = item.get("score")
+        if source and candidate:
+            formatted.append(f"{source}->{candidate} ({score})")
+    return ", ".join(formatted) if formatted else "none"
 
 
 def is_query_content_term(term: str) -> bool:
@@ -849,6 +894,11 @@ def fallback_queries(query: str | dict[str, Any]) -> list[str]:
     assembly = query if isinstance(query, dict) else build_query_assembly(query)
     candidates = list(assembly.get("exact_phrases") or [])
     candidates.extend(
+        item["candidate_term"]
+        for item in assembly.get("near_match_terms") or []
+        if isinstance(item, dict) and item.get("candidate_term")
+    )
+    candidates.extend(
         sorted(assembly.get("lexical_terms") or [], key=len, reverse=True)
     )
     return dedupe_preserve_order(candidates)[:8]
@@ -860,6 +910,11 @@ def score_node_match(row: dict[str, Any], query: str | dict[str, Any] | None) ->
     if not ranking_query:
         return 0
     terms = [term.lower() for term in assembly.get("lexical_terms", [])]
+    near_terms = [
+        str(item.get("candidate_term")).lower()
+        for item in assembly.get("near_match_terms", [])
+        if isinstance(item, dict) and item.get("candidate_term")
+    ]
     phrases = [phrase.lower() for phrase in assembly.get("exact_phrases", [])]
     title = (row.get("title") or "").lower()
     text = (row.get("text_preview") or "").lower()
@@ -885,6 +940,11 @@ def score_node_match(row: dict[str, Any], query: str | dict[str, Any] | None) ->
                 score += 10
             if term in text:
                 score += 3
+    for term in near_terms:
+        if term in title:
+            score += 3
+        if term in text:
+            score += 1
     anchor_terms = [term.lower() for term in assembly.get("anchor_terms", [])]
     for anchor in set(anchor_terms):
         if anchor in searchable:
@@ -904,6 +964,77 @@ def score_node_match(row: dict[str, Any], query: str | dict[str, Any] | None) ->
     if is_low_content_match(row, text):
         score -= 40
     return score
+
+
+def near_match_vocabulary(db: Database, limit: int = NEAR_MATCH_MAX_VOCABULARY) -> list[str]:
+    values = []
+    if not hasattr(db, "documents"):
+        return []
+    for document in db.documents.find({}, {"title": 1, "source.path": 1}).limit(limit):
+        values.append(document.get("title"))
+        source = document.get("source") or {}
+        values.append(source.get("path"))
+    return vocabulary_terms(values, limit=limit)
+
+
+def vocabulary_terms(values: list[Any], limit: int = NEAR_MATCH_MAX_VOCABULARY) -> list[str]:
+    terms = []
+    seen = set()
+    for value in values:
+        for term in re.findall(r"[A-Za-z0-9]+", str(value or "")):
+            key = term.lower()
+            if key in seen or not is_query_content_term(term):
+                continue
+            seen.add(key)
+            terms.append(term)
+            if len(terms) >= limit:
+                return terms
+    return terms
+
+
+def near_match_terms(
+    source_terms: list[str],
+    vocabulary: list[str],
+    min_score: float = NEAR_MATCH_MIN_SCORE,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    matches = []
+    seen = set()
+    vocabulary_by_key = {
+        term.lower(): term
+        for term in vocabulary
+        if is_query_content_term(term)
+    }
+    for source_term in source_terms:
+        source_key = source_term.lower()
+        if source_key in vocabulary_by_key:
+            continue
+        best_candidate = None
+        best_score = 0.0
+        for candidate_key, candidate_term in vocabulary_by_key.items():
+            if abs(len(source_key) - len(candidate_key)) > 2:
+                continue
+            score = SequenceMatcher(None, source_key, candidate_key).ratio()
+            if score > best_score:
+                best_candidate = candidate_term
+                best_score = score
+        if not best_candidate or best_score < min_score:
+            continue
+        key = (source_key, best_candidate.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        matches.append(
+            {
+                "source_term": source_term,
+                "candidate_term": best_candidate,
+                "score": round(best_score, 2),
+                "reason": "near_token_match",
+            }
+        )
+        if len(matches) >= limit:
+            break
+    return matches
 
 
 def is_document_metadata_match(title: str, text: str) -> bool:
@@ -1063,6 +1194,7 @@ def render_search_details_lines(details: dict[str, Any]) -> list[str]:
                 f"- Lexical terms: {format_list_for_prompt(assembly.get('lexical_terms'))}",
                 f"- Exact phrases: {format_list_for_prompt(assembly.get('exact_phrases'))}",
                 f"- Named anchors: {format_list_for_prompt(assembly.get('anchor_terms'))}",
+                f"- Near-match terms: {format_near_matches_for_prompt(assembly.get('near_match_terms'))}",
             ]
         )
     fallback_details = details.get("fallback_queries") or []
