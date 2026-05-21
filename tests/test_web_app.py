@@ -66,6 +66,42 @@ def test_session_endpoints() -> None:
     )
 
 
+def test_active_documents_endpoint_filters_by_session() -> None:
+    client = TestClient(app)
+    db = get_database(load_config().mongo)
+    session_id = "web-active-documents-test"
+    db.active_documents.delete_many({"session_id": session_id})
+    now = datetime.now(timezone.utc)
+    db.active_documents.insert_one(
+        {
+            "schema_version": 1,
+            "session_id": session_id,
+            "document_id": str(ObjectId()),
+            "title": "Active Doc",
+            "source": {"path": "active.md"},
+            "labels": ["source_section"],
+            "node_ids": [str(ObjectId())],
+            "reference_count": 1,
+            "first_referenced_at": now,
+            "last_referenced_at": now,
+        }
+    )
+
+    try:
+        response = client.get(
+            "/api/active-documents",
+            params={"session_id": session_id, "limit": 5},
+        )
+    finally:
+        db.active_documents.delete_many({"session_id": session_id})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["session_id"] == session_id
+    assert data["documents"][0]["title"] == "Active Doc"
+
+
 def test_history_endpoint_filters_seeded_rows() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)

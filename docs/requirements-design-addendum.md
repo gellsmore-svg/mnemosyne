@@ -87,6 +87,8 @@ The current implementation has added several scaffold features and operational d
 ### Observability And Persistence
 
 - Ask/chat/history flows persist exchanges.
+- Saved exchanges update a session-scoped active document registry from answer `used_node_ids`.
+- Active document records preserve document ID, title, source metadata, labels, referenced node IDs, and reference counts.
 - Web and CLI answer calls expose structured process traces.
 - Process traces include prompt intake, memory-agent iterations, tool calls, retrieval/context assembly, and answer adapter execution.
 - `.restart.md` is maintained manually as a working restart note; it is still not the required graph-backed restart state source of truth.
@@ -240,7 +242,7 @@ The following are still deferred and should not be implied as complete:
 - proximity scoring;
 - semantic map and sense clusters;
 - embedding/vector search;
-- active document registry;
+- active document registry beyond the current used-node capture skeleton;
 - graph-backed restart state node;
 - natural-language endorsement writes;
 - traversal scoring feedback;
@@ -276,7 +278,7 @@ As of 2026-05-21:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `120 passed`.
+- Current automated suite at last full run: `126 passed`.
 
 ## Recommended Next Work
 

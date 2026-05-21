@@ -33,6 +33,7 @@ from mnemosyne.retrieval.queries import (
     render_context_document,
     search_nodes,
 )
+from mnemosyne.sessions.active_documents import list_active_documents
 from mnemosyne.sessions.exchanges import recent_exchanges
 from mnemosyne.sessions.interaction import answer_query
 from mnemosyne.sessions.registry import create_session, list_sessions
@@ -186,6 +187,10 @@ def main() -> None:
     subcommands.add_parser("queue-status")
     subcommands.add_parser("labels")
     subcommands.add_parser("sessions")
+
+    active_documents = subcommands.add_parser("active-documents")
+    active_documents.add_argument("--session-id", default="default")
+    active_documents.add_argument("--limit", type=int, default=20)
 
     create_session_cmd = subcommands.add_parser("create-session")
     create_session_cmd.add_argument("--title", default=None)
@@ -424,6 +429,24 @@ def main() -> None:
     if args.command == "sessions":
         ensure_indexes(db)
         print(json.dumps({"ok": True, "sessions": list_sessions(db)}, indent=2))
+        return
+
+    if args.command == "active-documents":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "session_id": args.session_id,
+                    "documents": list_active_documents(
+                        db,
+                        session_id=args.session_id,
+                        limit=args.limit,
+                    ),
+                },
+                indent=2,
+            )
+        )
         return
 
     if args.command == "create-session":

@@ -97,6 +97,8 @@ def ensure_indexes(db: Database) -> None:
     db.exchanges.create_index("focus_node_id")
     db.sessions.create_index("session_id", unique=True)
     db.sessions.create_index("updated_at")
+    db.active_documents.create_index([("session_id", 1), ("last_referenced_at", -1)])
+    db.active_documents.create_index([("session_id", 1), ("document_id", 1)], unique=True)
     db.label_definitions.create_index("key", unique=True)
     for definition in LABEL_DEFINITIONS:
         db.label_definitions.update_one(

@@ -7,6 +7,7 @@ from typing import Any
 from bson import ObjectId
 from pymongo.database import Database
 
+from mnemosyne.sessions.active_documents import record_active_documents
 from mnemosyne.sessions.registry import touch_session
 
 
@@ -25,6 +26,10 @@ def save_exchange(
 ) -> str:
     now = utc_now()
     touch_session(db, session_id)
+    used_node_ids = [str(node_id) for node_id in answer.get("used_node_ids", [])]
+    if focus_node_id:
+        used_node_ids.append(focus_node_id)
+    active_document_ids = record_active_documents(db, session_id, used_node_ids)
     result = db.exchanges.insert_one(
         {
             "schema_version": 1,
@@ -34,6 +39,7 @@ def save_exchange(
             "answer": answer,
             "prompt_budget": prompt.get("budget", {}),
             "context_metadata": prompt.get("context_metadata", {}),
+            "active_document_ids": active_document_ids,
             "process_trace": process_trace or [],
             "created_at": now,
         }

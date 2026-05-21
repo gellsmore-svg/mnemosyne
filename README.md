@@ -42,6 +42,7 @@ The domain is in early scaffold mode. The imported requirements and design docum
 .venv/bin/mnemosyne queue-recent --limit 5
 .venv/bin/mnemosyne labels
 .venv/bin/mnemosyne sessions
+.venv/bin/mnemosyne active-documents --session-id default
 .venv/bin/mnemosyne create-session --title "Design review"
 .venv/bin/mnemosyne backfill-schema-metadata
 .venv/bin/mnemosyne show-tree <document_id>
