@@ -116,6 +116,7 @@ Current early read surface:
 - saved exchange records in MongoDB.
 - active document records are updated from answer `used_node_ids`, preserving session/document/source/node references for later continuity and endorsement work.
 - first iterative memory-agent retrieval loop: memory-agent model emits bounded JSON tool calls, Mnemosyne executes allowed retrieval tools, feeds observations back to the memory-agent, and only then calls the final answer model.
+- memory-agent prompts include the current session ID and compact active document summaries; the read-only tool surface includes `list_active_documents`.
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
 - memory-agent search fallback and lexical ranking, with full console tool output but top-ranked context packaged for the answer model.
 
@@ -126,7 +127,7 @@ Known gaps after reconciliation:
 - destructive rebuild commands are maintenance-only and require `--force-replace`; versioned replacement remains unimplemented;
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
 - the compiled context corpus does not yet match the full technical design schema;
-- active document registry is only a first skeleton populated from used nodes; it does not yet drive retrieval, endorsement, or restart state.
+- active document registry is only a first skeleton populated from used nodes and visible to the memory-agent; it does not yet drive deterministic retrieval, endorsement, or restart state.
 - restart state node, endorsement, output ingestion, traversal scoring, and REM consolidation are not started.
 
 Minimum build:

@@ -210,7 +210,7 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
     monkeypatch.setattr(
         interaction,
         "execute_tool_calls",
-        lambda _db, calls, original_query=None: [
+        lambda _db, calls, original_query=None, session_id="default": [
             {
                 "index": 0,
                 "tool": calls[0]["tool"],
@@ -259,8 +259,9 @@ def test_agentic_answer_query_falls_back_when_planner_stops_without_tools(monkey
                 "used_node_ids": ["node1"],
             }
 
-    def fake_execute_tool_calls(_db, calls, original_query=None):
+    def fake_execute_tool_calls(_db, calls, original_query=None, session_id="default"):
         executed.extend(calls)
+        assert session_id == "default"
         return [
             {
                 "index": 0,
@@ -326,7 +327,7 @@ def test_agentic_answer_query_stops_after_parse_failure_fallback_context(monkeyp
             }
 
     monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
-    def fake_execute_tool_calls(_db, calls, original_query=None):
+    def fake_execute_tool_calls(_db, calls, original_query=None, session_id="default"):
         executed.extend(calls)
         return [
             {
@@ -424,7 +425,7 @@ def test_agentic_answer_query_stops_when_planner_fails_after_context(monkeypatch
     monkeypatch.setattr(
         interaction,
         "execute_tool_calls",
-        lambda _db, calls, original_query=None: [
+        lambda _db, calls, original_query=None, session_id="default": [
             {
                 "index": 0,
                 "tool": calls[0]["tool"],
@@ -472,6 +473,16 @@ def test_parse_memory_agent_decision_accepts_done_status() -> None:
     }
 
 
+def test_parse_memory_agent_decision_accepts_active_document_tool() -> None:
+    decision = parse_memory_agent_decision(
+        '{"status":"continue","tool_calls":[{"tool":"list_active_documents","arguments":{"limit":3}}]}'
+    )
+
+    assert decision["tool_calls"] == [
+        {"tool": "list_active_documents", "arguments": {"limit": 3}}
+    ]
+
+
 def test_memory_agent_runtime_can_differ_from_answer_runtime() -> None:
     runtime = RuntimeConfig(
         answer_adapter="ollama_cli",
@@ -495,6 +506,13 @@ def test_build_memory_agent_prompt_includes_query_assembly_guidance() -> None:
     prompt = build_memory_agent_prompt(
         query="What does the Mnemosyne technical design say the system is for?",
         focus_node_id=None,
+        session_id="design-session",
+        active_documents=[
+            {
+                "document_id": "doc1",
+                "title": "Mnemosyne Technical Design",
+            }
+        ],
         history=[],
     )
 
@@ -504,6 +522,8 @@ def test_build_memory_agent_prompt_includes_query_assembly_guidance() -> None:
     assert "- Named anchors: Mnemosyne" in prompt
     assert "- Near-match terms: none" in prompt
     assert "- Suggested fallback searches: Mnemosyne technical" in prompt
+    assert "session_id: design-session" in prompt
+    assert "Mnemosyne Technical Design" in prompt
 
 
 def test_memory_agent_tool_summary_includes_search_diagnostics() -> None:
@@ -626,6 +646,37 @@ def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
     assert calls[0] == "technical desig design Mnemosyne"
     assert "desig design" in details["query_assembly"]["exact_phrases"]
     assert any(item["query"] == "Mnemosyne" for item in details["fallback_queries"])
+
+
+def test_execute_tool_calls_can_list_active_documents(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    monkeypatch.setattr(
+        interaction,
+        "list_active_documents",
+        lambda _db, session_id, limit=5: [
+            {
+                "session_id": session_id,
+                "document_id": "doc1",
+                "title": "Active Doc",
+            }
+        ][:limit],
+    )
+
+    results = interaction.execute_tool_calls(
+        FakeDb(),
+        [{"tool": "list_active_documents", "arguments": {"limit": 1}}],
+        session_id="design",
+    )
+
+    assert results[0]["ok"] is True
+    assert results[0]["output"] == [
+        {
+            "session_id": "design",
+            "document_id": "doc1",
+            "title": "Active Doc",
+        }
+    ]
 
 
 def test_execute_search_nodes_tool_uses_near_match_terms_after_empty_search(monkeypatch) -> None:

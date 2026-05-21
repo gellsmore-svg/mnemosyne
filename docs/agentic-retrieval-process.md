@@ -49,6 +49,8 @@ Python injects:
 - allowed tools and their argument shapes;
 - planner rules, including the three-tool-call cap;
 - optional `focus_node_id`;
+- current `session_id`;
+- compact active document summaries for the session;
 - deterministic query assembly guidance;
 - summarized prior memory-agent iterations;
 - the original user prompt.
@@ -116,6 +118,7 @@ Supported read-only tools are:
 
 - `search_nodes`
 - `compile_context`
+- `list_active_documents`
 - `list_documents`
 
 `execute_tool_calls()` wraps every tool result with:

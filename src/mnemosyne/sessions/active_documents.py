@@ -98,6 +98,8 @@ def documents_by_id(db: Database, document_ids: list[ObjectId]) -> dict[str, dic
 
 
 def list_active_documents(db: Database, session_id: str, limit: int = 20) -> list[dict[str, Any]]:
+    if not hasattr(db, "active_documents"):
+        return []
     rows = db.active_documents.find({"session_id": session_id}).sort("last_referenced_at", -1).limit(limit)
     return [serialize_active_document(row) for row in rows]
 

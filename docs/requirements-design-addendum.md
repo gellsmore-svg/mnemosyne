@@ -61,9 +61,11 @@ The current implementation has added several scaffold features and operational d
 
 - Agentic mode separates the memory-agent role from the final answer role at the configuration/orchestration layer.
 - Memory-agent calls can use a separate adapter/model from the final answer adapter/model.
+- Memory-agent prompts include the current session ID and compact active document summaries.
 - The memory-agent receives an injected tool interface for:
   - `search_nodes`;
   - `compile_context`;
+  - `list_active_documents`;
   - `list_documents`.
 - The memory-agent is instructed to return strict JSON decisions with either `continue` plus tool calls or `done`.
 - Python executes tool calls, records structured tool results, and feeds compact summaries back into later memory-agent iterations.
@@ -89,6 +91,7 @@ The current implementation has added several scaffold features and operational d
 - Ask/chat/history flows persist exchanges.
 - Saved exchanges update a session-scoped active document registry from answer `used_node_ids`.
 - Active document records preserve document ID, title, source metadata, labels, referenced node IDs, and reference counts.
+- Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.
 - Web and CLI answer calls expose structured process traces.
 - Process traces include prompt intake, memory-agent iterations, tool calls, retrieval/context assembly, and answer adapter execution.
 - `.restart.md` is maintained manually as a working restart note; it is still not the required graph-backed restart state source of truth.
@@ -242,7 +245,7 @@ The following are still deferred and should not be implied as complete:
 - proximity scoring;
 - semantic map and sense clusters;
 - embedding/vector search;
-- active document registry beyond the current used-node capture skeleton;
+- active document registry beyond the current used-node capture and read-only memory-agent visibility skeleton;
 - graph-backed restart state node;
 - natural-language endorsement writes;
 - traversal scoring feedback;

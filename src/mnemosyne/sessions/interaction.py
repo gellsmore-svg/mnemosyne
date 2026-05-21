@@ -18,6 +18,7 @@ from mnemosyne.retrieval.queries import (
     render_record,
     search_nodes,
 )
+from mnemosyne.sessions.active_documents import list_active_documents
 from mnemosyne.sessions.exchanges import save_exchange
 
 
@@ -219,6 +220,7 @@ def answer_query_agentic(
         runtime_config=runtime_config,
         query=query,
         focus_node_id=focus_node_id,
+        session_id=session_id,
         max_iterations=config.retrieval.memory_agent_max_iterations,
         process_trace=process_trace,
     )
@@ -343,12 +345,20 @@ def ranked_focus_matches(
 
 
 def build_planner_prompt(query: str, focus_node_id: str | None = None) -> str:
-    return build_memory_agent_prompt(query=query, focus_node_id=focus_node_id, history=[])
+    return build_memory_agent_prompt(
+        query=query,
+        focus_node_id=focus_node_id,
+        session_id="default",
+        active_documents=[],
+        history=[],
+    )
 
 
 def build_memory_agent_prompt(
     query: str,
     focus_node_id: str | None,
+    session_id: str,
+    active_documents: list[dict[str, Any]],
     history: list[dict[str, Any]],
 ) -> str:
     query_assembly = build_query_assembly(query)
@@ -368,11 +378,16 @@ def build_memory_agent_prompt(
             "- Use search_nodes for ordinary text queries.",
             "- Preserve the user's substantive intent terms in search_nodes queries.",
             "- Use compile_context when a focus_node_id is provided or a specific node id is known.",
+            "- Use list_active_documents when session context may help resolve references such as this document, the previous source, or active project material.",
             "- Use list_documents only when the user asks what documents are available.",
             "- Use at most 3 tool calls per iteration.",
             "- Stop only when context is sufficient, clearly insufficient, or no further read-only tool call is useful.",
             "",
             f"focus_node_id: {focus_node_id or 'none'}",
+            f"session_id: {session_id}",
+            "",
+            "Active documents:",
+            json.dumps(active_documents, indent=2, default=str),
             "",
             "Query assembly:",
             render_query_assembly_guidance(query_assembly),
@@ -391,6 +406,7 @@ def run_memory_agent_loop(
     runtime_config,
     query: str,
     focus_node_id: str | None,
+    session_id: str,
     max_iterations: int,
     process_trace: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -401,6 +417,8 @@ def run_memory_agent_loop(
         memory_prompt = build_memory_agent_prompt(
             query=query,
             focus_node_id=focus_node_id,
+            session_id=session_id,
+            active_documents=list_active_documents(db, session_id=session_id, limit=5),
             history=history,
         )
         step = {
@@ -468,7 +486,12 @@ def run_memory_agent_loop(
             }
             break
 
-        tool_results = execute_tool_calls(db, tool_calls, original_query=query)
+        tool_results = execute_tool_calls(
+            db,
+            tool_calls,
+            original_query=query,
+            session_id=session_id,
+        )
         all_tool_results.extend(tool_results)
         history.append(
             {
@@ -604,6 +627,12 @@ def allowed_tool_specs() -> list[dict[str, Any]]:
             },
         },
         {
+            "tool": "list_active_documents",
+            "arguments": {
+                "limit": "optional integer, max 10",
+            },
+        },
+        {
             "tool": "list_documents",
             "arguments": {
                 "limit": "optional integer, max 10",
@@ -652,7 +681,7 @@ def normalize_tool_call(call: Any) -> dict[str, Any]:
     if not isinstance(call, dict):
         raise ValueError("Each tool call must be an object.")
     tool = call.get("tool")
-    if tool not in {"search_nodes", "compile_context", "list_documents"}:
+    if tool not in {"search_nodes", "compile_context", "list_active_documents", "list_documents"}:
         raise ValueError(f"Unsupported planner tool: {tool}")
     arguments = call.get("arguments") or {}
     if not isinstance(arguments, dict):
@@ -664,6 +693,7 @@ def execute_tool_calls(
     db: Database,
     tool_calls: list[dict[str, Any]],
     original_query: str | None = None,
+    session_id: str = "default",
 ) -> list[dict[str, Any]]:
     results = []
     for index, call in enumerate(tool_calls):
@@ -686,6 +716,12 @@ def execute_tool_calls(
                 output = compile_context(db, node_id)
             elif tool == "list_documents":
                 output = list_documents(db, limit=bounded_limit(arguments.get("limit"), default=5))
+            elif tool == "list_active_documents":
+                output = list_active_documents(
+                    db,
+                    session_id=session_id,
+                    limit=bounded_limit(arguments.get("limit"), default=5),
+                )
             else:
                 raise ValueError(f"Unsupported tool: {tool}")
             results.append(
