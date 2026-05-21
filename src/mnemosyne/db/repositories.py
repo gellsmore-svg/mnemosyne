@@ -62,20 +62,32 @@ def rebuild_document(db: Database, document_id: str, result: IngestionResult) ->
     if not existing:
         raise ValueError(f"Document not found: {document_id}")
 
+    previous_trees = list(db.trees.find({"document_id": object_id}))
+    previous_nodes = list(db.nodes.find({"document_id": object_id}))
     db.nodes.delete_many({"document_id": object_id})
     db.trees.delete_many({"document_id": object_id})
-    db.documents.update_one(
-        {"_id": object_id},
-        {
-            "$set": {
-                "title": result.title,
-                "summary": result.summary,
-                "source": result.source.model_dump(),
-                "updated_at": result.created_at,
-            }
-        },
-    )
-    inserted = insert_tree_nodes(db, object_id, result)
+    try:
+        db.documents.update_one(
+            {"_id": object_id},
+            {
+                "$set": {
+                    "title": result.title,
+                    "summary": result.summary,
+                    "source": result.source.model_dump(),
+                    "updated_at": result.created_at,
+                }
+            },
+        )
+        inserted = insert_tree_nodes(db, object_id, result)
+    except Exception:
+        db.nodes.delete_many({"document_id": object_id})
+        db.trees.delete_many({"document_id": object_id})
+        db.documents.replace_one({"_id": object_id}, existing)
+        if previous_trees:
+            db.trees.insert_many(previous_trees)
+        if previous_nodes:
+            db.nodes.insert_many(previous_nodes)
+        raise
     return {
         "document_id": str(object_id),
         "replaced": True,
