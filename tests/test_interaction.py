@@ -4,6 +4,7 @@ from mnemosyne.sessions.interaction import (
     build_memory_agent_prompt,
     build_query_assembly,
     combined_query_text,
+    compact_fallback_query_details,
     execute_search_nodes_tool,
     fallback_queries,
     memory_agent_runtime_config,
@@ -14,6 +15,7 @@ from mnemosyne.sessions.interaction import (
     included_nodes_from_tool_results,
     score_node_match,
     select_focus_node,
+    summarize_tool_results_for_memory_agent,
 )
 
 
@@ -453,6 +455,100 @@ def test_build_memory_agent_prompt_includes_query_assembly_guidance() -> None:
     assert "- Exact phrases: Mnemosyne technical, technical design, design system" in prompt
     assert "- Named anchors: Mnemosyne" in prompt
     assert "- Suggested fallback searches: Mnemosyne technical" in prompt
+
+
+def test_memory_agent_tool_summary_includes_search_diagnostics() -> None:
+    summary = summarize_tool_results_for_memory_agent(
+        [
+            {
+                "tool": "search_nodes",
+                "arguments": {"query": "technical design"},
+                "ok": True,
+                "output": {
+                    "matches": [
+                        {
+                            "node_id": "node1",
+                            "title": "System Name",
+                            "labels": ["source_section"],
+                            "text_preview": "Mnemosyne is a memory layer.",
+                        }
+                    ]
+                },
+                "details": {
+                    "query_assembly": {
+                        "lexical_terms": ["technical", "design"],
+                        "exact_phrases": ["technical design"],
+                        "anchor_terms": ["Mnemosyne"],
+                    },
+                    "fallback_queries": [
+                        {"query": "technical design", "result_count": 3},
+                        {"query": "design", "result_count": 10},
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert summary[0]["query_assembly"] == {
+        "lexical_terms": ["technical", "design"],
+        "exact_phrases": ["technical design"],
+        "anchor_terms": ["Mnemosyne"],
+    }
+    assert summary[0]["fallback_queries"] == [
+        {"query": "technical design", "result_count": 3},
+        {"query": "design", "result_count": 10},
+    ]
+
+
+def test_memory_agent_tool_summary_omits_missing_search_diagnostics() -> None:
+    summary = summarize_tool_results_for_memory_agent(
+        [
+            {
+                "tool": "search_nodes",
+                "arguments": {"query": "memory"},
+                "ok": True,
+                "output": {"matches": []},
+            }
+        ]
+    )
+
+    assert "query_assembly" not in summary[0]
+    assert "fallback_queries" not in summary[0]
+
+
+def test_memory_agent_tool_summary_omits_empty_query_assembly() -> None:
+    summary = summarize_tool_results_for_memory_agent(
+        [
+            {
+                "tool": "search_nodes",
+                "arguments": {"query": "what does the"},
+                "ok": True,
+                "output": {"matches": []},
+                "details": {
+                    "query_assembly": {
+                        "lexical_terms": [],
+                        "exact_phrases": [],
+                        "anchor_terms": [],
+                    }
+                },
+            }
+        ]
+    )
+
+    assert "query_assembly" not in summary[0]
+
+
+def test_compact_fallback_query_details_skips_missing_queries_and_caps() -> None:
+    items = [{"result_count": 99}]
+    items.extend({"query": f"q{index}", "result_count": index} for index in range(7))
+
+    assert compact_fallback_query_details(items) == [
+        {"query": "q0", "result_count": 0},
+        {"query": "q1", "result_count": 1},
+        {"query": "q2", "result_count": 2},
+        {"query": "q3", "result_count": 3},
+        {"query": "q4", "result_count": 4},
+    ]
 
 
 def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:

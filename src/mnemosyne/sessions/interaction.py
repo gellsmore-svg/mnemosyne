@@ -508,6 +508,8 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
         }
         if result.get("tool") == "search_nodes" and isinstance(output, dict):
             matches = output.get("matches") or []
+            details = result.get("details") or {}
+            query_assembly = details.get("query_assembly") or {}
             item["match_count"] = len(matches)
             item["top_matches"] = [
                 {
@@ -518,6 +520,17 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
                 }
                 for match in matches[:5]
             ]
+            if query_assembly_has_values(query_assembly):
+                item["query_assembly"] = {
+                    "lexical_terms": query_assembly.get("lexical_terms") or [],
+                    "exact_phrases": query_assembly.get("exact_phrases") or [],
+                    "anchor_terms": query_assembly.get("anchor_terms") or [],
+                }
+            fallback_queries = compact_fallback_query_details(
+                details.get("fallback_queries") or []
+            )
+            if fallback_queries:
+                item["fallback_queries"] = fallback_queries
         elif isinstance(output, dict):
             item["output_keys"] = sorted(output.keys())
             if output.get("focus_node_id"):
@@ -528,6 +541,30 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
             item["error"] = result.get("error")
         summary.append(item)
     return summary
+
+
+def query_assembly_has_values(assembly: dict[str, Any]) -> bool:
+    return any(
+        assembly.get(key)
+        for key in ["lexical_terms", "exact_phrases", "anchor_terms"]
+    )
+
+
+def compact_fallback_query_details(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    compact = []
+    for item in items:
+        query = item.get("query")
+        if not query:
+            continue
+        compact.append(
+            {
+                "query": query,
+                "result_count": item.get("result_count", 0),
+            }
+        )
+        if len(compact) >= 5:
+            break
+    return compact
 
 
 def allowed_tool_specs() -> list[dict[str, Any]]:
