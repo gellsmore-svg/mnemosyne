@@ -39,6 +39,7 @@ def test_serialize_document_handles_source_and_dates() -> None:
 
 
 def test_serialize_node_returns_preview_and_ids() -> None:
+    last_used_at = datetime(2026, 1, 3, tzinfo=timezone.utc)
     node = {
         "_id": "node1",
         "document_id": "doc1",
@@ -50,6 +51,8 @@ def test_serialize_node_returns_preview_and_ids() -> None:
         "text": "x" * 400,
         "labels": ["source_root"],
         "endorsement_label": "unreviewed",
+        "usage_score": 7,
+        "last_used_at": last_used_at,
         "provenance": {"adapter": "mock"},
         "created_at": None,
     }
@@ -59,6 +62,21 @@ def test_serialize_node_returns_preview_and_ids() -> None:
     assert serialized["node_id"] == "node1"
     assert serialized["document_id"] == "doc1"
     assert serialized["text_preview"] == "x" * 300
+    assert serialized["usage_score"] == 7
+    assert serialized["last_used_at"] == "2026-01-03T00:00:00+00:00"
+
+
+def test_serialize_node_bounds_malformed_usage_score() -> None:
+    node = {
+        "_id": "node1",
+        "document_id": "doc1",
+        "tree_id": "tree1",
+        "title": "Title",
+        "text": "text",
+        "usage_score": "many",
+    }
+
+    assert serialize_node(node)["usage_score"] == 0
 
 
 def test_parse_iso_datetime_accepts_z_suffix() -> None:
@@ -367,6 +385,53 @@ def test_node_search_score_penalizes_unreviewed_generated_output() -> None:
     }
 
     assert node_search_score(source, "memory") > node_search_score(generated, "memory")
+
+
+def test_node_search_score_adds_bounded_usage_signal() -> None:
+    unused = {
+        "title": "Memory note",
+        "text": "memory context",
+        "labels": ["source_chunk"],
+        "endorsement_label": "unreviewed",
+        "usage_score": 0,
+    }
+    heavily_used = {
+        **unused,
+        "usage_score": 50,
+    }
+
+    assert node_search_score(heavily_used, "memory") == node_search_score(unused, "memory") + 10
+
+
+def test_usage_signal_does_not_outweigh_rejection_penalty() -> None:
+    unreviewed = {
+        "title": "Memory note",
+        "text": "memory context",
+        "labels": ["source_chunk"],
+        "endorsement_label": "unreviewed",
+    }
+    rejected_used = {
+        **unreviewed,
+        "endorsement_label": "rejected",
+        "usage_score": 100,
+    }
+
+    assert node_search_score(unreviewed, "memory") > node_search_score(rejected_used, "memory")
+
+
+def test_node_search_sort_key_uses_last_used_at_after_score_ties() -> None:
+    older = {
+        "title": "Memory note",
+        "text": "memory context",
+        "labels": ["source_chunk"],
+        "last_used_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+    }
+    newer = {
+        **older,
+        "last_used_at": datetime(2026, 1, 2, tzinfo=timezone.utc),
+    }
+
+    assert node_search_sort_key(newer, "memory") > node_search_sort_key(older, "memory")
 
 
 def test_node_search_score_prefers_specific_chunk_over_large_container_section() -> None:

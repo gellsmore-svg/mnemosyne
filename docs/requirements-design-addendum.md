@@ -53,6 +53,7 @@ The current implementation has added several scaffold features and operational d
 - Direct text search uses whole-term matching for extracted terms and a compact-node tie-breaker for equal scores.
 - Direct ranking demotes empty/title-only chunks, source roots, metadata headers, separator-only matches, and oversized source-section containers.
 - Direct ranking boosts human endorsement labels as an interim ordering hint, penalizes rejected nodes, and slightly demotes unreviewed generated output.
+- Direct ranking applies a capped `usage_score` boost and `last_used_at` tie-breaker so successful prior context can surface without overriding rejection/provenance controls.
 - Context compilation can gather focus, ancestors, siblings, and descendants.
 - Rendered context uses full node text subject to a character budget.
 - Prompt envelopes include context text, system instruction, budget metadata, and included/skipped context metadata.
@@ -91,6 +92,7 @@ The current implementation has added several scaffold features and operational d
 - Ask/chat/history flows persist exchanges.
 - Saved exchanges update a session-scoped active document registry from answer `used_node_ids`.
 - Saved exchanges increment `usage_score` and update `last_used_at` on used non-rejected nodes after the exchange row exists; exchange history records the number of nodes updated as `scored_node_count`.
+- Serialized node search results expose `usage_score` and `last_used_at` for retrieval diagnostics.
 - Active document records preserve document ID, title, source metadata, labels, referenced node IDs, and reference counts.
 - Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.
 - Direct retrieval scopes reference-shaped session prompts such as "this document" or "previous source" to the session's active documents before falling back to broad corpus retrieval, and can use the active document root/default node when the prompt has no topical match.
@@ -265,7 +267,7 @@ The following are still deferred and should not be implied as complete:
 As of 2026-05-21:
 
 - Git branch: `main`.
-- Latest synced commit before this usage-scoring slice: `8e5240e Fallback active document references to root`.
+- Latest synced commit before this retrieval-scoring slice: `a9cd0eb Track used node scores from exchanges`.
 - Working tree before this addendum: clean.
 - Mongo database: `mnemosyne_dev`.
 - Mongo counts at status check:
@@ -287,7 +289,7 @@ As of 2026-05-21:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `164 passed`.
+- Current automated suite at last full run: `168 passed`.
 
 ## Recommended Next Work
 
