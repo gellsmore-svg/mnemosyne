@@ -10,6 +10,7 @@ from pymongo.database import Database
 from mnemosyne.sessions.active_documents import record_active_documents
 from mnemosyne.sessions.output_ingestion import queue_exchange_output
 from mnemosyne.sessions.registry import touch_session
+from mnemosyne.sessions.usage import record_node_usage
 
 
 def utc_now() -> datetime:
@@ -54,11 +55,14 @@ def save_exchange(
             "prompt_budget": prompt.get("budget", {}),
             "context_metadata": prompt.get("context_metadata", {}),
             "active_document_ids": active_document_ids,
+            "scored_node_count": 0,
             "process_trace": process_trace or [],
             "created_at": now,
         }
     )
     exchange_id = str(result.inserted_id)
+    scored_node_count = record_node_usage(db, used_node_ids)
+    exchange_updates = {"scored_node_count": scored_node_count}
     output_job_id = queue_exchange_output(
         db,
         exchange_id=exchange_id,
@@ -69,10 +73,11 @@ def save_exchange(
         active_document_ids=active_document_ids,
     )
     if output_job_id:
-        db.exchanges.update_one(
-            {"_id": result.inserted_id},
-            {"$set": {"output_ingestion_job_id": output_job_id}},
-        )
+        exchange_updates["output_ingestion_job_id"] = output_job_id
+    db.exchanges.update_one(
+        {"_id": result.inserted_id},
+        {"$set": exchange_updates},
+    )
     return exchange_id
 
 
@@ -129,6 +134,7 @@ def serialize_exchange(row: dict[str, Any]) -> dict[str, Any]:
         "adapter": row.get("answer", {}).get("adapter"),
         "model": row.get("answer", {}).get("model"),
         "used_node_ids": row.get("answer", {}).get("used_node_ids", []),
+        "scored_node_count": row.get("scored_node_count", 0),
         "output_ingestion_job_id": row.get("output_ingestion_job_id"),
         "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
     }

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+import pytest
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
@@ -87,6 +88,13 @@ def test_queue_exchange_output_returns_existing_job_on_duplicate_exchange() -> N
 def test_save_exchange_links_output_ingestion_job() -> None:
     db = FakeDb()
     node_id = str(ObjectId())
+    db.nodes.rows.append(
+        {
+            "_id": ObjectId(node_id),
+            "endorsement_label": "unreviewed",
+            "usage_score": 4,
+        }
+    )
 
     exchange_id = save_exchange(
         db,
@@ -104,6 +112,33 @@ def test_save_exchange_links_output_ingestion_job() -> None:
     assert job["exchange_id"] == exchange_id
     assert job["answer_text"] == "Remember this."
     assert job["used_node_ids"] == [node_id]
+    assert exchange["scored_node_count"] == 1
+    assert db.nodes.rows[0]["usage_score"] == 5
+
+
+def test_save_exchange_does_not_score_nodes_when_exchange_insert_fails() -> None:
+    db = FakeDb()
+    node_id = str(ObjectId())
+    db.nodes.rows.append(
+        {
+            "_id": ObjectId(node_id),
+            "endorsement_label": "unreviewed",
+            "usage_score": 4,
+        }
+    )
+    db.exchanges = FailingInsertCollection()
+
+    with pytest.raises(RuntimeError):
+        save_exchange(
+            db,
+            query="What should be remembered?",
+            answer={"answer": "Remember this.", "used_node_ids": [node_id]},
+            prompt={"budget": {}, "context_metadata": {}},
+            focus_node_id=node_id,
+            session_id="session1",
+        )
+
+    assert db.nodes.rows[0]["usage_score"] == 4
 
 
 def test_list_output_ingestion_jobs_filters_and_serializes() -> None:
@@ -258,6 +293,15 @@ class FakeCollection:
         apply_update(row, update)
         return None
 
+    def update_many(self, filter_query, update):
+        modified_count = 0
+        for row in self.rows:
+            if not matches(row, filter_query):
+                continue
+            apply_update(row, update)
+            modified_count += 1
+        return FakeUpdateResult(modified_count)
+
     def delete_many(self, query):
         self.rows = [row for row in self.rows if not matches(row, query)]
         return None
@@ -277,6 +321,16 @@ class DuplicateExchangeCollection(FakeCollection):
         return super().insert_one(row)
 
 
+class FailingInsertCollection(FakeCollection):
+    def insert_one(self, row):
+        raise RuntimeError("insert failed")
+
+
+class FakeUpdateResult:
+    def __init__(self, modified_count):
+        self.modified_count = modified_count
+
+
 class FakeDb:
     def __init__(self):
         self.sessions = FakeCollection()
@@ -293,6 +347,9 @@ def matches(row, query):
         actual = row.get(key)
         if isinstance(expected, dict) and "$in" in expected:
             if actual not in expected["$in"]:
+                return False
+        elif isinstance(expected, dict) and "$ne" in expected:
+            if actual == expected["$ne"]:
                 return False
         elif actual != expected:
             return False

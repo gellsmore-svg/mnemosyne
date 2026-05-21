@@ -115,6 +115,7 @@ Current early read surface:
 - optional Ollama CLI answer adapter for real local model calls;
 - saved exchange records in MongoDB.
 - active document records are updated from answer `used_node_ids`, preserving session/document/source/node references for later continuity and endorsement work.
+- saved exchanges increment `usage_score` and `last_used_at` on the used non-rejected nodes, giving retrieval feedback a first persisted signal.
 - direct retrieval uses active document scoping for reference-shaped session prompts such as "this document" or "previous source", falling back to the active document root when no topical node matches.
 - saved answer text is queued as pending LLM-output ingestion work, linked back to the originating exchange and session.
 - pending LLM-output ingestion jobs can be processed into unreviewed graph documents with generated-output labels and exchange/session provenance.
@@ -132,7 +133,7 @@ Known gaps after reconciliation:
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
 - the compiled context corpus does not yet match the full technical design schema;
 - active document registry is only a first skeleton populated from used nodes, visible to the memory-agent, and used for narrow direct reference resolution; it does not yet drive broad retrieval, endorsement, or restart state.
-- output ingestion is implemented only as conservative graph insertion plus explicit review labels; natural-language endorsement detection, relation extraction, restart state node, traversal scoring, and REM consolidation are not started.
+- output ingestion is implemented only as conservative graph insertion plus explicit review labels; natural-language endorsement detection, relation extraction, restart state node, full traversal path scoring, unused-path decay, and REM consolidation are not started.
 
 Minimum build:
 
@@ -180,6 +181,6 @@ Goal: learning retrieval paths.
 Minimum build:
 
 - exchange records include used nodes and traversal paths;
-- async scoring job increments used node/path scores;
+- scoring increments used node/path scores;
 - traversed-unused paths decrement;
 - recommendation mechanism for high-score paths to active documents.

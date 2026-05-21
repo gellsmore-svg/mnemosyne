@@ -100,6 +100,8 @@ def ensure_indexes(db: Database) -> None:
     db.nodes.create_index("text")
     db.nodes.create_index([("document_id", 1), ("created_at", -1)])
     db.nodes.create_index("created_at")
+    db.nodes.create_index("usage_score")
+    db.nodes.create_index("last_used_at")
     db.queue.create_index([("status", 1), ("created_at", 1)])
     db.queue.create_index("checksum_sha256")
     db.queue.create_index("path")

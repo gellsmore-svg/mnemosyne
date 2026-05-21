@@ -90,6 +90,7 @@ The current implementation has added several scaffold features and operational d
 
 - Ask/chat/history flows persist exchanges.
 - Saved exchanges update a session-scoped active document registry from answer `used_node_ids`.
+- Saved exchanges increment `usage_score` and update `last_used_at` on used non-rejected nodes after the exchange row exists; exchange history records the number of nodes updated as `scored_node_count`.
 - Active document records preserve document ID, title, source metadata, labels, referenced node IDs, and reference counts.
 - Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.
 - Direct retrieval scopes reference-shaped session prompts such as "this document" or "previous source" to the session's active documents before falling back to broad corpus retrieval, and can use the active document root/default node when the prompt has no topical match.
@@ -253,7 +254,7 @@ The following are still deferred and should not be implied as complete:
 - active document registry beyond current used-node capture, read-only memory-agent visibility, and narrow direct reference resolution;
 - graph-backed restart state node;
 - natural-language endorsement detection/writes beyond explicit review controls;
-- traversal scoring feedback;
+- full traversal scoring feedback, including path scores and unused-path decay;
 - REM consolidation;
 - output ingestion beyond conservative unreviewed graph insertion;
 - source-document fallback after retrieval failure;
@@ -264,7 +265,7 @@ The following are still deferred and should not be implied as complete:
 As of 2026-05-21:
 
 - Git branch: `main`.
-- Latest synced commit before this addendum: `9dae48f Improve natural-language node search`.
+- Latest synced commit before this usage-scoring slice: `8e5240e Fallback active document references to root`.
 - Working tree before this addendum: clean.
 - Mongo database: `mnemosyne_dev`.
 - Mongo counts at status check:
@@ -286,7 +287,7 @@ As of 2026-05-21:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `126 passed`.
+- Current automated suite at last full run: `164 passed`.
 
 ## Recommended Next Work
 
