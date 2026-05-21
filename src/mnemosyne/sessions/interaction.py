@@ -788,7 +788,7 @@ def combined_query_text(query: str | None, original_query: str | None) -> str | 
         return None
     terms = []
     seen = set()
-    for term in re.findall(r"[A-Za-z0-9]+", " ".join(parts)):
+    for term in re.findall(r"[A-Za-z0-9_]+", " ".join(parts)):
         key = term.lower()
         if key not in seen:
             seen.add(key)
@@ -810,7 +810,7 @@ def build_query_assembly(
             "anchor_terms": [],
             "near_match_terms": [],
         }
-    tokens = re.findall(r"[A-Za-z0-9]+", ranking_query)
+    tokens = re.findall(r"[A-Za-z0-9_]+", ranking_query)
     lexical_terms = dedupe_preserve_order(
         token for token in tokens if is_query_content_term(token)
     )
@@ -873,7 +873,7 @@ def is_query_content_term(term: str) -> bool:
 def adjacent_content_phrases(value: str | None) -> list[str]:
     terms = [
         token
-        for token in re.findall(r"[A-Za-z0-9]+", value or "")
+        for token in re.findall(r"[A-Za-z0-9_]+", value or "")
         if is_query_content_term(token)
     ]
     return [f"{left} {right}" for left, right in zip(terms, terms[1:])]
@@ -970,6 +970,12 @@ def near_match_vocabulary(db: Database, limit: int = NEAR_MATCH_MAX_VOCABULARY) 
     values = []
     if not hasattr(db, "documents"):
         return []
+    if hasattr(db, "label_definitions"):
+        for definition in db.label_definitions.find({}, {"key": 1, "description": 1}).limit(limit):
+            values.append(definition.get("key"))
+            values.append(definition.get("description"))
+    if hasattr(db, "nodes"):
+        values.extend(db.nodes.distinct("labels"))
     for document in db.documents.find({}, {"title": 1, "source.path": 1}).limit(limit):
         values.append(document.get("title"))
         source = document.get("source") or {}
@@ -981,7 +987,16 @@ def vocabulary_terms(values: list[Any], limit: int = NEAR_MATCH_MAX_VOCABULARY) 
     terms = []
     seen = set()
     for value in values:
-        for term in re.findall(r"[A-Za-z0-9]+", str(value or "")):
+        text = str(value or "")
+        for label_like in re.findall(r"[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+", text):
+            key = label_like.lower()
+            if key in seen or not is_query_content_term(label_like):
+                continue
+            seen.add(key)
+            terms.append(label_like)
+            if len(terms) >= limit:
+                return terms
+        for term in re.findall(r"[A-Za-z0-9]+", text):
             key = term.lower()
             if key in seen or not is_query_content_term(term):
                 continue

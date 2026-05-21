@@ -8,6 +8,7 @@ from mnemosyne.sessions.interaction import (
     execute_search_nodes_tool,
     fallback_queries,
     memory_agent_runtime_config,
+    near_match_vocabulary,
     near_match_terms,
     parse_memory_agent_decision,
     parse_tool_calls,
@@ -24,6 +25,50 @@ from mnemosyne.sessions.interaction import (
 
 class FakeDb:
     pass
+
+
+class FakeCursor(list):
+    def limit(self, limit):
+        return FakeCursor(self[:limit])
+
+
+class FakeCollection:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def find(self, *_args):
+        return FakeCursor(self.rows)
+
+    def distinct(self, key):
+        values = []
+        for row in self.rows:
+            value = row.get(key)
+            if isinstance(value, list):
+                values.extend(value)
+            elif value is not None:
+                values.append(value)
+        return values
+
+
+class FakeVocabularyDb:
+    def __init__(self):
+        self.label_definitions = FakeCollection(
+            [
+                {
+                    "key": "memory_reference",
+                    "description": "Reference material about memory.",
+                }
+            ]
+        )
+        self.documents = FakeCollection(
+            [
+                {
+                    "title": "Technical Design",
+                    "source": {"path": "/tmp/design.md"},
+                }
+            ]
+        )
+        self.nodes = FakeCollection([{"labels": ["taj_mahal"]}])
 
 
 def test_select_focus_node_returns_none_without_matches(monkeypatch) -> None:
@@ -916,6 +961,36 @@ def test_vocabulary_terms_extracts_bounded_content_terms() -> None:
         "Mnemosyne",
         "Technical",
         "Design",
+    ]
+
+
+def test_near_match_vocabulary_includes_label_definitions_and_documents() -> None:
+    assert near_match_vocabulary(FakeVocabularyDb()) == [
+        "memory_reference",
+        "memory",
+        "reference",
+        "material",
+        "taj_mahal",
+        "mahal",
+        "Technical",
+        "Design",
+    ]
+
+
+def test_build_query_assembly_keeps_underscore_terms_for_near_matches() -> None:
+    assembly = build_query_assembly(
+        "memry_reference",
+        vocabulary=["memory_reference"],
+    )
+
+    assert assembly["lexical_terms"] == ["memry_reference"]
+    assert assembly["near_match_terms"] == [
+        {
+            "source_term": "memry_reference",
+            "candidate_term": "memory_reference",
+            "score": 0.97,
+            "reason": "near_token_match",
+        }
     ]
 
 

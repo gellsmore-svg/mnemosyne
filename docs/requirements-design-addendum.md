@@ -207,7 +207,7 @@ However, it is relevant as a design pattern for semantic elasticity:
 Implemented first adaptation:
 
 - query assembly now has `near_match_terms`;
-- near matches are generated only against a bounded vocabulary, currently document titles and source paths;
+- near matches are generated only against a bounded vocabulary, currently label definitions, existing node labels, document titles, and source paths;
 - near-match candidates are used only after an empty initial search in direct focus selection and agentic/tool search;
 - fallback probes try exact phrases first, then near-match candidates, then original single terms;
 - process traces and prompts expose near matches as diagnostics.
@@ -217,7 +217,7 @@ Recommended next adaptation:
 1. Do not port `jscompare` directly into production retrieval.
 2. Keep the Python helper behind the query assembly layer.
 3. Use standard-library or maintained Python options before adding a new dependency.
-4. Extend near-match vocabulary gradually to labels, active documents, and bounded title/source candidates.
+4. Extend near-match vocabulary gradually to active documents and other bounded title/source candidates.
 5. Use near-match expansion only for candidate generation and fallback probes.
 6. Cap comparisons aggressively to avoid O(n*m) scans across the full corpus.
 7. Keep exact source/provenance ranking above near-token similarity.
@@ -289,8 +289,9 @@ Near-term consolidation:
 
 Next implementation candidates:
 
-1. Broaden near-match vocabulary carefully, starting with labels and active documents.
-2. Add source-document fallback when Mongo node retrieval fails.
-3. Add active document registry skeleton.
-4. Add graph edge schema and first typed relation writes.
-5. Add embedding interface and a brute-force baseline evaluation harness.
+1. Add a confidence threshold for deciding when weak partial matches should still trigger near-match fallback.
+2. Broaden near-match vocabulary carefully, next with active documents.
+3. Add source-document fallback when Mongo node retrieval fails.
+4. Add active document registry skeleton.
+5. Add graph edge schema and first typed relation writes.
+6. Add embedding interface and a brute-force baseline evaluation harness.

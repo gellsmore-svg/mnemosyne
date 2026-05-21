@@ -84,13 +84,13 @@ def search_nodes(
 
 def text_query_filters(query: str) -> list[dict[str, Any]]:
     exact_pattern = re.compile(re.escape(query), re.IGNORECASE)
-    filters = [{"title": exact_pattern}, {"text": exact_pattern}]
+    filters = [{"title": exact_pattern}, {"text": exact_pattern}, {"labels": exact_pattern}]
     exact_key = query.strip().lower()
     for term in text_query_terms(query):
         if term.lower() == exact_key:
             continue
         term_pattern = text_term_pattern(term)
-        filters.extend([{"title": term_pattern}, {"text": term_pattern}])
+        filters.extend([{"title": term_pattern}, {"text": term_pattern}, {"labels": term_pattern}])
     return filters
 
 

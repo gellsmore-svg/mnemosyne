@@ -138,7 +138,7 @@ It:
 2. Combines planner query and original user query into a ranking query.
 3. Builds query assembly from both query surfaces.
 4. Calls `search_nodes()` against MongoDB.
-5. If no matches are found, augments query assembly with bounded near-match terms from document-title/source-path vocabulary, then tries fallback phrases, near-match candidates, and terms from query assembly.
+5. If no matches are found, augments query assembly with bounded near-match terms from label, document-title, and source-path vocabulary, then tries fallback phrases, near-match candidates, and terms from query assembly.
 6. Records fallback probe counts.
 7. Deduplicates candidate nodes by `node_id`.
 8. Reranks candidates with `score_node_match()`.

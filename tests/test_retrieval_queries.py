@@ -76,25 +76,29 @@ def test_text_query_terms_extracts_natural_query_content_terms() -> None:
 def test_text_query_filters_combines_exact_query_and_content_terms() -> None:
     filters = text_query_filters("Who commissioned the Taj Mahal?")
 
-    assert len(filters) == 8
+    assert len(filters) == 12
     assert [set(query_filter) for query_filter in filters] == [
         {"title"},
         {"text"},
+        {"labels"},
         {"title"},
         {"text"},
+        {"labels"},
         {"title"},
         {"text"},
+        {"labels"},
         {"title"},
         {"text"},
+        {"labels"},
     ]
     assert filters[0]["title"].pattern == "Who\\ commissioned\\ the\\ Taj\\ Mahal\\?"
-    assert filters[2]["title"].pattern == "\\bcommissioned\\b"
-    assert filters[4]["title"].pattern == "\\bTaj\\b"
-    assert filters[6]["title"].pattern == "\\bMahal\\b"
+    assert filters[3]["title"].pattern == "\\bcommissioned\\b"
+    assert filters[6]["title"].pattern == "\\bTaj\\b"
+    assert filters[9]["title"].pattern == "\\bMahal\\b"
 
 
 def test_text_query_filters_deduplicates_single_term_query() -> None:
-    assert len(text_query_filters("Mahal")) == 2
+    assert len(text_query_filters("Mahal")) == 3
 
 
 def test_node_search_score_uses_whole_terms_for_query_tokens() -> None:
