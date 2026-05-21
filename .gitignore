@@ -9,6 +9,7 @@ config.yaml
 data/archive/*
 data/dead_letter/*
 data/ingest/*
+data/online_sources/*
 data/staging/*
 !data/archive/.gitkeep
 !data/dead_letter/.gitkeep
