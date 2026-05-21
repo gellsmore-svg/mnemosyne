@@ -1,5 +1,8 @@
+from bson import ObjectId
+
 from mnemosyne.config import AppConfig, RuntimeConfig
 from mnemosyne.sessions.interaction import (
+    active_document_default_node_id,
     active_document_reference_query,
     answer_query,
     build_memory_agent_prompt,
@@ -73,6 +76,34 @@ class FakeVocabularyDb:
         self.nodes = FakeCollection([{"labels": ["taj_mahal"]}])
 
 
+class FakeNodeCollection:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def find_one(self, query, sort=None):
+        rows = [row for row in self.rows if mongo_matches(row, query)]
+        if sort:
+            for field, direction in reversed(sort):
+                rows.sort(key=lambda row: row.get(field, 0), reverse=direction < 0)
+        return rows[0] if rows else None
+
+
+class FakeNodeDb:
+    def __init__(self, nodes):
+        self.nodes = FakeNodeCollection(nodes)
+
+
+def mongo_matches(row, query):
+    for key, expected in query.items():
+        actual = row.get(key)
+        if isinstance(actual, list):
+            if expected not in actual:
+                return False
+        elif actual != expected:
+            return False
+    return True
+
+
 def test_select_focus_node_returns_none_without_matches(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 
@@ -141,6 +172,74 @@ def test_select_active_document_focus_node_scopes_search_to_active_document(monk
     assert select_active_document_focus_node(FakeDb(), "What does this document say?", "s1") == "active-node"
     assert calls[0]["document_id"] == "doc1"
     assert calls[0]["label"] == "source_chunk"
+
+
+def test_select_active_document_focus_node_falls_back_to_document_root(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    document_id = ObjectId()
+    root_id = ObjectId()
+    monkeypatch.setattr(
+        interaction,
+        "list_active_documents",
+        lambda _db, session_id, limit=5: [
+            {"document_id": str(document_id), "title": "Active Source", "node_ids": []}
+        ],
+    )
+    monkeypatch.setattr(interaction, "search_nodes", lambda *args, **kwargs: [])
+    db = FakeNodeDb(
+        [
+            {
+                "_id": root_id,
+                "document_id": document_id,
+                "labels": ["source_root"],
+                "order": 0,
+            }
+        ]
+    )
+
+    assert select_active_document_focus_node(db, "What does this document say?", "s1") == str(root_id)
+
+
+def test_active_document_default_node_prefers_root_then_active_node() -> None:
+    document_id = ObjectId()
+    active_node_id = ObjectId()
+    root_id = ObjectId()
+    db = FakeNodeDb(
+        [
+            {
+                "_id": active_node_id,
+                "document_id": document_id,
+                "labels": ["source_chunk"],
+                "order": 1,
+            },
+            {
+                "_id": root_id,
+                "document_id": document_id,
+                "labels": ["source_root"],
+                "order": 0,
+            },
+        ]
+    )
+
+    assert active_document_default_node_id(db, str(document_id), [str(active_node_id)]) == str(root_id)
+
+
+def test_active_document_default_node_uses_active_node_without_root() -> None:
+    document_id = ObjectId()
+    active_node_id = ObjectId()
+    db = FakeNodeDb(
+        [
+            {
+                "_id": active_node_id,
+                "document_id": document_id,
+                "labels": ["source_chunk"],
+                "order": 1,
+            }
+        ]
+    )
+
+    assert active_document_default_node_id(db, str(document_id), [str(active_node_id)]) == str(active_node_id)
 
 
 def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:

@@ -115,7 +115,7 @@ Current early read surface:
 - optional Ollama CLI answer adapter for real local model calls;
 - saved exchange records in MongoDB.
 - active document records are updated from answer `used_node_ids`, preserving session/document/source/node references for later continuity and endorsement work.
-- direct retrieval uses active document scoping for reference-shaped session prompts such as "this document" or "previous source".
+- direct retrieval uses active document scoping for reference-shaped session prompts such as "this document" or "previous source", falling back to the active document root when no topical node matches.
 - saved answer text is queued as pending LLM-output ingestion work, linked back to the originating exchange and session.
 - pending LLM-output ingestion jobs can be processed into unreviewed graph documents with generated-output labels and exchange/session provenance.
 - generated-output nodes can be explicitly reviewed through CLI/API and marked `unreviewed`, `implicit_endorsed`, `explicit_endorsed`, or `rejected`, updating node provenance and review history.

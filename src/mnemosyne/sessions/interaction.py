@@ -5,6 +5,8 @@ import re
 from difflib import SequenceMatcher
 from typing import Any
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from pymongo.database import Database
 
 from mnemosyne.adapters.answer import answer_adapter
@@ -335,7 +337,45 @@ def select_active_document_focus_node(db: Database, query: str, session_id: str)
             )
         if matches:
             return matches[0]["node_id"]
+        default_node_id = active_document_default_node_id(
+            db,
+            document_id=document_id,
+            active_node_ids=active_document.get("node_ids") or [],
+        )
+        if default_node_id:
+            return default_node_id
     return None
+
+
+def active_document_default_node_id(
+    db: Database,
+    document_id: str,
+    active_node_ids: list[str],
+) -> str | None:
+    object_id = parse_object_id(document_id)
+    if not object_id or not hasattr(db, "nodes"):
+        return None
+    root = db.nodes.find_one({"document_id": object_id, "labels": "source_root"})
+    if root:
+        return str(root["_id"])
+    for node_id in active_node_ids:
+        node_object_id = parse_object_id(node_id)
+        if not node_object_id:
+            continue
+        node = db.nodes.find_one({"_id": node_object_id, "document_id": object_id})
+        if node:
+            return str(node["_id"])
+    first_node = db.nodes.find_one({"document_id": object_id}, sort=[("order", 1)])
+    if first_node:
+        return str(first_node["_id"])
+    return None
+
+
+def parse_object_id(value: Any) -> ObjectId | None:
+    try:
+        return ObjectId(str(value))
+    except (InvalidId, TypeError):
+        return None
 
 
 def ranked_focus_matches(
