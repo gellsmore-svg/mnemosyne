@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 
 from mnemosyne.sessions.exchanges import save_exchange
 from mnemosyne.sessions.output_ingestion import (
@@ -54,6 +55,33 @@ def test_queue_exchange_output_skips_empty_answer() -> None:
 
     assert queue_exchange_output(db, "exchange1", "session1", "q", {"answer": " "}, [], []) is None
     assert db.output_ingestion_queue.rows == []
+
+
+def test_queue_exchange_output_returns_existing_job_on_duplicate_exchange() -> None:
+    existing_id = ObjectId()
+    db = FakeDb()
+    db.output_ingestion_queue = DuplicateExchangeCollection(
+        [
+            {
+                "_id": existing_id,
+                "exchange_id": "exchange1",
+                "status": "pending",
+            }
+        ]
+    )
+
+    job_id = queue_exchange_output(
+        db,
+        exchange_id="exchange1",
+        session_id="session1",
+        query="What changed?",
+        answer={"answer": "A new memory."},
+        used_node_ids=[],
+        active_document_ids=[],
+    )
+
+    assert job_id == str(existing_id)
+    assert len(db.output_ingestion_queue.rows) == 1
 
 
 def test_save_exchange_links_output_ingestion_job() -> None:
@@ -229,6 +257,24 @@ class FakeCollection:
             self.rows.append(row)
         apply_update(row, update)
         return None
+
+    def delete_many(self, query):
+        self.rows = [row for row in self.rows if not matches(row, query)]
+        return None
+
+    def delete_one(self, query):
+        for index, row in enumerate(self.rows):
+            if matches(row, query):
+                del self.rows[index]
+                break
+        return None
+
+
+class DuplicateExchangeCollection(FakeCollection):
+    def insert_one(self, row):
+        if any(existing.get("exchange_id") == row.get("exchange_id") for existing in self.rows):
+            raise DuplicateKeyError("duplicate exchange_id")
+        return super().insert_one(row)
 
 
 class FakeDb:

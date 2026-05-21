@@ -52,7 +52,7 @@ The current implementation has added several scaffold features and operational d
 - Direct text search now expands natural-language queries into exact phrase plus content-term filters.
 - Direct text search uses whole-term matching for extracted terms and a compact-node tie-breaker for equal scores.
 - Direct ranking demotes empty/title-only chunks, source roots, metadata headers, separator-only matches, and oversized source-section containers.
-- Direct ranking boosts human endorsement labels as an interim ordering hint.
+- Direct ranking boosts human endorsement labels as an interim ordering hint, penalizes rejected nodes, and slightly demotes unreviewed generated output.
 - Context compilation can gather focus, ancestors, siblings, and descendants.
 - Rendered context uses full node text subject to a character budget.
 - Prompt envelopes include context text, system instruction, budget metadata, and included/skipped context metadata.

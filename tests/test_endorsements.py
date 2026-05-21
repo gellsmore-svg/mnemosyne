@@ -83,6 +83,45 @@ def test_update_node_endorsement_reports_missing_node() -> None:
     }
 
 
+def test_update_node_endorsement_rejects_non_generated_output_node() -> None:
+    node_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": node_id,
+                "document_id": ObjectId(),
+                "tree_id": ObjectId(),
+                "title": "Source",
+                "text": "Source text",
+                "labels": ["source_chunk"],
+                "endorsement_label": "unreviewed",
+                "provenance": {"endorsement_label": "unreviewed"},
+                "metadata": {},
+                "created_at": datetime.now(timezone.utc),
+            }
+        ]
+    )
+
+    result = update_node_endorsement(db, str(node_id), "explicit_endorsed")
+
+    assert result == {
+        "ok": False,
+        "reason": "not_generated_output",
+        "node_id": str(node_id),
+    }
+
+
+def test_list_generated_output_nodes_rejects_invalid_filter() -> None:
+    db = FakeDb([])
+
+    try:
+        list_generated_output_nodes(db, endorsement_label="trusted")
+    except ValueError as error:
+        assert "trusted" in str(error)
+    else:
+        raise AssertionError("Expected invalid endorsement filter to raise.")
+
+
 def generated_node(node_id, endorsement_label):
     return {
         "_id": node_id,

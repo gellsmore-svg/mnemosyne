@@ -142,6 +142,10 @@ def node_search_score(node: dict[str, Any], query: str) -> int:
         score += 30
     elif endorsement_label == "implicit_endorsed":
         score += 10
+    elif endorsement_label == "rejected":
+        score -= 100
+    if "generated_output" in labels and endorsement_label == "unreviewed":
+        score -= 15
     return score
 
 

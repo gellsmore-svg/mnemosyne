@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 from pymongo.database import Database
 
 from mnemosyne.db.repositories import DuplicateSourceError, commit_ingestion, summarize_node_text
@@ -66,8 +67,14 @@ def queue_exchange_output(
         "created_at": now,
         "updated_at": now,
     }
-    result = db.output_ingestion_queue.insert_one(job)
-    return str(result.inserted_id)
+    try:
+        result = db.output_ingestion_queue.insert_one(job)
+        return str(result.inserted_id)
+    except DuplicateKeyError:
+        existing = db.output_ingestion_queue.find_one({"exchange_id": exchange_id})
+        if existing:
+            return str(existing["_id"])
+        raise
 
 
 def output_ingestion_filter_query(

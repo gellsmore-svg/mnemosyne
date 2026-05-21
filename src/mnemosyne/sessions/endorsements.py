@@ -30,7 +30,7 @@ def list_generated_output_nodes(
     query: dict[str, Any] = {"labels": "generated_output"}
     if endorsement_label:
         if not valid_endorsement_label(endorsement_label):
-            return []
+            raise ValueError(f"Unsupported endorsement label: {endorsement_label}")
         query["endorsement_label"] = endorsement_label
     rows = db.nodes.find(query).sort("created_at", -1).limit(bounded_limit(limit))
     return [serialize_review_node(row) for row in rows]
@@ -57,6 +57,12 @@ def update_node_endorsement(
     node = db.nodes.find_one({"_id": object_id})
     if not node:
         return {"ok": False, "reason": "node_not_found", "node_id": node_id}
+    if "generated_output" not in (node.get("labels") or []):
+        return {
+            "ok": False,
+            "reason": "not_generated_output",
+            "node_id": node_id,
+        }
 
     now = utc_now()
     review_entry = {

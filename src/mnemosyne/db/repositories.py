@@ -42,7 +42,13 @@ def commit_ingestion(db: Database, result: IngestionResult) -> dict[str, Any]:
     ).model_dump()
     document_id = db.documents.insert_one(document).inserted_id
 
-    inserted = insert_tree_nodes(db, document_id, result)
+    try:
+        inserted = insert_tree_nodes(db, document_id, result)
+    except Exception:
+        db.nodes.delete_many({"document_id": document_id})
+        db.trees.delete_many({"document_id": document_id})
+        db.documents.delete_one({"_id": document_id})
+        raise
 
     return {
         "document_id": str(document_id),

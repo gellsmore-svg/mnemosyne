@@ -339,6 +339,36 @@ def test_node_search_score_prefers_human_endorsed_nodes() -> None:
     assert node_search_score(endorsed, "memory") > node_search_score(unreviewed, "memory")
 
 
+def test_node_search_score_penalizes_rejected_nodes() -> None:
+    unreviewed = {
+        "title": "Memory note",
+        "text": "memory context",
+        "labels": ["source_chunk"],
+        "endorsement_label": "unreviewed",
+    }
+    rejected = {
+        **unreviewed,
+        "endorsement_label": "rejected",
+    }
+
+    assert node_search_score(unreviewed, "memory") > node_search_score(rejected, "memory")
+
+
+def test_node_search_score_penalizes_unreviewed_generated_output() -> None:
+    source = {
+        "title": "Memory note",
+        "text": "memory context",
+        "labels": ["source_chunk"],
+        "endorsement_label": "unreviewed",
+    }
+    generated = {
+        **source,
+        "labels": ["source_chunk", "generated_output"],
+    }
+
+    assert node_search_score(source, "memory") > node_search_score(generated, "memory")
+
+
 def test_node_search_score_prefers_specific_chunk_over_large_container_section() -> None:
     query = "Taj Mahal commissioned Shah Jahan Mumtaz"
     large_section = {

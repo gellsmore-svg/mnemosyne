@@ -129,13 +129,17 @@ def create_app() -> FastAPI:
         limit: int = 20,
         endorsement: str | None = None,
     ) -> dict[str, Any]:
-        return {
-            "ok": True,
-            "nodes": list_generated_output_nodes(
+        try:
+            nodes = list_generated_output_nodes(
                 db,
                 limit=limit,
                 endorsement_label=endorsement,
-            ),
+            )
+        except ValueError as error:
+            return {"ok": False, "reason": "invalid_endorsement_label", "error": str(error)}
+        return {
+            "ok": True,
+            "nodes": nodes,
         }
 
     @app.post("/api/review/endorse-node")

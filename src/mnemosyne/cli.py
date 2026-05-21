@@ -499,15 +499,25 @@ def main() -> None:
 
     if args.command == "review-generated-output":
         ensure_indexes(db)
+        try:
+            nodes = list_generated_output_nodes(
+                db,
+                limit=args.limit,
+                endorsement_label=args.endorsement,
+            )
+        except ValueError as error:
+            print(
+                json.dumps(
+                    {"ok": False, "reason": "invalid_endorsement_label", "error": str(error)},
+                    indent=2,
+                )
+            )
+            return
         print(
             json.dumps(
                 {
                     "ok": True,
-                    "nodes": list_generated_output_nodes(
-                        db,
-                        limit=args.limit,
-                        endorsement_label=args.endorsement,
-                    ),
+                    "nodes": nodes,
                 },
                 indent=2,
             )

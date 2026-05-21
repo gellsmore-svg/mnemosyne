@@ -176,6 +176,23 @@ def test_generated_output_review_endpoint(monkeypatch) -> None:
     ]
 
 
+def test_generated_output_review_endpoint_reports_invalid_filter(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def fake_list(*_args, **_kwargs):
+        raise ValueError("Unsupported endorsement label: trusted")
+
+    monkeypatch.setattr("mnemosyne.web.app.list_generated_output_nodes", fake_list)
+
+    response = client.get(
+        "/api/review/generated-output",
+        params={"endorsement": "trusted"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reason"] == "invalid_endorsement_label"
+
+
 def test_endorse_node_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
