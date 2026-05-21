@@ -22,6 +22,8 @@ Suggested GitHub topics: `llm`, `memory`, `retrieval`, `knowledge-graph`, `mongo
 - `docs/build-roadmap.md`
 - `docs/open-questions.md`
 - `docs/repo-plan.md`
+- `docs/agentic-retrieval-process.md`
+- `docs/requirements-design-addendum.md`
 
 ## Current Status
 
