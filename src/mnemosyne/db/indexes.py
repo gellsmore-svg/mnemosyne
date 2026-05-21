@@ -69,6 +69,16 @@ LABEL_DEFINITIONS = [
         "scope": "node",
         "description": "Research corpus material used as working retrieval data.",
     },
+    {
+        "key": "generated_output",
+        "scope": "node",
+        "description": "Content produced by a model or Mnemosyne workflow and captured for later review.",
+    },
+    {
+        "key": "llm_answer",
+        "scope": "node",
+        "description": "A node created from a persisted LLM answer output.",
+    },
 ]
 
 

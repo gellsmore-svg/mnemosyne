@@ -18,7 +18,10 @@ from mnemosyne.retrieval.queries import list_documents, search_nodes
 from mnemosyne.sessions.exchanges import recent_exchanges
 from mnemosyne.sessions.interaction import answer_query
 from mnemosyne.sessions.active_documents import list_active_documents
-from mnemosyne.sessions.output_ingestion import list_output_ingestion_jobs
+from mnemosyne.sessions.output_ingestion import (
+    list_output_ingestion_jobs,
+    process_next_output_ingestion,
+)
 from mnemosyne.sessions.registry import create_session, list_sessions
 
 
@@ -105,6 +108,10 @@ def create_app() -> FastAPI:
                 session_id=session_id,
             ),
         }
+
+    @app.post("/api/process-output-ingestion")
+    def process_output_ingestion() -> dict[str, Any]:
+        return process_next_output_ingestion(db)
 
     @app.post("/api/sessions")
     def new_session(request: CreateSessionRequest) -> dict[str, Any]:

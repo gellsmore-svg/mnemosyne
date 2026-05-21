@@ -103,11 +103,11 @@ Current missing layers:
 - Typed weighted graph edges are not implemented.
 - Proximity scoring is not implemented.
 - Semantic map and REM consolidation are not implemented.
-- Active document registry is not implemented.
+- Active document registry exists as a session-scoped used-node/document skeleton, but does not yet drive deterministic retrieval, endorsement, or restart state.
 - Restart state node and generated `.restart.md` are not implemented.
 - Natural-language endorsement mechanism is not implemented.
 - Traversal scoring feedback is not implemented.
-- Output ingestion back into graph is not implemented.
+- Output ingestion exists as conservative queue-to-graph insertion of unreviewed LLM answer documents; semantic relation extraction and endorsement are not implemented.
 
 ## 4. Drift From Requirements
 
@@ -129,9 +129,9 @@ Current missing layers:
 | Traversal scoring | Used chunks/paths increase; unused paths decrease; chunk scores never decrease (`REQ-RET-08`, `REQ-RET-09`) | No `usage_score`, `traversal_score`, or post-exchange scoring job | Requirement absent from schema and runtime | Add schema fields and scoring job later; do not invent alternative ranking as substitute |
 | Context document format | Gemma compiles structured context with source, provenance, chunk content/summary, relationships, confidence, adjacent/full-doc availability (`REQ-CTX-01` to `REQ-CTX-04`, design 7.8) | Markdown context around selected hierarchy records; no relationships/confidence/sufficiency structure | Current context document is useful but not the specified compiled corpus | Define/implement specified JSON/hybrid corpus after agent loop |
 | Self-confidence instruction | Every reasoning call includes instruction to assess confidence and surface relevant questions (`REQ-CTX-05`) | Current default instruction only says answer using context and say when insufficient | Missing standard confidence/questioning instruction | Add exact standard reasoning instruction once final-thinking call is separated |
-| Output ingestion | Reasoning LLM text outputs queued for ingestion (`REQ-OUT-01`, `REQ-OUT-02`) | Exchanges saved, not ingested as graph nodes | Session/output memory incomplete | Queue output ingestion as document-of-interest nodes in later stage |
+| Output ingestion | Reasoning LLM text outputs queued for ingestion (`REQ-OUT-01`, `REQ-OUT-02`) | Answer text is queued, then can be inserted as unreviewed `generated_output` / `llm_answer` graph documents with exchange/session provenance | Useful first pass, but no endorsement, relationship extraction, or REM consolidation | Add review/endorsement and relation extraction before treating output memory as trusted |
 | Endorsement | Natural language endorsement detection and chunk-level writes (`REQ-END-01` to `REQ-END-05`) | No endorsement detection or write path | Provenance cannot evolve as required | Implement after active document registry exists |
-| Active document registry | Session registry of referenced/produced/ingested docs (`REQ-ADR-01` to `REQ-ADR-03`) | No registry collection | Needed for retrieval, fallback, endorsement | Add before full retrieval/endorsement work |
+| Active document registry | Session registry of referenced/produced/ingested docs (`REQ-ADR-01` to `REQ-ADR-03`) | Session registry exists for documents referenced by used nodes and output-ingested documents | Still not a deterministic retrieval/fallback/endorsement driver | Connect registry to retrieval, source fallback, and endorsement workflows |
 | Session continuity | Thought/process/session continuity, restart state node, rendered `.restart.md` (`REQ-SCO-01` to `REQ-SCO-07`) | Sessions/exchanges only; `.restart.md` is manually edited | Restart file is not rendered from graph source of truth | Treat current file as manual stopgap; implement restart state node later |
 | Web interface | Local UI with tabbed sessions and no direct DB interaction exposed to user (`REQ-UI-01` to `REQ-UI-06`) | UI exposes search/focus/operator DB-like controls; sessions are selector-like, not full tabs | Useful dev surface but not final intended UX | Keep as dev UI; do not mistake it for requirement-complete UI |
 | Streaming | FastAPI WebSocket streams token output (`design 10.4`) | POST request waits for whole answer | Not implemented | Defer or implement explicitly in UI stage |

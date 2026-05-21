@@ -7,6 +7,8 @@ from mnemosyne.sessions.output_ingestion import (
     answer_output_text,
     list_output_ingestion_jobs,
     output_content_hash,
+    output_job_to_ingestion_result,
+    process_next_output_ingestion,
     queue_exchange_output,
 )
 
@@ -116,6 +118,63 @@ def test_list_output_ingestion_jobs_filters_and_serializes() -> None:
     assert len(jobs[0]["answer_preview"]) == 500
 
 
+def test_output_job_to_ingestion_result_preserves_provenance() -> None:
+    job = {
+        "exchange_id": "exchange1",
+        "session_id": "session1",
+        "query": "What changed?",
+        "answer_text": "A new memory.",
+        "content_hash_sha256": "hash",
+        "answer_adapter": "mock",
+        "answer_model": "model",
+        "used_node_ids": ["node1"],
+        "active_document_ids": ["doc1"],
+    }
+
+    result = output_job_to_ingestion_result(job)
+
+    assert result.title == "LLM Answer: What changed?"
+    assert result.source.path == "mnemosyne://exchange/exchange1/answer"
+    assert result.source.kind == "llm_answer"
+    assert result.source.checksum_sha256 == "hash"
+    assert result.tree_label == "llm_output"
+    assert result.nodes[1].labels == ["generated_output", "llm_answer", "source_chunk"]
+    assert result.nodes[1].metadata["exchange_id"] == "exchange1"
+    assert result.nodes[1].metadata["used_node_ids"] == ["node1"]
+
+
+def test_process_next_output_ingestion_commits_graph_records() -> None:
+    db = FakeDb()
+    exchange_id = ObjectId()
+    db.exchanges.rows.append({"_id": exchange_id})
+    queue_exchange_output(
+        db,
+        exchange_id=str(exchange_id),
+        session_id="session1",
+        query="What changed?",
+        answer={"answer": "A new memory.", "adapter": "mock", "model": "test"},
+        used_node_ids=[],
+        active_document_ids=[],
+    )
+
+    result = process_next_output_ingestion(db)
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert len(db.documents.rows) == 1
+    assert len(db.trees.rows) == 1
+    assert len(db.nodes.rows) == 2
+    assert db.documents.rows[0]["source"]["kind"] == "llm_answer"
+    assert db.nodes.rows[1]["labels"] == ["generated_output", "llm_answer", "source_chunk"]
+    assert db.output_ingestion_queue.rows[0]["status"] == "completed"
+    assert db.exchanges.rows[0]["output_document_id"] == result["document_id"]
+    assert db.active_documents.rows[0]["session_id"] == "session1"
+
+
+def test_process_next_output_ingestion_returns_idle_without_pending_jobs() -> None:
+    assert process_next_output_ingestion(FakeDb()) == {"ok": True, "status": "idle"}
+
+
 class FakeInsertResult:
     def __init__(self, inserted_id):
         self.inserted_id = inserted_id
@@ -143,7 +202,22 @@ class FakeCollection:
 
     def find(self, query=None, projection=None):
         rows = [row for row in self.rows if matches(row, query or {})]
-        return FakeCursor([dict(row) for row in rows])
+        return FakeCursor([project(row, projection) for row in rows])
+
+    def find_one(self, query=None, projection=None):
+        rows = self.find(query or {}, projection)
+        return rows[0] if rows else None
+
+    def find_one_and_update(self, filter_query, update, sort=None, return_document=None):
+        rows = [row for row in self.rows if matches(row, filter_query)]
+        if not rows:
+            return None
+        if sort:
+            for field, direction in reversed(sort):
+                rows.sort(key=lambda row: row.get(field), reverse=direction < 0)
+        row = rows[0]
+        apply_update(row, update)
+        return dict(row)
 
     def update_one(self, filter_query, update, upsert=False):
         row = next((item for item in self.rows if matches(item, filter_query)), None)
@@ -153,9 +227,7 @@ class FakeCollection:
             row = dict(filter_query)
             row.update(update.get("$setOnInsert", {}))
             self.rows.append(row)
-        row.update(update.get("$set", {}))
-        for field, value in update.get("$inc", {}).items():
-            row[field] = row.get(field, 0) + value
+        apply_update(row, update)
         return None
 
 
@@ -164,10 +236,38 @@ class FakeDb:
         self.sessions = FakeCollection()
         self.exchanges = FakeCollection()
         self.output_ingestion_queue = FakeCollection()
+        self.documents = FakeCollection()
+        self.trees = FakeCollection()
+        self.nodes = FakeCollection()
+        self.active_documents = FakeCollection()
 
 
 def matches(row, query):
     for key, expected in query.items():
-        if row.get(key) != expected:
+        actual = row.get(key)
+        if isinstance(expected, dict) and "$in" in expected:
+            if actual not in expected["$in"]:
+                return False
+        elif actual != expected:
             return False
     return True
+
+
+def project(row, projection):
+    if not projection:
+        return dict(row)
+    projected = {key: row[key] for key in projection if key in row}
+    if "_id" in row and projection.get("_id", 1):
+        projected["_id"] = row["_id"]
+    return projected
+
+
+def apply_update(row, update):
+    row.update(update.get("$set", {}))
+    for field, value in update.get("$inc", {}).items():
+        row[field] = row.get(field, 0) + value
+    for field, value in update.get("$addToSet", {}).items():
+        row.setdefault(field, [])
+        for item in value.get("$each", []):
+            if item not in row[field]:
+                row[field].append(item)

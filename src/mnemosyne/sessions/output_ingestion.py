@@ -4,7 +4,17 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
+from pymongo import ReturnDocument
 from pymongo.database import Database
+
+from mnemosyne.db.repositories import DuplicateSourceError, commit_ingestion, summarize_node_text
+from mnemosyne.models.ingestion import (
+    DEFAULT_ENDORSEMENT_LABEL,
+    IngestedNode,
+    IngestionResult,
+    SourceRef,
+)
+from mnemosyne.sessions.active_documents import record_active_documents
 
 
 OUTPUT_INGESTION_SCHEMA_VERSION = 1
@@ -90,6 +100,195 @@ def list_output_ingestion_jobs(
     return [serialize_output_ingestion_job(row) for row in rows]
 
 
+def claim_next_output_job(db: Database) -> dict[str, Any] | None:
+    if not hasattr(db, "output_ingestion_queue"):
+        return None
+    now = utc_now()
+    return db.output_ingestion_queue.find_one_and_update(
+        {"status": "pending"},
+        {
+            "$set": {"status": "processing", "updated_at": now},
+            "$inc": {"attempts": 1},
+        },
+        sort=[("created_at", 1)],
+        return_document=ReturnDocument.AFTER,
+    )
+
+
+def process_next_output_ingestion(db: Database) -> dict[str, Any]:
+    job = claim_next_output_job(db)
+    if not job:
+        return {"ok": True, "status": "idle"}
+
+    try:
+        result = commit_output_job(db, job)
+    except DuplicateSourceError as error:
+        result = {
+            "status": "rejected",
+            "reason": "duplicate_output_checksum",
+            "existing_document_id": str(error.existing_document_id),
+            "checksum_sha256": error.checksum,
+        }
+        reject_output_job(db, job["_id"], "duplicate_output_checksum", result)
+        return {"ok": False, "job_id": str(job["_id"]), **result}
+    except Exception as error:
+        fail_output_job(db, job["_id"], "output_ingestion_failed", {"error": str(error)})
+        return {
+            "ok": False,
+            "status": "failed",
+            "job_id": str(job["_id"]),
+            "reason": "output_ingestion_failed",
+            "error": str(error),
+        }
+
+    complete_output_job(db, job["_id"], result)
+    db.exchanges.update_one(
+        {"_id": parse_exchange_id(job.get("exchange_id"))},
+        {
+            "$set": {
+                "output_document_id": result["document_id"],
+                "output_tree_id": result["tree_id"],
+                "output_node_ids": result["node_ids"],
+            }
+        },
+    )
+    active_document_ids = record_active_documents(
+        db,
+        session_id=str(job.get("session_id") or "default"),
+        node_ids=result["node_ids"],
+    )
+    return {
+        "ok": True,
+        "status": "completed",
+        "job_id": str(job["_id"]),
+        "active_document_ids": active_document_ids,
+        **result,
+    }
+
+
+def commit_output_job(db: Database, job: dict[str, Any]) -> dict[str, Any]:
+    result = output_job_to_ingestion_result(job)
+    return commit_ingestion(db, result)
+
+
+def output_job_to_ingestion_result(job: dict[str, Any]) -> IngestionResult:
+    answer_text = str(job.get("answer_text") or "").strip()
+    query = str(job.get("query") or "").strip()
+    exchange_id = str(job.get("exchange_id") or "unknown")
+    title = output_document_title(query=query, exchange_id=exchange_id)
+    source_path = f"mnemosyne://exchange/{exchange_id}/answer"
+    checksum = str(
+        job.get("content_hash_sha256")
+        or output_content_hash(
+            str(job.get("session_id") or "default"),
+            query,
+            answer_text,
+        )
+    )
+    metadata = {
+        "source_type": job.get("source_type"),
+        "exchange_id": exchange_id,
+        "session_id": job.get("session_id"),
+        "query": query,
+        "answer_adapter": job.get("answer_adapter"),
+        "answer_model": job.get("answer_model"),
+        "used_node_ids": job.get("used_node_ids", []),
+        "active_document_ids": job.get("active_document_ids", []),
+    }
+    return IngestionResult(
+        source=SourceRef(
+            path=source_path,
+            kind="llm_answer",
+            checksum_sha256=checksum,
+            archive_path=None,
+        ),
+        title=title,
+        summary=summarize_node_text(answer_text),
+        tree_label="llm_output",
+        adapter="output_ingestion",
+        nodes=[
+            IngestedNode(
+                node_key="root",
+                title=title,
+                text=f"# {title}\n\n{answer_text}",
+                summary=summarize_node_text(answer_text),
+                labels=["generated_output", "llm_answer", "source_root"],
+                endorsement_label=DEFAULT_ENDORSEMENT_LABEL,
+                metadata=metadata,
+            ),
+            IngestedNode(
+                node_key="answer",
+                parent_key="root",
+                title="Answer",
+                text=answer_text,
+                summary=summarize_node_text(answer_text),
+                labels=["generated_output", "llm_answer", "source_chunk"],
+                endorsement_label=DEFAULT_ENDORSEMENT_LABEL,
+                metadata=metadata,
+            ),
+        ],
+        created_at=job.get("created_at") or utc_now(),
+    )
+
+
+def output_document_title(query: str, exchange_id: str) -> str:
+    cleaned = " ".join(query.split())
+    if cleaned:
+        return f"LLM Answer: {cleaned[:80]}"
+    return f"LLM Answer: {exchange_id}"
+
+
+def complete_output_job(db: Database, job_id: object, result: dict[str, Any]) -> None:
+    db.output_ingestion_queue.update_one(
+        {"_id": job_id},
+        {
+            "$set": {
+                "status": "completed",
+                "result": result,
+                "updated_at": utc_now(),
+            }
+        },
+    )
+
+
+def reject_output_job(db: Database, job_id: object, reason: str, details: dict[str, Any]) -> None:
+    db.output_ingestion_queue.update_one(
+        {"_id": job_id},
+        {
+            "$set": {
+                "status": "rejected",
+                "reason": reason,
+                "details": details,
+                "updated_at": utc_now(),
+            }
+        },
+    )
+
+
+def fail_output_job(db: Database, job_id: object, reason: str, details: dict[str, Any]) -> None:
+    db.output_ingestion_queue.update_one(
+        {"_id": job_id},
+        {
+            "$set": {
+                "status": "failed",
+                "reason": reason,
+                "details": details,
+                "updated_at": utc_now(),
+            }
+        },
+    )
+
+
+def parse_exchange_id(value: Any) -> Any:
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    try:
+        return ObjectId(str(value))
+    except (InvalidId, TypeError):
+        return value
+
+
 def bounded_limit(value: int, maximum: int = 100) -> int:
     return max(1, min(maximum, int(value)))
 
@@ -110,6 +309,8 @@ def serialize_output_ingestion_job(row: dict[str, Any]) -> dict[str, Any]:
         "active_document_ids": row.get("active_document_ids", []),
         "content_hash_sha256": row.get("content_hash_sha256"),
         "attempts": row.get("attempts", 0),
+        "reason": row.get("reason"),
+        "result": row.get("result"),
         "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
         "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
     }

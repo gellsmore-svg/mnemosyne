@@ -141,6 +141,20 @@ def test_output_ingestion_endpoint_filters_by_session() -> None:
     assert data["jobs"][0]["answer_preview"] == "Captured output."
 
 
+def test_process_output_ingestion_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.process_next_output_ingestion",
+        lambda _db: {"ok": True, "status": "idle"},
+    )
+
+    response = client.post("/api/process-output-ingestion")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "status": "idle"}
+
+
 def test_history_endpoint_filters_seeded_rows() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)
