@@ -100,7 +100,16 @@ def answer_query(
             process_trace=process_trace,
         )
 
-    selected_node_id = focus_node_id or select_focus_node(db, query)
+    selected_node_id = focus_node_id
+    selected_node_source = "provided" if focus_node_id else None
+    if not selected_node_id and active_document_reference_query(query):
+        selected_node_id = select_active_document_focus_node(db, query, session_id)
+        if selected_node_id:
+            selected_node_source = "active_document"
+    if not selected_node_id:
+        selected_node_id = select_focus_node(db, query)
+        if selected_node_id:
+            selected_node_source = "corpus"
     retrieval_status = "matched_context"
     if selected_node_id:
         context = compile_context(db, selected_node_id)
@@ -133,6 +142,7 @@ def answer_query(
                 "query": query,
                 "provided_focus_node_id": focus_node_id,
                 "selected_node_id": selected_node_id,
+                "selected_node_source": selected_node_source,
                 "mode": config.runtime.retrieval_mode,
             },
             "output": {
@@ -302,15 +312,48 @@ def select_focus_node(db: Database, query: str) -> str | None:
     return matches[0]["node_id"]
 
 
+def select_active_document_focus_node(db: Database, query: str, session_id: str) -> str | None:
+    active_documents = list_active_documents(db, session_id=session_id, limit=5)
+    for active_document in active_documents:
+        document_id = active_document.get("document_id")
+        if not document_id:
+            continue
+        matches = ranked_focus_matches(
+            db,
+            query,
+            label="source_chunk",
+            limit=5,
+            document_id=document_id,
+        )
+        if not matches:
+            matches = ranked_focus_matches(
+                db,
+                query,
+                label=None,
+                limit=5,
+                document_id=document_id,
+            )
+        if matches:
+            return matches[0]["node_id"]
+    return None
+
+
 def ranked_focus_matches(
     db: Database,
     query: str,
     label: str | None,
     limit: int,
+    document_id: str | None = None,
 ) -> list[dict[str, Any]]:
     cleaned_query = normalize_query_text(query)
     assembly = build_query_assembly(cleaned_query)
-    matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
+    matches = search_nodes(
+        db,
+        query=cleaned_query,
+        label=label,
+        document_id=document_id,
+        limit=limit,
+    )
     if cleaned_query:
         seen = {row["node_id"] for row in matches}
         for fallback_query in fallback_queries(assembly):
@@ -318,6 +361,7 @@ def ranked_focus_matches(
                 db,
                 query=fallback_query,
                 label=label,
+                document_id=document_id,
                 limit=fallback_candidate_limit(limit),
             )
             for row in fallback_results:
@@ -334,6 +378,7 @@ def ranked_focus_matches(
                     db,
                     query=fallback_query,
                     label=label,
+                    document_id=document_id,
                     limit=fallback_candidate_limit(limit),
                 )
                 for row in fallback_results:
@@ -342,6 +387,30 @@ def ranked_focus_matches(
                         matches.append(row)
     matches.sort(key=lambda row: score_node_match(row, assembly), reverse=True)
     return matches[:limit]
+
+
+def active_document_reference_query(query: str) -> bool:
+    normalized_query = normalize_query_text(query)
+    if not normalized_query:
+        return False
+    normalized = normalized_query.lower()
+    references = [
+        "this document",
+        "this source",
+        "this file",
+        "current document",
+        "current source",
+        "current file",
+        "active document",
+        "active source",
+        "previous document",
+        "previous source",
+        "last document",
+        "last source",
+        "that document",
+        "that source",
+    ]
+    return any(re.search(rf"\b{re.escape(reference)}\b", normalized) for reference in references)
 
 
 def build_planner_prompt(query: str, focus_node_id: str | None = None) -> str:

@@ -1,5 +1,6 @@
 from mnemosyne.config import AppConfig, RuntimeConfig
 from mnemosyne.sessions.interaction import (
+    active_document_reference_query,
     answer_query,
     build_memory_agent_prompt,
     build_query_assembly,
@@ -17,6 +18,7 @@ from mnemosyne.sessions.interaction import (
     render_tool_results,
     included_nodes_from_tool_results,
     score_node_match,
+    select_active_document_focus_node,
     select_focus_node,
     summarize_tool_results_for_memory_agent,
     vocabulary_terms,
@@ -82,7 +84,7 @@ def test_select_focus_node_returns_none_without_matches(monkeypatch) -> None:
 def test_select_focus_node_falls_back_to_ranked_terms(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 
-    def fake_search_nodes(_db, query=None, label=None, limit=5):
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
         if query == "Mnemosyne" and label == "source_chunk":
             return [
                 {
@@ -101,6 +103,44 @@ def test_select_focus_node_falls_back_to_ranked_terms(monkeypatch) -> None:
     monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
 
     assert select_focus_node(FakeDb(), "What does the Mnemosyne technical design say?") == "technical"
+
+
+def test_active_document_reference_query_detects_session_references() -> None:
+    assert active_document_reference_query("What does this document say about memory?")
+    assert active_document_reference_query("Summarize the previous source.")
+    assert not active_document_reference_query("What does the Taj Mahal article say?")
+
+
+def test_select_active_document_focus_node_scopes_search_to_active_document(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    calls = []
+    monkeypatch.setattr(
+        interaction,
+        "list_active_documents",
+        lambda _db, session_id, limit=5: [
+            {"document_id": "doc1", "title": "Active Source"}
+        ],
+    )
+
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
+        calls.append({"query": query, "label": label, "document_id": document_id})
+        if document_id == "doc1" and label == "source_chunk":
+            return [
+                {
+                    "node_id": "active-node",
+                    "title": "Active Source",
+                    "text_preview": "memory capture",
+                    "labels": ["source_chunk"],
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+
+    assert select_active_document_focus_node(FakeDb(), "What does this document say?", "s1") == "active-node"
+    assert calls[0]["document_id"] == "doc1"
+    assert calls[0]["label"] == "source_chunk"
 
 
 def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
@@ -134,6 +174,58 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
         "answer_adapter",
     ]
     assert "plain prompt" in result["process_trace"][1]["output"]["context_text"]
+
+
+def test_answer_query_uses_active_document_reference_before_corpus(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            return {
+                "adapter": "fake",
+                "answer": "active answer",
+                "used_node_ids": ["active-node"],
+            }
+
+    monkeypatch.setattr(
+        interaction,
+        "select_active_document_focus_node",
+        lambda _db, _query, session_id: "active-node" if session_id == "s1" else None,
+    )
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *_args, **_kwargs: "corpus-node")
+    monkeypatch.setattr(
+        interaction,
+        "compile_context",
+        lambda _db, node_id: {
+            "document": {"title": "Active Doc", "document_id": "doc1"},
+            "focus_node_id": node_id,
+            "records": [
+                {
+                    "role": "focus",
+                    "distance": 0,
+                    "title": "Active",
+                    "node_id": node_id,
+                    "labels": ["source_chunk"],
+                    "endorsement_label": "unreviewed",
+                    "provenance": {},
+                    "text": "Active document text.",
+                    "text_preview": "Active document text.",
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+
+    result = answer_query(
+        FakeDb(),
+        AppConfig(runtime=RuntimeConfig(answer_adapter="fake")),
+        "What does this document say?",
+        session_id="s1",
+    )
+
+    assert result["focus_node_id"] == "active-node"
+    assert result["process_trace"][1]["input"]["selected_node_source"] == "active_document"
 
 
 def test_parse_tool_calls_extracts_json() -> None:
@@ -627,7 +719,7 @@ def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
 
     calls = []
 
-    def fake_search_nodes(_db, query=None, label=None, limit=5):
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
         calls.append(query)
         if query == "Mnemosyne":
             return [{"node_id": "node1", "title": "Mnemosyne"}]
@@ -684,7 +776,7 @@ def test_execute_search_nodes_tool_uses_near_match_terms_after_empty_search(monk
 
     calls = []
 
-    def fake_search_nodes(_db, query=None, label=None, limit=5):
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
         calls.append(query)
         if query == "technical":
             return [{"node_id": "node1", "title": "Technical Design"}]
@@ -706,7 +798,7 @@ def test_execute_search_nodes_tool_uses_near_match_terms_after_empty_search(monk
 def test_execute_search_nodes_tool_uses_original_query_for_intent_terms(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 
-    def fake_search_nodes(_db, query=None, label=None, limit=5):
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
         if query == "system":
             return [
                 {
@@ -751,7 +843,7 @@ def test_ranked_focus_matches_uses_near_match_terms_after_empty_search(monkeypat
 
     calls = []
 
-    def fake_search_nodes(_db, query=None, label=None, limit=5):
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
         calls.append(query)
         if query == "technical":
             return [

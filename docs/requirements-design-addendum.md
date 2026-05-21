@@ -92,6 +92,7 @@ The current implementation has added several scaffold features and operational d
 - Saved exchanges update a session-scoped active document registry from answer `used_node_ids`.
 - Active document records preserve document ID, title, source metadata, labels, referenced node IDs, and reference counts.
 - Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.
+- Direct retrieval scopes reference-shaped session prompts such as "this document" or "previous source" to the session's active documents before falling back to broad corpus retrieval.
 - Saved answer text is captured in `output_ingestion_queue` as pending `llm_answer` work with exchange/session provenance, used node IDs, active document IDs, adapter/model metadata, and a content hash.
 - Pending output-ingestion jobs can be processed into unreviewed graph documents, trees, and nodes labelled `generated_output` and `llm_answer`.
 - Generated-output nodes can be explicitly reviewed through CLI/API, updating `endorsement_label`, `provenance.endorsement_label`, and node review metadata/history.
@@ -249,7 +250,7 @@ The following are still deferred and should not be implied as complete:
 - proximity scoring;
 - semantic map and sense clusters;
 - embedding/vector search;
-- active document registry beyond the current used-node capture and read-only memory-agent visibility skeleton;
+- active document registry beyond current used-node capture, read-only memory-agent visibility, and narrow direct reference resolution;
 - graph-backed restart state node;
 - natural-language endorsement detection/writes beyond explicit review controls;
 - traversal scoring feedback;

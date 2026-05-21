@@ -115,6 +115,7 @@ Current early read surface:
 - optional Ollama CLI answer adapter for real local model calls;
 - saved exchange records in MongoDB.
 - active document records are updated from answer `used_node_ids`, preserving session/document/source/node references for later continuity and endorsement work.
+- direct retrieval uses active document scoping for reference-shaped session prompts such as "this document" or "previous source".
 - saved answer text is queued as pending LLM-output ingestion work, linked back to the originating exchange and session.
 - pending LLM-output ingestion jobs can be processed into unreviewed graph documents with generated-output labels and exchange/session provenance.
 - generated-output nodes can be explicitly reviewed through CLI/API and marked `unreviewed`, `implicit_endorsed`, `explicit_endorsed`, or `rejected`, updating node provenance and review history.
@@ -130,7 +131,7 @@ Known gaps after reconciliation:
 - destructive rebuild commands are maintenance-only and require `--force-replace`; versioned replacement remains unimplemented;
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
 - the compiled context corpus does not yet match the full technical design schema;
-- active document registry is only a first skeleton populated from used nodes and visible to the memory-agent; it does not yet drive deterministic retrieval, endorsement, or restart state.
+- active document registry is only a first skeleton populated from used nodes, visible to the memory-agent, and used for narrow direct reference resolution; it does not yet drive broad retrieval, endorsement, or restart state.
 - output ingestion is implemented only as conservative graph insertion plus explicit review labels; natural-language endorsement detection, relation extraction, restart state node, traversal scoring, and REM consolidation are not started.
 
 Minimum build:
