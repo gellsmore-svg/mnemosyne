@@ -113,6 +113,21 @@ The current implementation has added several scaffold features and operational d
 
 These are not yet fully formalised in the original documents, but the implementation has shown they are needed.
 
+### Memory Engine As Backend
+
+Mnemosyne should remain a durable memory backend that can be used by several interaction surfaces rather than becoming one closed assistant shell.
+
+Reason:
+
+- Web import, coding support, CLI agency, and voice prompting have different user interfaces but need the same source preservation, graph retrieval, context assembly, review, endorsement, and restart-state mechanisms.
+- Existing FOSS tools may already cover parts of capture, UI, speech recognition, or agent orchestration.
+- Keeping stable local APIs makes it possible to plug Mnemosyne into those tools without giving up memory authority.
+
+Constraint:
+
+- External tools may fetch content, transcribe audio, or execute commands, but Mnemosyne should own durable memory writes, provenance, retrieval scoring, context envelopes, and endorsement state.
+- See `docs/practical-applications.md` for the current application lanes and FOSS integration criteria.
+
 ### Deterministic Retrieval Sidecar
 
 The system needs a deterministic lexical/fuzzy retrieval sidecar even after semantic retrieval exists.

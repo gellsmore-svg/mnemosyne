@@ -97,6 +97,11 @@ Minimum build:
 - prompt/response loop;
 - streaming-compatible API shape, even if initial model response is mocked.
 
+Application pressure:
+
+- keep the web UI as one client of the memory engine, not the only interface;
+- preserve API shapes that can also serve CLI agents, web importers, voice transcript adapters, and future FOSS tool integrations.
+
 ## Stage 3 — Retrieval And Context Compilation
 
 Goal: retrieve from graph and compile context.
@@ -153,6 +158,12 @@ Minimum build:
 - web UI after CLI behavior stabilizes;
 - brute-force baseline comparison harness.
 
+Integration-facing minimum:
+
+- stable context envelopes for external coding agents and CLI tools;
+- exact lookup APIs for documents, nodes, exchanges, sessions, and active documents;
+- source-ingestion hooks that allow web and voice tools to submit local files or transcripts through the normal queue.
+
 ## Stage 4 — REM Consolidation And Semantic Map
 
 Goal: cross-document consolidation.
@@ -190,3 +201,19 @@ Minimum build:
 - scoring increments used node/path scores;
 - traversed-unused paths decrement;
 - recommendation mechanism for high-score paths to active documents.
+
+## Stage 7 — Practical Integrations
+
+Goal: expose Mnemosyne as a durable memory backend for practical tools.
+
+Minimum build:
+
+- URL/source import command or API that writes local source files and queues normal ingestion;
+- explicit capture endpoint for notes, command results, code reviews, and design decisions;
+- transcript ingestion endpoint for voice tools, with confidence and correction metadata;
+- read-only memory tool surface suitable for coding agents and CLI workflows;
+- FOSS tool evaluation for web capture, voice capture, local agent shells, and MCP-compatible clients.
+
+Design note:
+
+- see `docs/practical-applications.md` for the current application lanes and integration criteria.
