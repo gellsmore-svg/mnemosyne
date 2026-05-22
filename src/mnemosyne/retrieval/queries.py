@@ -32,6 +32,11 @@ SEARCH_STOPWORDS = {
     "into",
     "about",
 }
+STRUCTURAL_LABELS = {
+    "source_root",
+    "source_section",
+    "source_chunk",
+}
 
 
 def list_documents(db: Database, limit: int = 20) -> list[dict[str, Any]]:
@@ -194,6 +199,69 @@ def node_context(db: Database, node_id: str, child_limit: int = 20) -> dict[str,
         "parent": serialize_node(parent) if parent else None,
         "children": [serialize_node(child) for child in children],
     }
+
+
+def semantic_candidate_nodes(
+    db: Database,
+    node_id: str,
+    limit: int = 10,
+    include_same_document: bool = False,
+) -> list[dict[str, Any]]:
+    node_object_id = parse_object_id(node_id)
+    if not node_object_id:
+        return []
+    focus = db.nodes.find_one({"_id": node_object_id})
+    if not focus:
+        return []
+    labels = semantic_labels(focus.get("labels") or [])
+    if not labels:
+        return []
+    filters: dict[str, Any] = {
+        "_id": {"$ne": focus["_id"]},
+        "labels": {"$in": labels},
+    }
+    if not include_same_document and focus.get("document_id"):
+        filters["document_id"] = {"$ne": focus["document_id"]}
+    candidate_limit = max(limit * 5, 50)
+    candidates = [
+        candidate
+        for candidate in db.nodes.find(filters).limit(candidate_limit)
+        if "source_root" not in (candidate.get("labels") or [])
+    ]
+    candidates.sort(key=lambda candidate: semantic_candidate_sort_tuple(candidate, labels))
+    return [
+        {
+            **serialize_node(candidate),
+            "shared_labels": sorted(set(candidate.get("labels") or []) & set(labels)),
+            "shared_label_count": len(set(candidate.get("labels") or []) & set(labels)),
+        }
+        for candidate in candidates[:limit]
+    ]
+
+
+def semantic_labels(labels: list[str]) -> list[str]:
+    return sorted(
+        {
+            label
+            for label in labels
+            if label
+            and label not in STRUCTURAL_LABELS
+            and not label.startswith("source_")
+        }
+    )
+
+
+def semantic_candidate_sort_tuple(
+    candidate: dict[str, Any],
+    focus_labels: list[str],
+) -> tuple[int, int, tuple[tuple[int, Any], ...]]:
+    candidate_labels = set(candidate.get("labels") or [])
+    shared_count = len(candidate_labels & set(focus_labels))
+    return (
+        -shared_count,
+        -usage_score_bonus(candidate.get("usage_score")),
+        natural_sort_key(str(candidate.get("title") or candidate.get("_id") or "")),
+    )
 
 
 def graph_edges_for_node(

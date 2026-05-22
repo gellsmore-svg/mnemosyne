@@ -280,6 +280,44 @@ def test_cli_expand_graph_paths_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_semantic_candidates_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "semantic-candidates", "node1", "--include-same-document"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.semantic_candidate_nodes",
+        lambda _db, node_id, limit=10, include_same_document=False: [
+            {
+                "node_id": node_id,
+                "limit": limit,
+                "include_same_document": include_same_document,
+            }
+        ],
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "nodes": [
+            {
+                "node_id": "node1",
+                "limit": 10,
+                "include_same_document": True,
+            }
+        ],
+    }
+
+
 class FakeCollection:
     def __init__(self, rows: list[dict]) -> None:
         self.rows = rows

@@ -39,6 +39,7 @@ The current implementation has added several scaffold features and operational d
 - Ingestion relation hints that reference known node keys are persisted as first-class `graph_edges` records with source/target node IDs, relation type, weight, confidence, direction, provenance, and document/tree scope.
 - Existing parent/child node links can be backfilled as structural `contains` graph edges. These are provenance-marked as derived from stored hierarchy, not semantic inference.
 - Graph status diagnostics report total edge count plus relation-type and provenance-source breakdowns.
+- Semantic-candidate diagnostics are read-only: they rank nodes sharing meaningful non-structural labels, excluding source-root containers, but do not write inferred graph edges.
 - Label definitions are stored in MongoDB.
 
 ### Corpus Imports

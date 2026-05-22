@@ -18,6 +18,8 @@ from mnemosyne.retrieval.queries import (
     prioritize_records,
     render_context_document,
     render_record,
+    semantic_candidate_nodes,
+    semantic_labels,
     serialize_document,
     serialize_node,
     text_query_filters,
@@ -179,6 +181,12 @@ def test_context_record_adds_role_and_distance() -> None:
     assert record["node_id"] == "node1"
 
 
+def test_semantic_labels_excludes_structural_source_labels() -> None:
+    assert semantic_labels(
+        ["source_chunk", "source_custom", "taj_mahal", "online_test", ""]
+    ) == ["online_test", "taj_mahal"]
+
+
 class FakeCursor(list):
     def sort(self, *_args):
         return self
@@ -218,9 +226,131 @@ def matches(row, query):
     for key, expected in query.items():
         if key == "$or":
             return any(matches(row, option) for option in expected)
+        if isinstance(expected, dict):
+            if "$ne" in expected and row.get(key) == expected["$ne"]:
+                return False
+            if "$in" in expected:
+                value = row.get(key)
+                if isinstance(value, list):
+                    if not set(value) & set(expected["$in"]):
+                        return False
+                elif value not in expected["$in"]:
+                    return False
+            continue
         if row.get(key) != expected:
             return False
     return True
+
+
+def test_semantic_candidate_nodes_ranks_shared_label_matches() -> None:
+    document_id = ObjectId()
+    other_document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    strong_id = ObjectId()
+    weak_id = ObjectId()
+    same_doc_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+                "labels": ["source_chunk", "taj_mahal", "online_test"],
+            },
+            {
+                "_id": weak_id,
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Weak",
+                "text": "Weak text",
+                "labels": ["source_chunk", "taj_mahal"],
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Root Candidate",
+                "text": "Root text",
+                "labels": ["source_root", "taj_mahal", "online_test"],
+            },
+            {
+                "_id": strong_id,
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Strong",
+                "text": "Strong text",
+                "labels": ["source_section", "taj_mahal", "online_test"],
+            },
+            {
+                "_id": same_doc_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Same Doc",
+                "text": "Same doc text",
+                "labels": ["taj_mahal", "online_test"],
+            },
+        ]
+    )
+
+    candidates = semantic_candidate_nodes(db, str(focus_id))
+
+    assert [candidate["title"] for candidate in candidates] == ["Strong", "Weak"]
+    assert candidates[0]["shared_labels"] == ["online_test", "taj_mahal"]
+    assert candidates[0]["shared_label_count"] == 2
+
+
+def test_semantic_candidate_nodes_uses_natural_title_order_for_ties() -> None:
+    document_id = ObjectId()
+    other_document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+                "labels": ["topic"],
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Paragraph 10",
+                "text": "Tenth text",
+                "labels": ["topic"],
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Paragraph 2",
+                "text": "Second text",
+                "labels": ["topic"],
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Paragraph 1",
+                "text": "First text",
+                "labels": ["topic"],
+            },
+        ]
+    )
+
+    candidates = semantic_candidate_nodes(db, str(focus_id))
+
+    assert [candidate["title"] for candidate in candidates] == [
+        "Paragraph 1",
+        "Paragraph 2",
+        "Paragraph 10",
+    ]
 
 
 def test_nearby_siblings_uses_sibling_position_not_order_delta() -> None:

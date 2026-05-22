@@ -37,6 +37,7 @@ from mnemosyne.retrieval.queries import (
     parse_iso_datetime,
     render_context_document,
     search_nodes,
+    semantic_candidate_nodes,
 )
 from mnemosyne.sessions.active_documents import list_active_documents
 from mnemosyne.sessions.exchanges import recent_exchanges
@@ -268,6 +269,11 @@ def main() -> None:
     graph_paths.add_argument("--max-depth", type=int, default=2)
     graph_paths.add_argument("--branch-limit", type=int, default=5)
     graph_paths.add_argument("--limit", type=int, default=10)
+
+    semantic_candidates = subcommands.add_parser("semantic-candidates")
+    semantic_candidates.add_argument("node_id")
+    semantic_candidates.add_argument("--include-same-document", action="store_true")
+    semantic_candidates.add_argument("--limit", type=int, default=10)
 
     compile_ctx = subcommands.add_parser("compile-context")
     compile_ctx.add_argument("node_id")
@@ -691,6 +697,24 @@ def main() -> None:
                         relation_type=args.relation_type,
                         max_depth=args.max_depth,
                         branch_limit=args.branch_limit,
+                        limit=args.limit,
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "semantic-candidates":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "nodes": semantic_candidate_nodes(
+                        db,
+                        args.node_id,
+                        include_same_document=args.include_same_document,
                         limit=args.limit,
                     ),
                 },
