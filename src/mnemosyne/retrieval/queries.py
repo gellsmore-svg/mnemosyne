@@ -257,6 +257,119 @@ def expand_proximity(
     return candidates[:limit]
 
 
+def expand_graph_paths(
+    db: Database,
+    node_id: str,
+    direction: str = "both",
+    relation_type: str | None = None,
+    max_depth: int = 2,
+    limit: int = 10,
+    branch_limit: int = 5,
+) -> list[dict[str, Any]]:
+    node_object_id = parse_object_id(node_id)
+    if not node_object_id:
+        return []
+    max_depth = bounded_int(max_depth, default=2, minimum=1, maximum=3)
+    limit = bounded_int(limit, default=10, minimum=1, maximum=20)
+    branch_limit = bounded_int(branch_limit, default=5, minimum=1, maximum=10)
+    frontier = [
+        {
+            "node_id": node_id,
+            "path_score": 1.0,
+            "path_edges": [],
+            "visited": {node_id},
+        }
+    ]
+    best_by_node: dict[str, dict[str, Any]] = {}
+    for depth in range(1, max_depth + 1):
+        next_frontier = []
+        for path in frontier:
+            for edge in sorted_path_edges(
+                db,
+                node_id=path["node_id"],
+                direction=direction,
+                relation_type=relation_type,
+                branch_limit=branch_limit,
+            ):
+                adjacent = adjacent_node_for_edge(edge, path["node_id"])
+                adjacent_id = str(adjacent.get("node_id") or "") if adjacent else ""
+                if not adjacent_id or adjacent_id in path["visited"]:
+                    continue
+                path_edges = [*path["path_edges"], edge_summary(edge)]
+                path_score = round(path["path_score"] * edge_proximity_score(edge), 6)
+                candidate = {
+                    "node_id": adjacent_id,
+                    "title": adjacent.get("title"),
+                    "text_preview": adjacent.get("text_preview"),
+                    "labels": adjacent.get("labels") or [],
+                    "endorsement_label": adjacent.get("endorsement_label"),
+                    "path_depth": depth,
+                    "path_score": path_score,
+                    "path_edges": path_edges,
+                }
+                previous = best_by_node.get(adjacent_id)
+                if previous is None or graph_path_sort_tuple(candidate) > graph_path_sort_tuple(previous):
+                    best_by_node[adjacent_id] = candidate
+                next_frontier.append(
+                    {
+                        "node_id": adjacent_id,
+                        "path_score": path_score,
+                        "path_edges": path_edges,
+                        "visited": {*path["visited"], adjacent_id},
+                    }
+                )
+        frontier = sorted(
+            next_frontier,
+            key=lambda item: (item["path_score"], item["node_id"]),
+            reverse=True,
+        )[:branch_limit]
+        if not frontier:
+            break
+    candidates = sorted(best_by_node.values(), key=graph_path_sort_tuple, reverse=True)
+    return candidates[:limit]
+
+
+def sorted_path_edges(
+    db: Database,
+    node_id: str,
+    direction: str,
+    relation_type: str | None,
+    branch_limit: int,
+) -> list[dict[str, Any]]:
+    edges = graph_edges_for_node(
+        db,
+        node_id=node_id,
+        direction=direction,
+        relation_type=relation_type,
+        limit=max(branch_limit * 4, 20),
+    )
+    edges.sort(
+        key=lambda edge: (
+            edge_proximity_score(edge),
+            edge.get("relation_type") or "",
+            edge.get("target_node_id") or "",
+        ),
+        reverse=True,
+    )
+    return edges[:branch_limit]
+
+
+def graph_path_sort_tuple(path: dict[str, Any]) -> tuple[float, int, str]:
+    return (
+        float(path.get("path_score") or 0.0),
+        -int(path.get("path_depth") or 0),
+        str(path.get("title") or ""),
+    )
+
+
+def bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(parsed, maximum))
+
+
 def adjacent_node_for_edge(edge: dict[str, Any], node_id: str) -> dict[str, Any] | None:
     if edge.get("source_node_id") == node_id:
         return edge.get("target_node")

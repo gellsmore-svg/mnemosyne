@@ -860,14 +860,21 @@ def test_parse_memory_agent_decision_accepts_exact_lookup_tools() -> None:
 
 def test_parse_memory_agent_decision_accepts_graph_edge_tool() -> None:
     decision = parse_memory_agent_decision(
-        '{"status":"continue","tool_calls":[{"tool":"expand_proximity","arguments":{"node_id":"node1","direction":"outgoing"}}]}'
+        '{"status":"continue","tool_calls":['
+        '{"tool":"expand_proximity","arguments":{"node_id":"node1","direction":"outgoing"}},'
+        '{"tool":"expand_graph_paths","arguments":{"node_id":"node1","max_depth":2}}'
+        "]}"
     )
 
     assert decision["tool_calls"] == [
         {
             "tool": "expand_proximity",
             "arguments": {"node_id": "node1", "direction": "outgoing"},
-        }
+        },
+        {
+            "tool": "expand_graph_paths",
+            "arguments": {"node_id": "node1", "max_depth": 2},
+        },
     ]
 
 
@@ -1002,6 +1009,51 @@ def test_memory_agent_tool_summary_includes_proximity_matches() -> None:
                 "weight": 0.9,
                 "confidence": 0.8,
             },
+        }
+    ]
+
+
+def test_memory_agent_tool_summary_includes_graph_path_matches() -> None:
+    summary = summarize_tool_results_for_memory_agent(
+        [
+            {
+                "tool": "expand_graph_paths",
+                "arguments": {"node_id": "node1", "max_depth": 2},
+                "ok": True,
+                "output": {
+                    "matches": [
+                        {
+                            "node_id": "near2",
+                            "title": "Two Hop Node",
+                            "labels": ["source_section"],
+                            "text_preview": "A two-hop graph node.",
+                            "path_score": 0.5184,
+                            "path_depth": 2,
+                            "path_edges": [
+                                {"relation_type": "supports", "weight": 0.9, "confidence": 0.9},
+                                {"relation_type": "extends", "weight": 0.8, "confidence": 0.8},
+                            ],
+                        }
+                    ],
+                    "compiled_contexts": [{"focus_node_id": "near2", "records": []}],
+                },
+            }
+        ]
+    )
+
+    assert summary[0]["match_count"] == 1
+    assert summary[0]["top_matches"] == [
+        {
+            "node_id": "near2",
+            "title": "Two Hop Node",
+            "labels": ["source_section"],
+            "text_preview": "A two-hop graph node.",
+            "path_score": 0.5184,
+            "path_depth": 2,
+            "path_edges": [
+                {"relation_type": "supports", "weight": 0.9, "confidence": 0.9},
+                {"relation_type": "extends", "weight": 0.8, "confidence": 0.8},
+            ],
         }
     ]
 
@@ -1163,6 +1215,28 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
             }
         ],
     )
+    def fake_expand_graph_paths(
+        _db,
+        node_id,
+        direction="both",
+        relation_type=None,
+        max_depth=2,
+        branch_limit=5,
+        limit=5,
+    ):
+        return [
+            {
+                "node_id": "node3",
+                "title": "Path Adjacent",
+                "path_score": 0.81,
+                "path_depth": max_depth,
+                "direction": direction,
+                "branch_limit": branch_limit,
+                "limit": limit,
+            }
+        ]
+
+    monkeypatch.setattr(interaction, "expand_graph_paths", fake_expand_graph_paths)
     monkeypatch.setattr(
         interaction,
         "compile_context",
@@ -1192,10 +1266,20 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
                     "limit": 99,
                 },
             },
+            {
+                "tool": "expand_graph_paths",
+                "arguments": {
+                    "node_id": "node1",
+                    "direction": "outgoing",
+                    "max_depth": 99,
+                    "branch_limit": 99,
+                    "limit": 99,
+                },
+            },
         ],
     )
 
-    assert [result["ok"] for result in results] == [True, True, True, True, True]
+    assert [result["ok"] for result in results] == [True, True, True, True, True, True]
     assert results[0]["output"]["title"] == "Design"
     assert results[1]["output"] == [{"document_id": "doc1", "node_id": "node1"}]
     assert results[2]["output"]["child_limit"] == 10
@@ -1219,6 +1303,20 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
             }
         ],
         "compiled_contexts": [{"focus_node_id": "node2", "records": []}],
+    }
+    assert results[5]["output"] == {
+        "matches": [
+            {
+                "node_id": "node3",
+                "title": "Path Adjacent",
+                "path_score": 0.81,
+                "path_depth": 3,
+                "direction": "outgoing",
+                "branch_limit": 10,
+                "limit": 10,
+            }
+        ],
+        "compiled_contexts": [{"focus_node_id": "node3", "records": []}],
     }
 
 
@@ -2055,6 +2153,52 @@ def test_render_tool_results_renders_proximity_context_as_markdown() -> None:
     assert "- Proximity score: 0.85" in rendered
     assert "Nearby context text." in rendered
     assert '"top_contexts"' not in rendered
+
+
+def test_render_tool_results_renders_graph_path_context_as_markdown() -> None:
+    rendered = render_tool_results(
+        [
+            {
+                "tool": "expand_graph_paths",
+                "ok": True,
+                "arguments": {"node_id": "node1", "direction": "outgoing", "max_depth": 2},
+                "output": {
+                    "match_count": 1,
+                    "top_match": {
+                        "node_id": "near2",
+                        "title": "Two Hop Node",
+                        "path_score": 0.5184,
+                        "path_depth": 2,
+                    },
+                    "top_contexts": [
+                        {
+                            "document": {"title": "Doc", "document_id": "doc1"},
+                            "focus_node_id": "near2",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Two Hop Node",
+                                    "node_id": "near2",
+                                    "labels": ["source_section"],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Two-hop context text.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert "### expand_graph_paths" in rendered
+    assert "- Source node ID: node1" in rendered
+    assert "- Max depth: 2" in rendered
+    assert "- Path score: 0.5184" in rendered
+    assert "- Path depth: 2" in rendered
+    assert "Two-hop context text." in rendered
 
 
 def test_agentic_answer_envelope_includes_structured_context_document() -> None:

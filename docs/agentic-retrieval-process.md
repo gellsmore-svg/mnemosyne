@@ -123,14 +123,17 @@ Supported read-only tools are:
 - `get_document_tree`
 - `get_graph_edges`
 - `expand_proximity`
+- `expand_graph_paths`
 - `list_active_documents`
 - `list_documents`
 
 `get_document_tree` is a navigation tool. Its listed node IDs help the planner choose a later `get_node_context` or `compile_context` call, but the tree listing alone is not counted as used evidence for node usage scoring.
 
-`get_graph_edges` returns bounded incoming, outgoing, or bidirectional edge records for a known node ID, including compact source/target node previews. This is the first read-side graph traversal scaffold; it does not yet perform scored multi-hop traversal.
+`get_graph_edges` returns bounded incoming, outgoing, or bidirectional edge records for a known node ID, including compact source/target node previews.
 
 `expand_proximity` ranks one-hop adjacent nodes from graph edges using a deterministic edge score derived from weight and confidence. Python then compiles graph context for the top two adjacent nodes so proximity-expanded evidence can reach the final answer model as source records, not only as a ranked ID list. It is a candidate expansion helper, not the final path-scoring algorithm.
+
+`expand_graph_paths` performs bounded multi-hop graph traversal from a known node ID. Each hop uses the same edge score as proximity expansion, path scores multiply hop scores, cycles back through already visited nodes are skipped, and depth, branch, and result limits cap traversal. Python compiles context for the top two path targets before final answer assembly.
 
 `execute_tool_calls()` wraps every tool result with:
 
@@ -222,6 +225,17 @@ For `expand_proximity`, the summary includes:
 - proximity scores;
 - compact edge relation type, weight, and confidence.
 
+For `expand_graph_paths`, the summary includes:
+
+- match count;
+- path target node IDs;
+- titles;
+- labels;
+- text previews;
+- path score;
+- path depth;
+- compact path edge relation type, weight, and confidence.
+
 This gives the memory-agent enough information to decide whether another read-only tool call is useful without injecting the full final answer context into the planner history. Query assembly appears both in the static prompt guidance and, when tool results are summarized, in the per-result history so later iterations can distinguish the original query guidance from diagnostics produced by a planner-issued sub-query.
 
 ## Final Answer Packaging
@@ -237,7 +251,7 @@ That function:
 5. Computes token and character budget estimates.
 6. Computes context metadata and included node IDs.
 
-For `search_nodes` and `expand_proximity`, `prepare_tool_results_for_answer()` reduces the raw tool output to:
+For `search_nodes`, `expand_proximity`, and `expand_graph_paths`, `prepare_tool_results_for_answer()` reduces the raw tool output to:
 
 - top match;
 - up to two assembled contexts;

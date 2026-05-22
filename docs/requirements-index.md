@@ -11,7 +11,7 @@ This file is a compact implementation index for `LLM_Memory_Architecture_Require
 | Watched ingestion folder | REQ-ING-01, REQ-ING-02 | Polling is acceptable; archive only after successful commit. |
 | Gemma chunking | REQ-ING-03 to REQ-ING-06 | Gemma chooses chunks, proximity, relationships, and one-or-more trees. |
 | Context labels | REQ-ING-06, REQ-ING-07 | User-declared document label overrides effective context across derived trees; keep Gemma labels too. |
-| Graph edges | REQ-ING-04, REQ-ING-05, REQ-ING-11 | First `graph_edges` collection persists ingestion relation hints when they reference known node keys; `get_graph_edges` exposes bounded single-hop lookup and `expand_proximity` ranks one-hop neighbors. Scored multi-hop traversal and relation inference remain deferred. |
+| Graph edges | REQ-ING-04, REQ-ING-05, REQ-ING-11 | First `graph_edges` collection persists ingestion relation hints when they reference known node keys; `get_graph_edges` exposes bounded single-hop lookup, `expand_proximity` ranks one-hop neighbors, and `expand_graph_paths` provides bounded multi-hop path expansion. Relation inference and richer path scoring remain deferred. |
 | Provenance | REQ-ING-08, Section 6 | Chunk-level, three tiers. |
 | Source references | REQ-ING-09 | Nodes must link to document ID, version, and storage path. |
 | Transactional ingestion | REQ-ING-10 to REQ-ING-12 | Stage first; commit only after complete coherent Gemma processing. |

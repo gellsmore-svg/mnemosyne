@@ -134,6 +134,7 @@ Current early read surface:
 - memory-agent prompts include the current session ID and compact active document summaries; the read-only tool surface includes active-document listing plus exact document, document-tree, and node-context lookup tools.
 - memory-agent graph-edge lookup can inspect bounded incoming/outgoing typed relations for a known node ID.
 - memory-agent one-hop proximity expansion can rank adjacent graph nodes by edge weight/confidence.
+- memory-agent bounded graph-path expansion can rank multi-hop path targets by multiplied edge weight/confidence and compile context for the top targets.
 - active document titles, source paths, and labels feed near-match query guidance and fallback search vocabulary for the current session.
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
 - agentic answer prompts persist a first structured `context_document` alongside the rendered Markdown context; this is a scaffold toward the full context schema.
@@ -143,7 +144,7 @@ Current early read surface:
 Known gaps after reconciliation:
 
 - current ingestion chunking is deterministic scaffold, not Gemma-driven chunking;
-- graph edge writes, single-hop edge lookup, and one-hop proximity expansion are only first scaffolds; scored multi-hop traversal, relation extraction, and semantic-map traversal are not implemented;
+- graph edge writes, single-hop edge lookup, one-hop proximity expansion, and bounded multi-hop path expansion are first scaffolds; relation extraction, richer path scoring, and semantic-map traversal are not implemented;
 - destructive rebuild commands are maintenance-only and require `--force-replace`; versioned replacement remains unimplemented;
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
 - the compiled context corpus has only a first structured scaffold and does not yet match the full technical design schema;

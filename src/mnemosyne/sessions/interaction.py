@@ -19,6 +19,7 @@ from mnemosyne.retrieval.queries import (
     compile_context,
     default_system_instruction,
     estimate_tokens,
+    expand_graph_paths,
     expand_proximity,
     get_document,
     graph_edges_for_node,
@@ -685,6 +686,7 @@ def build_memory_agent_prompt(
             "- Use get_node_context when a specific node id is known and parent/children are enough.",
             "- Use get_graph_edges to inspect typed incoming/outgoing relations for a known node id.",
             "- Use expand_proximity to rank one-hop related nodes for a known node id.",
+            "- Use expand_graph_paths to rank bounded multi-hop graph paths from a known node id.",
             "- Use list_active_documents when session context may help resolve references such as this document, the previous source, or active project material.",
             "- Use list_documents only when the user asks what documents are available.",
             "- Use at most 3 tool calls per iteration.",
@@ -877,6 +879,10 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
             matches = output.get("matches") or []
             item["match_count"] = len(matches)
             item["top_matches"] = compact_node_matches(matches, include_proximity=True)
+        elif result.get("tool") == "expand_graph_paths" and isinstance(output, dict):
+            matches = output.get("matches") or []
+            item["match_count"] = len(matches)
+            item["top_matches"] = compact_node_matches(matches, include_graph_path=True)
         elif isinstance(output, dict):
             item["output_keys"] = sorted(output.keys())
             if output.get("focus_node_id"):
@@ -892,6 +898,7 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
 def compact_node_matches(
     matches: list[dict[str, Any]],
     include_proximity: bool = False,
+    include_graph_path: bool = False,
 ) -> list[dict[str, Any]]:
     compact = []
     for match in matches[:5]:
@@ -910,6 +917,18 @@ def compact_node_matches(
                     "weight": edge.get("weight"),
                     "confidence": edge.get("confidence"),
                 }
+        if include_graph_path:
+            item["path_score"] = match.get("path_score")
+            item["path_depth"] = match.get("path_depth")
+            item["path_edges"] = [
+                {
+                    "relation_type": edge.get("relation_type"),
+                    "weight": edge.get("weight"),
+                    "confidence": edge.get("confidence"),
+                }
+                for edge in match.get("path_edges") or []
+                if isinstance(edge, dict)
+            ]
         compact.append(item)
     return compact
 
@@ -992,6 +1011,17 @@ def allowed_tool_specs() -> list[dict[str, Any]]:
             },
         },
         {
+            "tool": "expand_graph_paths",
+            "arguments": {
+                "node_id": "string",
+                "direction": "optional incoming, outgoing, or both",
+                "relation_type": "optional string",
+                "max_depth": "optional integer, max 3",
+                "branch_limit": "optional integer, max 10",
+                "limit": "optional integer, max 10",
+            },
+        },
+        {
             "tool": "list_active_documents",
             "arguments": {
                 "limit": "optional integer, max 10",
@@ -1054,6 +1084,7 @@ def normalize_tool_call(call: Any) -> dict[str, Any]:
         "get_document_tree",
         "get_graph_edges",
         "expand_proximity",
+        "expand_graph_paths",
         "list_active_documents",
         "list_documents",
     }
@@ -1132,6 +1163,19 @@ def execute_tool_calls(
                     relation_type=arguments.get("relation_type"),
                     limit=bounded_limit(arguments.get("limit"), default=5),
                 )
+            elif tool == "expand_graph_paths":
+                node_id = arguments.get("node_id")
+                if not node_id:
+                    raise ValueError("expand_graph_paths requires node_id.")
+                output = execute_expand_graph_paths_tool(
+                    db,
+                    node_id=node_id,
+                    direction=graph_edge_direction(arguments.get("direction")),
+                    relation_type=arguments.get("relation_type"),
+                    max_depth=bounded_depth(arguments.get("max_depth")),
+                    branch_limit=bounded_limit(arguments.get("branch_limit"), default=5),
+                    limit=bounded_limit(arguments.get("limit"), default=5),
+                )
             elif tool == "list_documents":
                 output = list_documents(db, limit=bounded_limit(arguments.get("limit"), default=5))
             elif tool == "list_active_documents":
@@ -1166,6 +1210,14 @@ def execute_tool_calls(
 
 
 def bounded_limit(value: Any, default: int = 5, maximum: int = 10) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(maximum, parsed))
+
+
+def bounded_depth(value: Any, default: int = 2, maximum: int = 3) -> int:
     try:
         parsed = int(value)
     except (TypeError, ValueError):
@@ -1250,6 +1302,35 @@ def execute_expand_proximity_tool(
         node_id=node_id,
         direction=direction,
         relation_type=relation_type,
+        limit=limit,
+    )
+    compiled_contexts = []
+    for match in matches[:2]:
+        match_node_id = match.get("node_id")
+        if not match_node_id:
+            continue
+        context = compile_context(db, match_node_id)
+        if context:
+            compiled_contexts.append(context)
+    return {"matches": matches, "compiled_contexts": compiled_contexts}
+
+
+def execute_expand_graph_paths_tool(
+    db: Database,
+    node_id: str,
+    direction: str = "both",
+    relation_type: str | None = None,
+    max_depth: int = 2,
+    branch_limit: int = 5,
+    limit: int = 5,
+) -> dict[str, Any]:
+    matches = expand_graph_paths(
+        db,
+        node_id=node_id,
+        direction=direction,
+        relation_type=relation_type,
+        max_depth=max_depth,
+        branch_limit=branch_limit,
         limit=limit,
     )
     compiled_contexts = []
@@ -1695,6 +1776,15 @@ def context_document_output(tool: str | None, output: Any) -> Any:
                 for context in output.get("top_contexts") or []
             ],
         }
+    if tool == "expand_graph_paths" and isinstance(output, dict):
+        return {
+            "top_match": output.get("top_match"),
+            "match_count": output.get("match_count", 0),
+            "top_contexts": [
+                context_document_context(context)
+                for context in output.get("top_contexts") or []
+            ],
+        }
     if tool == "get_document_tree" and isinstance(output, list):
         return {
             "node_count": len(output),
@@ -1706,6 +1796,11 @@ def context_document_output(tool: str | None, output: Any) -> Any:
             "edges": output[:20],
         }
     if tool == "expand_proximity" and isinstance(output, list):
+        return {
+            "node_count": len(output),
+            "nodes": output[:20],
+        }
+    if tool == "expand_graph_paths" and isinstance(output, list):
         return {
             "node_count": len(output),
             "nodes": output[:20],
@@ -1742,7 +1837,10 @@ def context_document_record(record: dict[str, Any]) -> dict[str, Any]:
 def prepare_tool_results_for_answer(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     prepared = []
     for result in tool_results:
-        if result.get("tool") not in {"search_nodes", "expand_proximity"} or not result.get("ok"):
+        if (
+            result.get("tool") not in {"search_nodes", "expand_proximity", "expand_graph_paths"}
+            or not result.get("ok")
+        ):
             prepared.append(result)
             continue
         output = result.get("output") or {}
@@ -1798,6 +1896,23 @@ def render_tool_results(tool_results: list[dict[str, Any]]) -> str:
                 )
             )
             continue
+        if result.get("tool") == "expand_graph_paths" and result.get("ok"):
+            arguments = result.get("arguments") or {}
+            blocks.append(
+                "\n".join(
+                    render_prepared_context_tool_result(
+                        result,
+                        heading="expand_graph_paths",
+                        argument_lines=[
+                            f"- Source node ID: {arguments.get('node_id') or '<none>'}",
+                            f"- Direction: {arguments.get('direction') or 'both'}",
+                            f"- Relation type: {arguments.get('relation_type') or '<any>'}",
+                            f"- Max depth: {arguments.get('max_depth') or 2}",
+                        ],
+                    )
+                )
+            )
+            continue
         blocks.append(json.dumps(result, indent=2, default=str))
     return "\n\n".join(blocks)
 
@@ -1825,6 +1940,10 @@ def render_prepared_context_tool_result(
         )
         if "proximity_score" in top_match:
             lines.append(f"- Proximity score: {top_match.get('proximity_score')}")
+        if "path_score" in top_match:
+            lines.append(f"- Path score: {top_match.get('path_score')}")
+        if "path_depth" in top_match:
+            lines.append(f"- Path depth: {top_match.get('path_depth')}")
     remaining_chars = ANSWER_CONTEXT_CHAR_BUDGET
     for index, context in enumerate(top_contexts, start=1):
         rendered = render_context_document(
@@ -1909,7 +2028,7 @@ def included_nodes_from_tool_results(tool_results: list[dict[str, Any]]) -> list
     for result in tool_results:
         if not result.get("ok"):
             continue
-        if result.get("tool") in {"search_nodes", "expand_proximity"}:
+        if result.get("tool") in {"search_nodes", "expand_proximity", "expand_graph_paths"}:
             collect_included_search_context_records(result.get("output"), included)
         elif result.get("tool") == "get_document_tree":
             continue

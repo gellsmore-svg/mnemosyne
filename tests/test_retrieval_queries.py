@@ -8,6 +8,7 @@ from mnemosyne.retrieval.queries import (
     context_record,
     default_no_context_system_instruction,
     estimate_tokens,
+    expand_graph_paths,
     expand_proximity,
     graph_edges_for_node,
     nearby_siblings,
@@ -380,6 +381,102 @@ def test_expand_proximity_scores_adjacent_nodes() -> None:
 
 def test_expand_proximity_returns_empty_for_bad_node_id() -> None:
     assert expand_proximity(FakeDb([]), "bad") == []
+
+
+def test_expand_graph_paths_scores_bounded_multi_hop_paths() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    mid_id = ObjectId()
+    strong_deep_id = ObjectId()
+    weak_direct_id = ObjectId()
+    cycle_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+            },
+            {
+                "_id": mid_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Middle",
+                "text": "Middle text",
+            },
+            {
+                "_id": strong_deep_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Strong Deep",
+                "text": "Deep text",
+            },
+            {
+                "_id": weak_direct_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Weak Direct",
+                "text": "Weak text",
+            },
+            {
+                "_id": cycle_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Cycle",
+                "text": "Cycle text",
+            },
+        ],
+        [
+            {
+                "_id": ObjectId(),
+                "source_node_id": focus_id,
+                "target_node_id": mid_id,
+                "relation_type": "supports",
+                "weight": 0.9,
+                "confidence": 0.9,
+            },
+            {
+                "_id": ObjectId(),
+                "source_node_id": mid_id,
+                "target_node_id": strong_deep_id,
+                "relation_type": "supports",
+                "weight": 0.8,
+                "confidence": 0.8,
+            },
+            {
+                "_id": ObjectId(),
+                "source_node_id": focus_id,
+                "target_node_id": weak_direct_id,
+                "relation_type": "supports",
+                "weight": 0.4,
+                "confidence": 0.4,
+            },
+            {
+                "_id": ObjectId(),
+                "source_node_id": mid_id,
+                "target_node_id": focus_id,
+                "relation_type": "supports",
+                "weight": 1.0,
+                "confidence": 1.0,
+            },
+        ],
+    )
+
+    paths = expand_graph_paths(db, str(focus_id), direction="outgoing", max_depth=2)
+
+    assert [path["title"] for path in paths] == ["Middle", "Strong Deep", "Weak Direct"]
+    assert paths[0]["path_score"] == 0.81
+    assert paths[1]["path_score"] == 0.5184
+    assert paths[1]["path_depth"] == 2
+    assert [edge["relation_type"] for edge in paths[1]["path_edges"]] == ["supports", "supports"]
+    assert str(focus_id) not in [path["node_id"] for path in paths]
+
+
+def test_expand_graph_paths_returns_empty_for_bad_node_id() -> None:
+    assert expand_graph_paths(FakeDb([]), "bad") == []
 
 
 def test_render_record_includes_role_title_and_source() -> None:
