@@ -959,6 +959,53 @@ def test_memory_agent_tool_summary_includes_search_diagnostics() -> None:
     ]
 
 
+def test_memory_agent_tool_summary_includes_proximity_matches() -> None:
+    summary = summarize_tool_results_for_memory_agent(
+        [
+            {
+                "tool": "expand_proximity",
+                "arguments": {"node_id": "node1", "direction": "outgoing"},
+                "ok": True,
+                "output": {
+                    "matches": [
+                        {
+                            "node_id": "near1",
+                            "title": "Nearby Node",
+                            "labels": ["source_section"],
+                            "text_preview": "A nearby graph node.",
+                            "proximity_score": 0.72,
+                            "edge": {
+                                "relation_type": "supports",
+                                "weight": 0.9,
+                                "confidence": 0.8,
+                                "source_node_id": "node1",
+                                "target_node_id": "near1",
+                            },
+                        }
+                    ],
+                    "compiled_contexts": [{"focus_node_id": "near1", "records": []}],
+                },
+            }
+        ]
+    )
+
+    assert summary[0]["match_count"] == 1
+    assert summary[0]["top_matches"] == [
+        {
+            "node_id": "near1",
+            "title": "Nearby Node",
+            "labels": ["source_section"],
+            "text_preview": "A nearby graph node.",
+            "proximity_score": 0.72,
+            "edge": {
+                "relation_type": "supports",
+                "weight": 0.9,
+                "confidence": 0.8,
+            },
+        }
+    ]
+
+
 def test_memory_agent_tool_summary_omits_missing_search_diagnostics() -> None:
     summary = summarize_tool_results_for_memory_agent(
         [

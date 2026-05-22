@@ -78,6 +78,7 @@ The current implementation has added several scaffold features and operational d
 - Exact lookup tools let the planner inspect known document IDs, document tree structure, node parent/child context, typed adjacent graph edges, and one-hop proximity-ranked graph neighbors without re-querying by text. Proximity expansion compiles context for the top adjacent nodes before final answer assembly. Document-tree lookup is treated as navigation metadata and does not by itself mark every tree node as used evidence for scoring.
 - The memory-agent is instructed to return strict JSON decisions with either `continue` plus tool calls or `done`.
 - Python executes tool calls, records structured tool results, and feeds compact summaries back into later memory-agent iterations.
+- Proximity-result summaries expose adjacent node previews, proximity score, and compact edge metadata so later memory-agent iterations can choose follow-up exact lookup or context compilation calls.
 - Planner failure or no initial tool calls triggers a conservative fallback search.
 - Agentic final answer assembly can include up to two compiled search or proximity contexts, deduplicate repeated node records, and enforce a shared context budget.
 - Agentic final answer assembly now stores a structured `context_document` in prompt context metadata, including query, tool results, search diagnostics, assembled records, and capped document-tree navigation output. The final answer prompt remains Markdown-rendered for current models.

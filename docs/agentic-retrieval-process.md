@@ -212,6 +212,16 @@ For `search_nodes`, the summary currently includes:
 - query assembly diagnostics, when available;
 - up to five compact fallback search probes, when available.
 
+For `expand_proximity`, the summary includes:
+
+- match count;
+- adjacent node IDs;
+- titles;
+- labels;
+- text previews;
+- proximity scores;
+- compact edge relation type, weight, and confidence.
+
 This gives the memory-agent enough information to decide whether another read-only tool call is useful without injecting the full final answer context into the planner history. Query assembly appears both in the static prompt guidance and, when tool results are summarized, in the per-result history so later iterations can distinguish the original query guidance from diagnostics produced by a planner-issued sub-query.
 
 ## Final Answer Packaging

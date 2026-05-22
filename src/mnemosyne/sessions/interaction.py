@@ -860,15 +860,7 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
             details = result.get("details") or {}
             query_assembly = details.get("query_assembly") or {}
             item["match_count"] = len(matches)
-            item["top_matches"] = [
-                {
-                    "node_id": match.get("node_id"),
-                    "title": match.get("title"),
-                    "labels": match.get("labels"),
-                    "text_preview": match.get("text_preview"),
-                }
-                for match in matches[:5]
-            ]
+            item["top_matches"] = compact_node_matches(matches)
             if query_assembly_has_values(query_assembly):
                 item["query_assembly"] = {
                     "lexical_terms": query_assembly.get("lexical_terms") or [],
@@ -881,6 +873,10 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
             )
             if fallback_queries:
                 item["fallback_queries"] = fallback_queries
+        elif result.get("tool") == "expand_proximity" and isinstance(output, dict):
+            matches = output.get("matches") or []
+            item["match_count"] = len(matches)
+            item["top_matches"] = compact_node_matches(matches, include_proximity=True)
         elif isinstance(output, dict):
             item["output_keys"] = sorted(output.keys())
             if output.get("focus_node_id"):
@@ -891,6 +887,31 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
             item["error"] = result.get("error")
         summary.append(item)
     return summary
+
+
+def compact_node_matches(
+    matches: list[dict[str, Any]],
+    include_proximity: bool = False,
+) -> list[dict[str, Any]]:
+    compact = []
+    for match in matches[:5]:
+        item = {
+            "node_id": match.get("node_id"),
+            "title": match.get("title"),
+            "labels": match.get("labels"),
+            "text_preview": match.get("text_preview"),
+        }
+        if include_proximity:
+            item["proximity_score"] = match.get("proximity_score")
+            edge = match.get("edge")
+            if isinstance(edge, dict):
+                item["edge"] = {
+                    "relation_type": edge.get("relation_type"),
+                    "weight": edge.get("weight"),
+                    "confidence": edge.get("confidence"),
+                }
+        compact.append(item)
+    return compact
 
 
 def query_assembly_has_values(assembly: dict[str, Any]) -> bool:
