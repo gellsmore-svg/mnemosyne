@@ -132,6 +132,7 @@ Current early read surface:
 - generated-output nodes can be explicitly reviewed through CLI/API and marked `unreviewed`, `implicit_endorsed`, `explicit_endorsed`, or `rejected`, updating node provenance and review history.
 - first iterative memory-agent retrieval loop: memory-agent model emits bounded JSON tool calls, Mnemosyne executes allowed retrieval tools, feeds observations back to the memory-agent, and only then calls the final answer model.
 - memory-agent prompts include the current session ID and compact active document summaries; the read-only tool surface includes active-document listing plus exact document, document-tree, and node-context lookup tools.
+- memory-agent graph-edge lookup can inspect bounded incoming/outgoing typed relations for a known node ID.
 - active document titles, source paths, and labels feed near-match query guidance and fallback search vocabulary for the current session.
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
 - agentic answer prompts persist a first structured `context_document` alongside the rendered Markdown context; this is a scaffold toward the full context schema.
@@ -141,7 +142,7 @@ Current early read surface:
 Known gaps after reconciliation:
 
 - current ingestion chunking is deterministic scaffold, not Gemma-driven chunking;
-- graph edge writes are only a first ingestion-hint persistence path; proximity scores, traversal tools, relation extraction, and semantic-map traversal are not implemented;
+- graph edge writes and single-hop edge lookup are only first scaffolds; proximity scores, scored multi-hop traversal, relation extraction, and semantic-map traversal are not implemented;
 - destructive rebuild commands are maintenance-only and require `--force-replace`; versioned replacement remains unimplemented;
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
 - the compiled context corpus has only a first structured scaffold and does not yet match the full technical design schema;

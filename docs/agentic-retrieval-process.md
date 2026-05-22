@@ -121,10 +121,13 @@ Supported read-only tools are:
 - `get_node_context`
 - `get_document`
 - `get_document_tree`
+- `get_graph_edges`
 - `list_active_documents`
 - `list_documents`
 
 `get_document_tree` is a navigation tool. Its listed node IDs help the planner choose a later `get_node_context` or `compile_context` call, but the tree listing alone is not counted as used evidence for node usage scoring.
+
+`get_graph_edges` returns bounded incoming, outgoing, or bidirectional edge records for a known node ID, including compact source/target node previews. This is the first read-side graph traversal scaffold; it does not yet perform scored multi-hop traversal.
 
 `execute_tool_calls()` wraps every tool result with:
 

@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
+from bson.errors import InvalidId
 from pymongo.database import Database
 
 
@@ -193,6 +194,64 @@ def node_context(db: Database, node_id: str, child_limit: int = 20) -> dict[str,
         "parent": serialize_node(parent) if parent else None,
         "children": [serialize_node(child) for child in children],
     }
+
+
+def graph_edges_for_node(
+    db: Database,
+    node_id: str,
+    direction: str = "both",
+    relation_type: str | None = None,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    if not hasattr(db, "graph_edges"):
+        return []
+    node_object_id = parse_object_id(node_id)
+    if not node_object_id:
+        return []
+    filters: dict[str, Any] = edge_direction_filter(node_object_id, direction)
+    if relation_type:
+        filters["relation_type"] = relation_type
+    edges = list(db.graph_edges.find(filters).sort("created_at", -1).limit(limit))
+    return [serialize_graph_edge(db, edge) for edge in edges]
+
+
+def edge_direction_filter(node_id: ObjectId, direction: str) -> dict[str, Any]:
+    if direction == "outgoing":
+        return {"source_node_id": node_id}
+    if direction == "incoming":
+        return {"target_node_id": node_id}
+    return {"$or": [{"source_node_id": node_id}, {"target_node_id": node_id}]}
+
+
+def serialize_graph_edge(db: Database, edge: dict[str, Any]) -> dict[str, Any]:
+    source_node = db.nodes.find_one({"_id": edge.get("source_node_id")})
+    target_node = db.nodes.find_one({"_id": edge.get("target_node_id")})
+    return {
+        "edge_id": str(edge["_id"]) if edge.get("_id") else None,
+        "schema_version": edge.get("schema_version"),
+        "document_id": str(edge["document_id"]) if edge.get("document_id") else None,
+        "tree_id": str(edge["tree_id"]) if edge.get("tree_id") else None,
+        "source_node_id": str(edge["source_node_id"]) if edge.get("source_node_id") else None,
+        "target_node_id": str(edge["target_node_id"]) if edge.get("target_node_id") else None,
+        "source_node_key": edge.get("source_node_key"),
+        "target_node_key": edge.get("target_node_key"),
+        "relation_type": edge.get("relation_type"),
+        "weight": edge.get("weight"),
+        "confidence": edge.get("confidence"),
+        "direction": edge.get("direction"),
+        "provenance": edge.get("provenance") or {},
+        "source_node": serialize_node(source_node) if source_node else None,
+        "target_node": serialize_node(target_node) if target_node else None,
+        "created_at": iso(edge.get("created_at")),
+        "updated_at": iso(edge.get("updated_at")),
+    }
+
+
+def parse_object_id(value: Any) -> ObjectId | None:
+    try:
+        return ObjectId(str(value))
+    except (InvalidId, TypeError):
+        return None
 
 
 def compile_context(

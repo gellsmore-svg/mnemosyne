@@ -20,6 +20,7 @@ from mnemosyne.retrieval.queries import (
     default_system_instruction,
     estimate_tokens,
     get_document,
+    graph_edges_for_node,
     list_documents,
     node_context,
     render_context_document,
@@ -681,6 +682,7 @@ def build_memory_agent_prompt(
             "- Use get_document when a specific document_id is known.",
             "- Use get_document_tree to inspect a known document's node structure before choosing nodes.",
             "- Use get_node_context when a specific node id is known and parent/children are enough.",
+            "- Use get_graph_edges to inspect typed incoming/outgoing relations for a known node id.",
             "- Use list_active_documents when session context may help resolve references such as this document, the previous source, or active project material.",
             "- Use list_documents only when the user asks what documents are available.",
             "- Use at most 3 tool calls per iteration.",
@@ -949,6 +951,15 @@ def allowed_tool_specs() -> list[dict[str, Any]]:
             },
         },
         {
+            "tool": "get_graph_edges",
+            "arguments": {
+                "node_id": "string",
+                "direction": "optional incoming, outgoing, or both",
+                "relation_type": "optional string",
+                "limit": "optional integer, max 10",
+            },
+        },
+        {
             "tool": "list_active_documents",
             "arguments": {
                 "limit": "optional integer, max 10",
@@ -1009,6 +1020,7 @@ def normalize_tool_call(call: Any) -> dict[str, Any]:
         "get_node_context",
         "get_document",
         "get_document_tree",
+        "get_graph_edges",
         "list_active_documents",
         "list_documents",
     }
@@ -1065,6 +1077,17 @@ def execute_tool_calls(
                 if not document_id:
                     raise ValueError("get_document_tree requires document_id.")
                 output = document_tree(db, document_id)
+            elif tool == "get_graph_edges":
+                node_id = arguments.get("node_id")
+                if not node_id:
+                    raise ValueError("get_graph_edges requires node_id.")
+                output = graph_edges_for_node(
+                    db,
+                    node_id=node_id,
+                    direction=graph_edge_direction(arguments.get("direction")),
+                    relation_type=arguments.get("relation_type"),
+                    limit=bounded_limit(arguments.get("limit"), default=5),
+                )
             elif tool == "list_documents":
                 output = list_documents(db, limit=bounded_limit(arguments.get("limit"), default=5))
             elif tool == "list_active_documents":
@@ -1104,6 +1127,12 @@ def bounded_limit(value: Any, default: int = 5, maximum: int = 10) -> int:
     except (TypeError, ValueError):
         return default
     return max(1, min(maximum, parsed))
+
+
+def graph_edge_direction(value: Any) -> str:
+    if value in {"incoming", "outgoing"}:
+        return str(value)
+    return "both"
 
 
 def fallback_candidate_limit(result_limit: int) -> int:
@@ -1592,6 +1621,11 @@ def context_document_output(tool: str | None, output: Any) -> Any:
         return {
             "node_count": len(output),
             "nodes": output[:20],
+        }
+    if tool == "get_graph_edges" and isinstance(output, list):
+        return {
+            "edge_count": len(output),
+            "edges": output[:20],
         }
     return output
 

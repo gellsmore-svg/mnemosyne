@@ -1,11 +1,14 @@
 from datetime import datetime, timezone
 
+from bson import ObjectId
+
 from mnemosyne.retrieval.queries import (
     build_prompt_envelope,
     build_prompt_envelope_without_context,
     context_record,
     default_no_context_system_instruction,
     estimate_tokens,
+    graph_edges_for_node,
     nearby_siblings,
     node_search_score,
     node_search_sort_key,
@@ -178,20 +181,44 @@ class FakeCursor(list):
     def sort(self, *_args):
         return self
 
+    def limit(self, limit):
+        return FakeCursor(self[:limit])
+
 
 class FakeNodes:
     def __init__(self, nodes):
         self.nodes = nodes
 
+    def find_one(self, query):
+        return next((node for node in self.nodes if matches(node, query)), None)
+
     def find(self, query):
         return FakeCursor(
-            [node for node in self.nodes if node.get("parent_id") == query["parent_id"]]
+            [node for node in self.nodes if matches(node, query)]
         )
 
 
+class FakeEdges:
+    def __init__(self, edges):
+        self.edges = edges
+
+    def find(self, query):
+        return FakeCursor([edge for edge in self.edges if matches(edge, query)])
+
+
 class FakeDb:
-    def __init__(self, nodes):
+    def __init__(self, nodes, edges=None):
         self.nodes = FakeNodes(nodes)
+        self.graph_edges = FakeEdges(edges or [])
+
+
+def matches(row, query):
+    for key, expected in query.items():
+        if key == "$or":
+            return any(matches(row, option) for option in expected)
+        if row.get(key) != expected:
+            return False
+    return True
 
 
 def test_nearby_siblings_uses_sibling_position_not_order_delta() -> None:
@@ -204,6 +231,93 @@ def test_nearby_siblings_uses_sibling_position_not_order_delta() -> None:
     siblings = nearby_siblings(FakeDb(nodes), nodes[1], window=1)
 
     assert [sibling["_id"] for sibling in siblings] == ["a", "c"]
+
+
+def test_graph_edges_for_node_serializes_adjacent_nodes() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    source_id = ObjectId()
+    target_id = ObjectId()
+    created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    db = FakeDb(
+        [
+            {
+                "_id": source_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Source",
+                "text": "Source text",
+            },
+            {
+                "_id": target_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Target",
+                "text": "Target text",
+            },
+        ],
+        [
+            {
+                "_id": ObjectId(),
+                "schema_version": 1,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "source_node_id": source_id,
+                "target_node_id": target_id,
+                "source_node_key": "source",
+                "target_node_key": "target",
+                "relation_type": "supports",
+                "weight": 0.75,
+                "confidence": 0.8,
+                "direction": "directed",
+                "provenance": {"source": "test"},
+                "created_at": created_at,
+                "updated_at": created_at,
+            }
+        ],
+    )
+
+    edges = graph_edges_for_node(db, str(source_id), direction="outgoing")
+
+    assert len(edges) == 1
+    assert edges[0]["relation_type"] == "supports"
+    assert edges[0]["source_node_id"] == str(source_id)
+    assert edges[0]["target_node_id"] == str(target_id)
+    assert edges[0]["source_node"]["title"] == "Source"
+    assert edges[0]["target_node"]["title"] == "Target"
+    assert edges[0]["created_at"] == "2026-01-01T00:00:00+00:00"
+
+
+def test_graph_edges_for_node_filters_relation_type_and_direction() -> None:
+    node_id = ObjectId()
+    other_id = ObjectId()
+    db = FakeDb(
+        [],
+        [
+            {
+                "_id": ObjectId(),
+                "source_node_id": node_id,
+                "target_node_id": other_id,
+                "relation_type": "supports",
+            },
+            {
+                "_id": ObjectId(),
+                "source_node_id": other_id,
+                "target_node_id": node_id,
+                "relation_type": "contradicts",
+            },
+        ],
+    )
+
+    edges = graph_edges_for_node(
+        db,
+        str(node_id),
+        direction="incoming",
+        relation_type="contradicts",
+    )
+
+    assert len(edges) == 1
+    assert edges[0]["relation_type"] == "contradicts"
 
 
 def test_render_record_includes_role_title_and_source() -> None:

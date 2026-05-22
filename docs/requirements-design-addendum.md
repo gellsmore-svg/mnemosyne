@@ -71,9 +71,10 @@ The current implementation has added several scaffold features and operational d
   - `get_node_context`;
   - `get_document`;
   - `get_document_tree`;
+  - `get_graph_edges`;
   - `list_active_documents`;
   - `list_documents`.
-- Exact lookup tools let the planner inspect known document IDs, document tree structure, and node parent/child context without re-querying by text. Document-tree lookup is treated as navigation metadata and does not by itself mark every tree node as used evidence for scoring.
+- Exact lookup tools let the planner inspect known document IDs, document tree structure, node parent/child context, and typed adjacent graph edges without re-querying by text. Document-tree lookup is treated as navigation metadata and does not by itself mark every tree node as used evidence for scoring.
 - The memory-agent is instructed to return strict JSON decisions with either `continue` plus tool calls or `done`.
 - Python executes tool calls, records structured tool results, and feeds compact summaries back into later memory-agent iterations.
 - Planner failure or no initial tool calls triggers a conservative fallback search.

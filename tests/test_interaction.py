@@ -858,6 +858,19 @@ def test_parse_memory_agent_decision_accepts_exact_lookup_tools() -> None:
     ]
 
 
+def test_parse_memory_agent_decision_accepts_graph_edge_tool() -> None:
+    decision = parse_memory_agent_decision(
+        '{"status":"continue","tool_calls":[{"tool":"get_graph_edges","arguments":{"node_id":"node1","direction":"outgoing"}}]}'
+    )
+
+    assert decision["tool_calls"] == [
+        {
+            "tool": "get_graph_edges",
+            "arguments": {"node_id": "node1", "direction": "outgoing"},
+        }
+    ]
+
+
 def test_memory_agent_runtime_can_differ_from_answer_runtime() -> None:
     runtime = RuntimeConfig(
         answer_adapter="ollama_cli",
@@ -1077,6 +1090,19 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
             "child_limit": child_limit,
         },
     )
+    monkeypatch.setattr(
+        interaction,
+        "graph_edges_for_node",
+        lambda _db, node_id, direction="both", relation_type=None, limit=5: [
+            {
+                "source_node_id": node_id,
+                "target_node_id": "node2",
+                "relation_type": relation_type or "supports",
+                "direction": direction,
+                "limit": limit,
+            }
+        ],
+    )
 
     results = interaction.execute_tool_calls(
         FakeDb(),
@@ -1084,13 +1110,31 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
             {"tool": "get_document", "arguments": {"document_id": "doc1"}},
             {"tool": "get_document_tree", "arguments": {"document_id": "doc1"}},
             {"tool": "get_node_context", "arguments": {"node_id": "node1", "child_limit": 99}},
+            {
+                "tool": "get_graph_edges",
+                "arguments": {
+                    "node_id": "node1",
+                    "direction": "sideways",
+                    "relation_type": "supports",
+                    "limit": 99,
+                },
+            },
         ],
     )
 
-    assert [result["ok"] for result in results] == [True, True, True]
+    assert [result["ok"] for result in results] == [True, True, True, True]
     assert results[0]["output"]["title"] == "Design"
     assert results[1]["output"] == [{"document_id": "doc1", "node_id": "node1"}]
     assert results[2]["output"]["child_limit"] == 10
+    assert results[3]["output"] == [
+        {
+            "source_node_id": "node1",
+            "target_node_id": "node2",
+            "relation_type": "supports",
+            "direction": "both",
+            "limit": 10,
+        }
+    ]
 
 
 def test_document_tree_lookup_does_not_mark_tree_nodes_as_used() -> None:
