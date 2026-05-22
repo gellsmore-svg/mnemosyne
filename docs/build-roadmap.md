@@ -136,11 +136,12 @@ Current early read surface:
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
 - agentic answer prompts persist a first structured `context_document` alongside the rendered Markdown context; this is a scaffold toward the full context schema.
 - memory-agent search fallback and lexical ranking, with full console tool output but top-ranked context packaged for the answer model.
+- first typed `graph_edges` collection writes exist for ingestion relation hints that point to known node keys.
 
 Known gaps after reconciliation:
 
 - current ingestion chunking is deterministic scaffold, not Gemma-driven chunking;
-- typed weighted graph edges, proximity scores, and semantic-map traversal are not implemented;
+- graph edge writes are only a first ingestion-hint persistence path; proximity scores, traversal tools, relation extraction, and semantic-map traversal are not implemented;
 - destructive rebuild commands are maintenance-only and require `--force-replace`; versioned replacement remains unimplemented;
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
 - the compiled context corpus has only a first structured scaffold and does not yet match the full technical design schema;

@@ -45,6 +45,7 @@ def commit_ingestion(db: Database, result: IngestionResult) -> dict[str, Any]:
     try:
         inserted = insert_tree_nodes(db, document_id, result)
     except Exception:
+        delete_graph_edges_for_document(db, document_id)
         db.nodes.delete_many({"document_id": document_id})
         db.trees.delete_many({"document_id": document_id})
         db.documents.delete_one({"_id": document_id})
@@ -64,6 +65,8 @@ def rebuild_document(db: Database, document_id: str, result: IngestionResult) ->
 
     previous_trees = list(db.trees.find({"document_id": object_id}))
     previous_nodes = list(db.nodes.find({"document_id": object_id}))
+    previous_edges = list_graph_edges_for_document(db, object_id)
+    delete_graph_edges_for_document(db, object_id)
     db.nodes.delete_many({"document_id": object_id})
     db.trees.delete_many({"document_id": object_id})
     try:
@@ -80,6 +83,7 @@ def rebuild_document(db: Database, document_id: str, result: IngestionResult) ->
         )
         inserted = insert_tree_nodes(db, object_id, result)
     except Exception:
+        delete_graph_edges_for_document(db, object_id)
         db.nodes.delete_many({"document_id": object_id})
         db.trees.delete_many({"document_id": object_id})
         db.documents.replace_one({"_id": object_id}, existing)
@@ -87,6 +91,8 @@ def rebuild_document(db: Database, document_id: str, result: IngestionResult) ->
             db.trees.insert_many(previous_trees)
         if previous_nodes:
             db.nodes.insert_many(previous_nodes)
+        if previous_edges and hasattr(db, "graph_edges"):
+            db.graph_edges.insert_many(previous_edges)
         raise
     return {
         "document_id": str(object_id),
@@ -141,11 +147,136 @@ def insert_tree_nodes(db: Database, document_id: object, result: IngestionResult
         inserted_id = db.nodes.insert_one(node_doc).inserted_id
         key_to_id[node.node_key] = inserted_id
         node_ids.append(inserted_id)
+    edge_result = insert_relation_edges(
+        db=db,
+        document_id=document_id,
+        tree_id=tree_id,
+        result=result,
+        key_to_id=key_to_id,
+    )
 
     return {
         "tree_id": str(tree_id),
         "node_ids": [str(node_id) for node_id in node_ids],
+        **edge_result,
     }
+
+
+def insert_relation_edges(
+    db: Database,
+    document_id: object,
+    tree_id: object,
+    result: IngestionResult,
+    key_to_id: dict[str, object],
+) -> dict[str, int]:
+    if not hasattr(db, "graph_edges"):
+        return {"edge_count": 0, "skipped_edge_count": 0}
+    edge_docs = []
+    seen_edges = set()
+    skipped = 0
+    for node in result.nodes:
+        source_id = key_to_id.get(node.node_key)
+        if not source_id:
+            continue
+        for relation in node.relations:
+            edge = relation_edge_doc(
+                relation=relation,
+                source_node_key=node.node_key,
+                source_node_id=source_id,
+                key_to_id=key_to_id,
+                document_id=document_id,
+                tree_id=tree_id,
+                adapter=result.adapter,
+                created_at=result.created_at,
+            )
+            if edge:
+                edge_key = (
+                    edge["source_node_id"],
+                    edge["target_node_id"],
+                    edge["relation_type"],
+                )
+                if edge_key in seen_edges:
+                    skipped += 1
+                    continue
+                seen_edges.add(edge_key)
+                edge_docs.append(edge)
+            else:
+                skipped += 1
+    if edge_docs:
+        db.graph_edges.insert_many(edge_docs)
+    return {"edge_count": len(edge_docs), "skipped_edge_count": skipped}
+
+
+def relation_edge_doc(
+    relation: dict[str, Any],
+    source_node_key: str,
+    source_node_id: object,
+    key_to_id: dict[str, object],
+    document_id: object,
+    tree_id: object,
+    adapter: str,
+    created_at,
+) -> dict[str, Any] | None:
+    target_node_key = relation_target_key(relation)
+    relation_type = relation_type_value(relation)
+    if not target_node_key or not relation_type:
+        return None
+    target_node_id = key_to_id.get(target_node_key)
+    if not target_node_id:
+        return None
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "document_id": document_id,
+        "tree_id": tree_id,
+        "source_node_id": source_node_id,
+        "target_node_id": target_node_id,
+        "source_node_key": source_node_key,
+        "target_node_key": target_node_key,
+        "relation_type": relation_type,
+        "weight": relation_weight(relation),
+        "confidence": relation.get("confidence"),
+        "direction": relation.get("direction") or "directed",
+        "provenance": {
+            "adapter": adapter,
+            "source": "ingestion_node_relation",
+            "raw_relation": relation,
+        },
+        "created_at": created_at,
+        "updated_at": created_at,
+    }
+
+
+def relation_target_key(relation: dict[str, Any]) -> str | None:
+    value = (
+        relation.get("target_node_key")
+        or relation.get("target_key")
+        or relation.get("node_key")
+        or relation.get("target")
+    )
+    return str(value) if value else None
+
+
+def relation_type_value(relation: dict[str, Any]) -> str | None:
+    value = relation.get("relation_type") or relation.get("type") or relation.get("label")
+    return str(value) if value else None
+
+
+def relation_weight(relation: dict[str, Any]) -> float:
+    try:
+        return float(relation.get("weight", 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def delete_graph_edges_for_document(db: Database, document_id: object) -> None:
+    if hasattr(db, "graph_edges"):
+        db.graph_edges.delete_many({"document_id": document_id})
+
+
+def list_graph_edges_for_document(db: Database, document_id: object) -> list[dict[str, Any]]:
+    if not hasattr(db, "graph_edges"):
+        return []
+    return list(db.graph_edges.find({"document_id": document_id}))
 
 
 def summarize_node_text(text: str, limit: int = 500) -> str:

@@ -36,6 +36,7 @@ The current implementation has added several scaffold features and operational d
 - Source-derived headings and paragraph text are preserved. Source cleanup, deduplication, compression, or summarisation is not an accepted ingestion strategy.
 - Nodes, trees, and documents use `schema_version: 1`.
 - Node records include scaffold fields for summary, relations, proximity, usage score, and continuity-critical state.
+- Ingestion relation hints that reference known node keys are persisted as first-class `graph_edges` records with source/target node IDs, relation type, weight, confidence, direction, provenance, and document/tree scope.
 - Label definitions are stored in MongoDB.
 
 ### Corpus Imports
