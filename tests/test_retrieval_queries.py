@@ -63,10 +63,27 @@ def test_serialize_node_returns_preview_and_ids() -> None:
     assert serialized["document_id"] == "doc1"
     assert serialized["text_preview"] == "x" * 300
     assert serialized["usage_score"] == 7
+    assert serialized["usage_score_bonus"] == 7
     assert serialized["last_used_at"] == "2026-01-03T00:00:00+00:00"
 
 
-def test_serialize_node_bounds_malformed_usage_score() -> None:
+def test_serialize_node_preserves_raw_usage_score_and_reports_bounded_bonus() -> None:
+    node = {
+        "_id": "node1",
+        "document_id": "doc1",
+        "tree_id": "tree1",
+        "title": "Title",
+        "text": "text",
+        "usage_score": 50,
+    }
+
+    serialized = serialize_node(node)
+
+    assert serialized["usage_score"] == 50
+    assert serialized["usage_score_bonus"] == 10
+
+
+def test_serialize_node_defaults_malformed_usage_score() -> None:
     node = {
         "_id": "node1",
         "document_id": "doc1",
@@ -76,7 +93,10 @@ def test_serialize_node_bounds_malformed_usage_score() -> None:
         "usage_score": "many",
     }
 
-    assert serialize_node(node)["usage_score"] == 0
+    serialized = serialize_node(node)
+
+    assert serialized["usage_score"] == 0
+    assert serialized["usage_score_bonus"] == 0
 
 
 def test_parse_iso_datetime_accepts_z_suffix() -> None:

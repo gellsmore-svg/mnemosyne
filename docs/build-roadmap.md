@@ -117,7 +117,7 @@ Current early read surface:
 - active document records are updated from answer `used_node_ids`, preserving session/document/source/node references for later continuity and endorsement work.
 - active document records accumulate referenced node IDs and labels across repeated session references.
 - saved exchanges increment `usage_score` and `last_used_at` on the used non-rejected nodes, giving retrieval feedback a first persisted signal.
-- direct retrieval applies a capped usage-score boost and last-used tie-breaker, while keeping rejection/provenance penalties dominant.
+- direct retrieval applies a capped usage-score boost and last-used tie-breaker, while keeping rejection/provenance penalties dominant; serialized nodes expose raw `usage_score` plus capped `usage_score_bonus`.
 - direct retrieval uses active document scoping for reference-shaped session prompts such as "this document" or "previous source", checking all active documents for topical matches before falling back to the first active document root/default node.
 - saved answer text is queued as pending LLM-output ingestion work, linked back to the originating exchange and session.
 - pending LLM-output ingestion jobs can be processed into unreviewed graph documents with generated-output labels and exchange/session provenance.

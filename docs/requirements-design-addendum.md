@@ -93,7 +93,7 @@ The current implementation has added several scaffold features and operational d
 - Ask/chat/history flows persist exchanges.
 - Saved exchanges update a session-scoped active document registry from answer `used_node_ids`.
 - Saved exchanges increment `usage_score` and update `last_used_at` on used non-rejected nodes after the exchange row exists; exchange history records the number of nodes updated as `scored_node_count`.
-- Serialized node search results expose `usage_score` and `last_used_at` for retrieval diagnostics.
+- Serialized node search results expose raw `usage_score`, capped `usage_score_bonus`, and `last_used_at` for retrieval diagnostics.
 - Active document records preserve document ID, title, source metadata, labels, referenced node IDs, and reference counts.
 - Active document label metadata accumulates across repeated references instead of being overwritten by the latest used-node batch.
 - Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.

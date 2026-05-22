@@ -146,7 +146,7 @@ def node_search_score(node: dict[str, Any], query: str) -> int:
         score -= 100
     if "generated_output" in labels and endorsement_label == "unreviewed":
         score -= 15
-    score += bounded_usage_score(node.get("usage_score"))
+    score += usage_score_bonus(node.get("usage_score"))
     return score
 
 
@@ -164,12 +164,16 @@ def datetime_sort_value(value: Any) -> float:
     return 0.0
 
 
-def bounded_usage_score(value: Any) -> int:
+def parsed_usage_score(value: Any) -> int:
     try:
         usage_score = int(value or 0)
     except (TypeError, ValueError):
-        usage_score = 0
-    return min(max(usage_score, 0), 10)
+        return 0
+    return max(usage_score, 0)
+
+
+def usage_score_bonus(value: Any) -> int:
+    return min(parsed_usage_score(value), 10)
 
 
 def node_context(db: Database, node_id: str, child_limit: int = 20) -> dict[str, Any] | None:
@@ -544,7 +548,8 @@ def serialize_node(node: dict[str, Any]) -> dict[str, Any]:
         "text_preview": text[:300],
         "labels": node.get("labels", []),
         "endorsement_label": node.get("endorsement_label"),
-        "usage_score": bounded_usage_score(node.get("usage_score")),
+        "usage_score": parsed_usage_score(node.get("usage_score")),
+        "usage_score_bonus": usage_score_bonus(node.get("usage_score")),
         "last_used_at": iso(node.get("last_used_at")),
         "provenance": node.get("provenance", {}),
         "created_at": iso(node.get("created_at")),
