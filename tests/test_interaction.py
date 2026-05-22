@@ -202,6 +202,53 @@ def test_select_active_document_focus_node_falls_back_to_document_root(monkeypat
     assert select_active_document_focus_node(db, "What does this document say?", "s1") == str(root_id)
 
 
+def test_select_active_document_focus_node_checks_later_documents_before_default(
+    monkeypatch,
+) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    first_document_id = ObjectId()
+    second_document_id = ObjectId()
+    first_root_id = ObjectId()
+    monkeypatch.setattr(
+        interaction,
+        "list_active_documents",
+        lambda _db, session_id, limit=5: [
+            {"document_id": str(first_document_id), "title": "First Source", "node_ids": []},
+            {"document_id": str(second_document_id), "title": "Second Source", "node_ids": []},
+        ],
+    )
+
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
+        if document_id == str(second_document_id) and label == "source_chunk":
+            return [
+                {
+                    "node_id": "second-topical-node",
+                    "title": "Second Source",
+                    "text_preview": "topical match",
+                    "labels": ["source_chunk"],
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    db = FakeNodeDb(
+        [
+            {
+                "_id": first_root_id,
+                "document_id": first_document_id,
+                "labels": ["source_root"],
+                "order": 0,
+            }
+        ]
+    )
+
+    assert (
+        select_active_document_focus_node(db, "What does the previous source say?", "s1")
+        == "second-topical-node"
+    )
+
+
 def test_active_document_default_node_prefers_root_then_active_node() -> None:
     document_id = ObjectId()
     active_node_id = ObjectId()

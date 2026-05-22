@@ -316,6 +316,7 @@ def select_focus_node(db: Database, query: str) -> str | None:
 
 def select_active_document_focus_node(db: Database, query: str, session_id: str) -> str | None:
     active_documents = list_active_documents(db, session_id=session_id, limit=5)
+    default_node_id = None
     for active_document in active_documents:
         document_id = active_document.get("document_id")
         if not document_id:
@@ -337,14 +338,13 @@ def select_active_document_focus_node(db: Database, query: str, session_id: str)
             )
         if matches:
             return matches[0]["node_id"]
-        default_node_id = active_document_default_node_id(
-            db,
-            document_id=document_id,
-            active_node_ids=active_document.get("node_ids") or [],
-        )
-        if default_node_id:
-            return default_node_id
-    return None
+        if not default_node_id:
+            default_node_id = active_document_default_node_id(
+                db,
+                document_id=document_id,
+                active_node_ids=active_document.get("node_ids") or [],
+            )
+    return default_node_id
 
 
 def active_document_default_node_id(

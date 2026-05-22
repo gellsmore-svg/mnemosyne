@@ -97,7 +97,7 @@ The current implementation has added several scaffold features and operational d
 - Active document records preserve document ID, title, source metadata, labels, referenced node IDs, and reference counts.
 - Active document label metadata accumulates across repeated references instead of being overwritten by the latest used-node batch.
 - Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.
-- Direct retrieval scopes reference-shaped session prompts such as "this document" or "previous source" to the session's active documents before falling back to broad corpus retrieval, and can use the active document root/default node when the prompt has no topical match.
+- Direct retrieval scopes reference-shaped session prompts such as "this document" or "previous source" to the session's active documents before falling back to broad corpus retrieval, checks all active documents for topical matches, and can use the first active document root/default node when no active document has a topical match.
 - Saved answer text is captured in `output_ingestion_queue` as pending `llm_answer` work with exchange/session provenance, used node IDs, active document IDs, adapter/model metadata, and a content hash.
 - Pending output-ingestion jobs can be processed into unreviewed graph documents, trees, and nodes labelled `generated_output` and `llm_answer`.
 - Generated-output nodes can be explicitly reviewed through CLI/API, updating `endorsement_label`, `provenance.endorsement_label`, and node review metadata/history.
