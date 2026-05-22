@@ -110,8 +110,8 @@ def serialize_active_document(row: dict[str, Any]) -> dict[str, Any]:
         "document_id": row.get("document_id"),
         "title": row.get("title"),
         "source": row.get("source") or {},
-        "labels": row.get("labels") or [],
-        "node_ids": row.get("node_ids") or [],
+        "labels": sorted(row.get("labels") or []),
+        "node_ids": sorted(row.get("node_ids") or []),
         "reference_count": row.get("reference_count", 0),
         "first_referenced_at": row.get("first_referenced_at").isoformat()
         if row.get("first_referenced_at")

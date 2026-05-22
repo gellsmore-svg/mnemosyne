@@ -97,8 +97,10 @@ The current implementation has added several scaffold features and operational d
 - Serialized node search results expose raw `usage_score`, capped `usage_score_bonus`, and `last_used_at` for retrieval diagnostics.
 - Active document records preserve document ID, title, source metadata, labels, referenced node IDs, and reference counts.
 - Active document label metadata accumulates across repeated references instead of being overwritten by the latest used-node batch.
+- Active document API/CLI serialization returns stable sorted labels and node IDs.
 - Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.
 - Direct retrieval scopes reference-shaped session prompts such as "this document" or "previous source" to the session's active documents before falling back to broad corpus retrieval, checks all active documents for topical matches, and can use the first active document root/default node when no active document has a topical match.
+- Direct retrieval can use a bounded local source-document fallback for reference-shaped active-document prompts when no Mongo focus node is available. The fallback reads the active document's archived/source file path, injects a capped excerpt into the final-answer prompt, records `source_fallback` metadata, and keeps `included`/`used_node_ids` empty so node usage scoring is not distorted.
 - Saved answer text is captured in `output_ingestion_queue` as pending `llm_answer` work with exchange/session provenance, used node IDs, active document IDs, adapter/model metadata, and a content hash.
 - Pending output-ingestion jobs can be processed into unreviewed graph documents, trees, and nodes labelled `generated_output` and `llm_answer`.
 - Generated-output nodes can be explicitly reviewed through CLI/API, updating `endorsement_label`, `provenance.endorsement_label`, and node review metadata/history.
@@ -257,13 +259,13 @@ The following are still deferred and should not be implied as complete:
 - proximity scoring;
 - semantic map and sense clusters;
 - embedding/vector search;
-- active document registry beyond current used-node capture, read-only memory-agent visibility, and narrow direct reference resolution;
+- active document registry beyond current used-node capture, read-only memory-agent visibility, narrow direct reference resolution, and bounded source fallback;
 - graph-backed restart state node;
 - natural-language endorsement detection/writes beyond explicit review controls;
 - full traversal scoring feedback, including path scores and unused-path decay;
 - REM consolidation;
 - output ingestion beyond conservative unreviewed graph insertion;
-- source-document fallback after retrieval failure;
+- broader source-document fallback after retrieval failure, beyond the current active-document-only local-source excerpt path;
 - optional web search queued for ingestion.
 
 ## Current Project Status Snapshot
@@ -310,7 +312,7 @@ Next implementation candidates:
 
 1. Add a confidence threshold for deciding when weak partial matches should still trigger near-match fallback.
 2. Broaden near-match vocabulary carefully, next with active documents.
-3. Add source-document fallback when Mongo node retrieval fails.
+3. Broaden source-document fallback beyond active-document reference prompts.
 4. Add active document registry skeleton.
 5. Add graph edge schema and first typed relation writes.
 6. Add embedding interface and a brute-force baseline evaluation harness.

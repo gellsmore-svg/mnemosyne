@@ -6,6 +6,7 @@ from mnemosyne.sessions.interaction import (
     active_document_reference_query,
     active_document_vocabulary_values,
     answer_query,
+    build_active_document_source_fallback_envelope,
     build_memory_agent_prompt,
     build_query_assembly,
     combined_query_text,
@@ -323,6 +324,124 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert "plain prompt" in result["process_trace"][1]["output"]["context_text"]
 
 
+def test_answer_query_uses_active_document_source_fallback(monkeypatch, tmp_path) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    source_path = tmp_path / "active-source.md"
+    source_path.write_text(
+        "# Active Source\n\nThe source fallback contains the selected test evidence.",
+        encoding="utf-8",
+    )
+    captured = {}
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            captured["prompt"] = prompt
+            return {
+                "adapter": "fake",
+                "answer": "source fallback answer",
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "select_active_document_focus_node", lambda *args, **kwargs: None)
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        interaction,
+        "list_active_documents",
+        lambda _db, session_id, limit=5: [
+            {
+                "document_id": "doc1",
+                "title": "Active Source",
+                "source": {"path": str(source_path)},
+            }
+        ],
+    )
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+
+    result = answer_query(
+        FakeDb(),
+        AppConfig(runtime=RuntimeConfig(answer_adapter="fake")),
+        "What does this document say about selected test evidence?",
+        session_id="s1",
+    )
+
+    assert result["ok"] is True
+    assert result["focus_node_id"] is None
+    assert result["used_node_ids"] == []
+    assert result["retrieval_status"] == "active_document_source_fallback"
+    assert "source fallback contains the selected test evidence" in captured["prompt"]["context_text"]
+    assert captured["prompt"]["context_metadata"]["included"] == []
+    assert captured["prompt"]["context_metadata"]["source_fallback"]["document_id"] == "doc1"
+    assert result["process_trace"][1]["output"]["retrieval_status"] == (
+        "active_document_source_fallback"
+    )
+
+
+def test_active_document_source_fallback_skips_unreadable_first_document(tmp_path) -> None:
+    second_source = tmp_path / "second.md"
+    second_source.write_text("Second source evidence survives fallback.", encoding="utf-8")
+
+    envelope = build_active_document_source_fallback_envelope(
+        active_documents=[
+            {
+                "document_id": "first",
+                "title": "First Source",
+                "source": {"path": str(tmp_path / "missing.md")},
+            },
+            {
+                "document_id": "second",
+                "title": "Second Source",
+                "source": {"path": str(second_source)},
+            },
+        ],
+        query="What does this document say?",
+    )
+
+    assert envelope is not None
+    assert "Second source evidence survives fallback" in envelope["context_text"]
+    assert envelope["context_metadata"]["source_fallback"]["document_id"] == "second"
+
+
+def test_active_document_source_fallback_rejects_binary_source(tmp_path) -> None:
+    binary_source = tmp_path / "source.pdf"
+    binary_source.write_bytes(b"%PDF-1.7\x00\xff\x00\xff")
+
+    envelope = build_active_document_source_fallback_envelope(
+        active_documents=[
+            {
+                "document_id": "binary",
+                "title": "Binary Source",
+                "source": {"path": str(binary_source)},
+            }
+        ],
+        query="What does this document say?",
+    )
+
+    assert envelope is None
+
+
+def test_active_document_source_fallback_respects_small_prompt_budget(tmp_path) -> None:
+    source_path = tmp_path / "small-budget.md"
+    source_path.write_text("x" * 1000, encoding="utf-8")
+
+    envelope = build_active_document_source_fallback_envelope(
+        active_documents=[
+            {
+                "document_id": "doc1",
+                "title": "Budget Source",
+                "source": {"path": str(source_path)},
+            }
+        ],
+        query="What does this document say?",
+        token_budget=320,
+        reserved_response_tokens=10,
+    )
+
+    assert envelope is not None
+    assert envelope["context_metadata"]["source_fallback"]["used_chars"] == 40
+
+
 def test_answer_query_uses_active_document_reference_before_corpus(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 
@@ -337,7 +456,7 @@ def test_answer_query_uses_active_document_reference_before_corpus(monkeypatch) 
     monkeypatch.setattr(
         interaction,
         "select_active_document_focus_node",
-        lambda _db, _query, session_id: "active-node" if session_id == "s1" else None,
+        lambda _db, _query, session_id, **_kwargs: "active-node" if session_id == "s1" else None,
     )
     monkeypatch.setattr(interaction, "select_focus_node", lambda *_args, **_kwargs: "corpus-node")
     monkeypatch.setattr(

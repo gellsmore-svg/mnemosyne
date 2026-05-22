@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from difflib import SequenceMatcher
+from pathlib import Path
 from typing import Any
 
 from bson import ObjectId
@@ -15,6 +16,8 @@ from mnemosyne.retrieval.queries import (
     build_prompt_envelope,
     build_prompt_envelope_without_context,
     compile_context,
+    default_system_instruction,
+    estimate_tokens,
     list_documents,
     render_context_document,
     render_record,
@@ -26,6 +29,24 @@ from mnemosyne.sessions.exchanges import save_exchange
 
 TERMINAL_FALLBACK_REASONS = {"memory_agent_decision_failed"}
 ANSWER_CONTEXT_CHAR_BUDGET = 4000
+SOURCE_FALLBACK_CHAR_BUDGET = 4000
+SOURCE_FALLBACK_OVERHEAD_TOKEN_RESERVE = 300
+TEXT_SOURCE_SUFFIXES = {
+    ".csv",
+    ".htm",
+    ".html",
+    ".json",
+    ".log",
+    ".md",
+    ".markdown",
+    ".rst",
+    ".text",
+    ".tsv",
+    ".txt",
+    ".xml",
+    ".yaml",
+    ".yml",
+}
 NEAR_MATCH_MIN_SCORE = 0.78
 NEAR_MATCH_MAX_VOCABULARY = 2000
 QUERY_STOPWORDS = {
@@ -104,8 +125,16 @@ def answer_query(
 
     selected_node_id = focus_node_id
     selected_node_source = "provided" if focus_node_id else None
-    if not selected_node_id and active_document_reference_query(query):
-        selected_node_id = select_active_document_focus_node(db, query, session_id)
+    active_documents: list[dict[str, Any]] = []
+    is_active_document_reference = active_document_reference_query(query)
+    if not selected_node_id and is_active_document_reference:
+        active_documents = list_active_documents(db, session_id=session_id, limit=5)
+        selected_node_id = select_active_document_focus_node(
+            db,
+            query,
+            session_id,
+            active_documents=active_documents,
+        )
         if selected_node_id:
             selected_node_source = "active_document"
     if not selected_node_id:
@@ -131,12 +160,23 @@ def answer_query(
             )
             prompt["context_metadata"]["retrieval_status"] = retrieval_status
     else:
-        retrieval_status = "no_focus_node"
-        prompt = build_prompt_envelope_without_context(
-            query=query,
-            token_budget=config.retrieval.prompt_token_budget,
-            reserved_response_tokens=config.retrieval.reserved_response_tokens,
-        )
+        prompt = None
+        if is_active_document_reference:
+            prompt = build_active_document_source_fallback_envelope(
+                active_documents=active_documents,
+                query=query,
+                token_budget=config.retrieval.prompt_token_budget,
+                reserved_response_tokens=config.retrieval.reserved_response_tokens,
+            )
+        if prompt:
+            retrieval_status = "active_document_source_fallback"
+        else:
+            retrieval_status = "no_focus_node"
+            prompt = build_prompt_envelope_without_context(
+                query=query,
+                token_budget=config.retrieval.prompt_token_budget,
+                reserved_response_tokens=config.retrieval.reserved_response_tokens,
+            )
     process_trace.append(
         {
             "step": "retrieval_context",
@@ -314,8 +354,14 @@ def select_focus_node(db: Database, query: str) -> str | None:
     return matches[0]["node_id"]
 
 
-def select_active_document_focus_node(db: Database, query: str, session_id: str) -> str | None:
-    active_documents = list_active_documents(db, session_id=session_id, limit=5)
+def select_active_document_focus_node(
+    db: Database,
+    query: str,
+    session_id: str,
+    active_documents: list[dict[str, Any]] | None = None,
+) -> str | None:
+    if active_documents is None:
+        active_documents = list_active_documents(db, session_id=session_id, limit=5)
     default_node_id = None
     for active_document in active_documents:
         document_id = active_document.get("document_id")
@@ -369,6 +415,145 @@ def active_document_default_node_id(
     if first_node:
         return str(first_node["_id"])
     return None
+
+
+def build_active_document_source_fallback_envelope(
+    active_documents: list[dict[str, Any]],
+    query: str,
+    token_budget: int = 2000,
+    reserved_response_tokens: int = 500,
+) -> dict[str, Any] | None:
+    char_budget = source_fallback_char_budget(
+        token_budget=token_budget,
+        reserved_response_tokens=reserved_response_tokens,
+    )
+    if char_budget <= 0:
+        return None
+    for active_document in active_documents:
+        source = active_document.get("source") or {}
+        source_path = source.get("archive_path") or source.get("path")
+        excerpt = read_source_excerpt(source_path, char_budget=char_budget)
+        if not excerpt:
+            continue
+        return build_source_fallback_prompt_envelope(
+            active_document=active_document,
+            source_path=str(source_path),
+            excerpt=excerpt,
+            query=query,
+            token_budget=token_budget,
+            reserved_response_tokens=reserved_response_tokens,
+        )
+    return None
+
+
+def source_fallback_char_budget(token_budget: int, reserved_response_tokens: int) -> int:
+    available_tokens = token_budget - reserved_response_tokens - SOURCE_FALLBACK_OVERHEAD_TOKEN_RESERVE
+    return min(SOURCE_FALLBACK_CHAR_BUDGET, max(0, available_tokens * 4))
+
+
+def read_source_excerpt(source_path: Any, char_budget: int) -> dict[str, Any] | None:
+    if not source_path:
+        return None
+    path = Path(str(source_path)).expanduser()
+    if not path.is_file() or path.suffix.lower() not in TEXT_SOURCE_SUFFIXES:
+        return None
+    with path.open("rb") as source_file:
+        raw = source_file.read(max(char_budget * 4, 1024))
+        has_more = bool(source_file.read(1))
+    text = raw.decode("utf-8", errors="replace")
+    if replacement_ratio(text) > 0.05:
+        return None
+    if not text.strip():
+        return None
+    excerpt = text[:char_budget]
+    return {
+        "text": excerpt,
+        "used_chars": len(excerpt),
+        "total_chars": len(text) + (1 if has_more else 0),
+        "truncated": has_more or len(text) > len(excerpt),
+        "char_budget": char_budget,
+    }
+
+
+def replacement_ratio(text: str) -> float:
+    if not text:
+        return 0.0
+    return text.count("\ufffd") / len(text)
+
+
+def build_source_fallback_prompt_envelope(
+    active_document: dict[str, Any],
+    source_path: str,
+    excerpt: dict[str, Any],
+    query: str,
+    token_budget: int,
+    reserved_response_tokens: int,
+) -> dict[str, Any]:
+    instruction = (
+        default_system_instruction()
+        + " The retrieved context below is a bounded source-document fallback because Mongo node "
+        "retrieval did not find a usable focus node. Treat it as source evidence, preserve the "
+        "document/path provenance, and say when the excerpt is insufficient."
+    )
+    metadata_lines = [
+        "# Mnemosyne Context",
+        "",
+        "## Active Document Source Fallback",
+        f"- Document: {active_document.get('title') or '<unknown>'}",
+        f"- Document ID: {active_document.get('document_id') or '<unknown>'}",
+        f"- Source path: {source_path}",
+        f"- Excerpt chars: {excerpt['used_chars']} of {excerpt['total_chars']}",
+        f"- Truncated: {'yes' if excerpt['truncated'] else 'no'}",
+        "",
+        "## Source Excerpt",
+        excerpt["text"],
+        "",
+    ]
+    context_text = "\n".join(metadata_lines).rstrip() + "\n"
+    prompt_text = "\n".join(
+        [
+            instruction,
+            "",
+            "## User Query",
+            query,
+            "",
+            "## Retrieved Context",
+            context_text,
+        ]
+    ).rstrip() + "\n"
+    overhead_text = "\n".join([instruction, "", "## User Query", query, "", "## Retrieved Context"])
+    overhead_tokens = estimate_tokens(overhead_text)
+    return {
+        "system_instruction": instruction,
+        "query": query,
+        "context_text": context_text,
+        "prompt_text": prompt_text,
+        "budget": {
+            "token_budget": token_budget,
+            "reserved_response_tokens": reserved_response_tokens,
+            "estimated_overhead_tokens": overhead_tokens,
+            "available_context_tokens": max(0, token_budget - reserved_response_tokens - overhead_tokens),
+            "estimated_prompt_tokens": estimate_tokens(prompt_text),
+            "estimated_context_tokens": estimate_tokens(context_text),
+            "estimated_total_with_reserved_response_tokens": estimate_tokens(prompt_text)
+            + reserved_response_tokens,
+        },
+        "context_metadata": {
+            "included": [],
+            "skipped": [],
+            "used_chars": len(context_text),
+            "char_budget": excerpt["char_budget"],
+            "retrieval_status": "active_document_source_fallback",
+            "source_fallback": {
+                "document_id": active_document.get("document_id"),
+                "title": active_document.get("title"),
+                "source_path": source_path,
+                "used_chars": excerpt["used_chars"],
+                "total_chars": excerpt["total_chars"],
+                "truncated": excerpt["truncated"],
+            },
+        },
+    }
 
 
 def parse_object_id(value: Any) -> ObjectId | None:

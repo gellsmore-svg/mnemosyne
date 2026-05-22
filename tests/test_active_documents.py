@@ -137,6 +137,30 @@ def test_list_active_documents_serializes_recent_documents() -> None:
     assert list_active_documents(db, "session-1")[0]["document_id"] == str(document_id)
 
 
+def test_list_active_documents_sorts_labels_and_node_ids() -> None:
+    document_id = ObjectId()
+    node_id = ObjectId()
+    db = FakeDb(document_id, node_id)
+    first_node_id = str(ObjectId("111111111111111111111111"))
+    second_node_id = str(ObjectId("222222222222222222222222"))
+    db.active_documents.rows.append(
+        {
+            "session_id": "session-1",
+            "document_id": str(document_id),
+            "title": "Technical Design",
+            "source": {},
+            "labels": ["zeta", "alpha"],
+            "node_ids": [second_node_id, first_node_id],
+            "last_referenced_at": datetime.now(timezone.utc),
+        }
+    )
+
+    active_document = list_active_documents(db, "session-1")[0]
+
+    assert active_document["labels"] == ["alpha", "zeta"]
+    assert active_document["node_ids"] == [first_node_id, second_node_id]
+
+
 def matches(row, query):
     for key, expected in query.items():
         actual = row.get(key)
