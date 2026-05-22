@@ -860,12 +860,12 @@ def test_parse_memory_agent_decision_accepts_exact_lookup_tools() -> None:
 
 def test_parse_memory_agent_decision_accepts_graph_edge_tool() -> None:
     decision = parse_memory_agent_decision(
-        '{"status":"continue","tool_calls":[{"tool":"get_graph_edges","arguments":{"node_id":"node1","direction":"outgoing"}}]}'
+        '{"status":"continue","tool_calls":[{"tool":"expand_proximity","arguments":{"node_id":"node1","direction":"outgoing"}}]}'
     )
 
     assert decision["tool_calls"] == [
         {
-            "tool": "get_graph_edges",
+            "tool": "expand_proximity",
             "arguments": {"node_id": "node1", "direction": "outgoing"},
         }
     ]
@@ -1103,6 +1103,19 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
             }
         ],
     )
+    monkeypatch.setattr(
+        interaction,
+        "expand_proximity",
+        lambda _db, node_id, direction="both", relation_type=None, limit=5: [
+            {
+                "node_id": "node2",
+                "title": "Adjacent",
+                "proximity_score": 0.9,
+                "direction": direction,
+                "limit": limit,
+            }
+        ],
+    )
 
     results = interaction.execute_tool_calls(
         FakeDb(),
@@ -1119,10 +1132,18 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
                     "limit": 99,
                 },
             },
+            {
+                "tool": "expand_proximity",
+                "arguments": {
+                    "node_id": "node1",
+                    "direction": "outgoing",
+                    "limit": 99,
+                },
+            },
         ],
     )
 
-    assert [result["ok"] for result in results] == [True, True, True, True]
+    assert [result["ok"] for result in results] == [True, True, True, True, True]
     assert results[0]["output"]["title"] == "Design"
     assert results[1]["output"] == [{"document_id": "doc1", "node_id": "node1"}]
     assert results[2]["output"]["child_limit"] == 10
@@ -1132,6 +1153,15 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
             "target_node_id": "node2",
             "relation_type": "supports",
             "direction": "both",
+            "limit": 10,
+        }
+    ]
+    assert results[4]["output"] == [
+        {
+            "node_id": "node2",
+            "title": "Adjacent",
+            "proximity_score": 0.9,
+            "direction": "outgoing",
             "limit": 10,
         }
     ]
@@ -1927,6 +1957,13 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
                 "ok": True,
                 "output": [{"node_id": f"node{index}"} for index in range(25)],
             },
+            {
+                "index": 2,
+                "tool": "expand_proximity",
+                "arguments": {"node_id": "node1"},
+                "ok": True,
+                "output": [{"node_id": f"near{index}"} for index in range(25)],
+            },
         ],
         token_budget=2000,
         reserved_response_tokens=500,
@@ -1952,6 +1989,9 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
     tree_output = context_document["tool_results"][1]["output"]
     assert tree_output["node_count"] == 25
     assert len(tree_output["nodes"]) == 20
+    proximity_output = context_document["tool_results"][2]["output"]
+    assert proximity_output["node_count"] == 25
+    assert len(proximity_output["nodes"]) == 20
     assert "context_document" not in envelope["prompt_text"]
 
 

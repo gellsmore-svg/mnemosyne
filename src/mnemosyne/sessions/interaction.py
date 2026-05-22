@@ -19,6 +19,7 @@ from mnemosyne.retrieval.queries import (
     compile_context,
     default_system_instruction,
     estimate_tokens,
+    expand_proximity,
     get_document,
     graph_edges_for_node,
     list_documents,
@@ -683,6 +684,7 @@ def build_memory_agent_prompt(
             "- Use get_document_tree to inspect a known document's node structure before choosing nodes.",
             "- Use get_node_context when a specific node id is known and parent/children are enough.",
             "- Use get_graph_edges to inspect typed incoming/outgoing relations for a known node id.",
+            "- Use expand_proximity to rank one-hop related nodes for a known node id.",
             "- Use list_active_documents when session context may help resolve references such as this document, the previous source, or active project material.",
             "- Use list_documents only when the user asks what documents are available.",
             "- Use at most 3 tool calls per iteration.",
@@ -960,6 +962,15 @@ def allowed_tool_specs() -> list[dict[str, Any]]:
             },
         },
         {
+            "tool": "expand_proximity",
+            "arguments": {
+                "node_id": "string",
+                "direction": "optional incoming, outgoing, or both",
+                "relation_type": "optional string",
+                "limit": "optional integer, max 10",
+            },
+        },
+        {
             "tool": "list_active_documents",
             "arguments": {
                 "limit": "optional integer, max 10",
@@ -1021,6 +1032,7 @@ def normalize_tool_call(call: Any) -> dict[str, Any]:
         "get_document",
         "get_document_tree",
         "get_graph_edges",
+        "expand_proximity",
         "list_active_documents",
         "list_documents",
     }
@@ -1082,6 +1094,17 @@ def execute_tool_calls(
                 if not node_id:
                     raise ValueError("get_graph_edges requires node_id.")
                 output = graph_edges_for_node(
+                    db,
+                    node_id=node_id,
+                    direction=graph_edge_direction(arguments.get("direction")),
+                    relation_type=arguments.get("relation_type"),
+                    limit=bounded_limit(arguments.get("limit"), default=5),
+                )
+            elif tool == "expand_proximity":
+                node_id = arguments.get("node_id")
+                if not node_id:
+                    raise ValueError("expand_proximity requires node_id.")
+                output = expand_proximity(
                     db,
                     node_id=node_id,
                     direction=graph_edge_direction(arguments.get("direction")),
@@ -1626,6 +1649,11 @@ def context_document_output(tool: str | None, output: Any) -> Any:
         return {
             "edge_count": len(output),
             "edges": output[:20],
+        }
+    if tool == "expand_proximity" and isinstance(output, list):
+        return {
+            "node_count": len(output),
+            "nodes": output[:20],
         }
     return output
 

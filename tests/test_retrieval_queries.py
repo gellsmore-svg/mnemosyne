@@ -8,6 +8,7 @@ from mnemosyne.retrieval.queries import (
     context_record,
     default_no_context_system_instruction,
     estimate_tokens,
+    expand_proximity,
     graph_edges_for_node,
     nearby_siblings,
     node_search_score,
@@ -318,6 +319,67 @@ def test_graph_edges_for_node_filters_relation_type_and_direction() -> None:
 
     assert len(edges) == 1
     assert edges[0]["relation_type"] == "contradicts"
+
+
+def test_expand_proximity_scores_adjacent_nodes() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    strong_id = ObjectId()
+    weak_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+            },
+            {
+                "_id": strong_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Strong",
+                "text": "Strong text",
+            },
+            {
+                "_id": weak_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Weak",
+                "text": "Weak text",
+            },
+        ],
+        [
+            {
+                "_id": ObjectId(),
+                "source_node_id": focus_id,
+                "target_node_id": weak_id,
+                "relation_type": "supports",
+                "weight": 0.5,
+                "confidence": 0.5,
+            },
+            {
+                "_id": ObjectId(),
+                "source_node_id": strong_id,
+                "target_node_id": focus_id,
+                "relation_type": "supports",
+                "weight": 0.9,
+                "confidence": 0.8,
+            },
+        ],
+    )
+
+    nodes = expand_proximity(db, str(focus_id), relation_type="supports")
+
+    assert [node["title"] for node in nodes] == ["Strong", "Weak"]
+    assert [node["proximity_score"] for node in nodes] == [0.72, 0.25]
+    assert nodes[0]["edge"]["source_node_id"] == str(strong_id)
+
+
+def test_expand_proximity_returns_empty_for_bad_node_id() -> None:
+    assert expand_proximity(FakeDb([]), "bad") == []
 
 
 def test_render_record_includes_role_title_and_source() -> None:

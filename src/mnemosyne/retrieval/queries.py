@@ -215,6 +215,79 @@ def graph_edges_for_node(
     return [serialize_graph_edge(db, edge) for edge in edges]
 
 
+def expand_proximity(
+    db: Database,
+    node_id: str,
+    direction: str = "both",
+    relation_type: str | None = None,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    node_object_id = parse_object_id(node_id)
+    if not node_object_id:
+        return []
+    candidates = []
+    for edge in graph_edges_for_node(
+        db,
+        node_id=node_id,
+        direction=direction,
+        relation_type=relation_type,
+        limit=max(limit * 4, 20),
+    ):
+        adjacent = adjacent_node_for_edge(edge, node_id)
+        if not adjacent:
+            continue
+        candidates.append(
+            {
+                "node_id": adjacent.get("node_id"),
+                "title": adjacent.get("title"),
+                "text_preview": adjacent.get("text_preview"),
+                "labels": adjacent.get("labels") or [],
+                "endorsement_label": adjacent.get("endorsement_label"),
+                "edge": edge_summary(edge),
+                "proximity_score": edge_proximity_score(edge),
+            }
+        )
+    candidates.sort(
+        key=lambda item: (
+            item.get("proximity_score") or 0.0,
+            item.get("title") or "",
+        ),
+        reverse=True,
+    )
+    return candidates[:limit]
+
+
+def adjacent_node_for_edge(edge: dict[str, Any], node_id: str) -> dict[str, Any] | None:
+    if edge.get("source_node_id") == node_id:
+        return edge.get("target_node")
+    if edge.get("target_node_id") == node_id:
+        return edge.get("source_node")
+    return None
+
+
+def edge_summary(edge: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "edge_id": edge.get("edge_id"),
+        "source_node_id": edge.get("source_node_id"),
+        "target_node_id": edge.get("target_node_id"),
+        "relation_type": edge.get("relation_type"),
+        "weight": edge.get("weight"),
+        "confidence": edge.get("confidence"),
+        "direction": edge.get("direction"),
+    }
+
+
+def edge_proximity_score(edge: dict[str, Any]) -> float:
+    return round(edge_numeric_value(edge.get("weight")) * edge_numeric_value(edge.get("confidence")), 4)
+
+
+def edge_numeric_value(value: Any, default: float = 1.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def edge_direction_filter(node_id: ObjectId, direction: str) -> dict[str, Any]:
     if direction == "outgoing":
         return {"source_node_id": node_id}
