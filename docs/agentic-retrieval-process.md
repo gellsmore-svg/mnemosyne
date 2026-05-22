@@ -118,8 +118,13 @@ Supported read-only tools are:
 
 - `search_nodes`
 - `compile_context`
+- `get_node_context`
+- `get_document`
+- `get_document_tree`
 - `list_active_documents`
 - `list_documents`
+
+`get_document_tree` is a navigation tool. Its listed node IDs help the planner choose a later `get_node_context` or `compile_context` call, but the tree listing alone is not counted as used evidence for node usage scoring.
 
 `execute_tool_calls()` wraps every tool result with:
 

@@ -12,13 +12,16 @@ from pymongo.database import Database
 
 from mnemosyne.adapters.answer import answer_adapter
 from mnemosyne.config import AppConfig
+from mnemosyne.db.repositories import document_tree
 from mnemosyne.retrieval.queries import (
     build_prompt_envelope,
     build_prompt_envelope_without_context,
     compile_context,
     default_system_instruction,
     estimate_tokens,
+    get_document,
     list_documents,
+    node_context,
     render_context_document,
     render_record,
     search_nodes,
@@ -675,6 +678,9 @@ def build_memory_agent_prompt(
             "- Use search_nodes for ordinary text queries.",
             "- Preserve the user's substantive intent terms in search_nodes queries.",
             "- Use compile_context when a focus_node_id is provided or a specific node id is known.",
+            "- Use get_document when a specific document_id is known.",
+            "- Use get_document_tree to inspect a known document's node structure before choosing nodes.",
+            "- Use get_node_context when a specific node id is known and parent/children are enough.",
             "- Use list_active_documents when session context may help resolve references such as this document, the previous source, or active project material.",
             "- Use list_documents only when the user asks what documents are available.",
             "- Use at most 3 tool calls per iteration.",
@@ -924,6 +930,25 @@ def allowed_tool_specs() -> list[dict[str, Any]]:
             },
         },
         {
+            "tool": "get_node_context",
+            "arguments": {
+                "node_id": "string",
+                "child_limit": "optional integer, max 10",
+            },
+        },
+        {
+            "tool": "get_document",
+            "arguments": {
+                "document_id": "string",
+            },
+        },
+        {
+            "tool": "get_document_tree",
+            "arguments": {
+                "document_id": "string",
+            },
+        },
+        {
             "tool": "list_active_documents",
             "arguments": {
                 "limit": "optional integer, max 10",
@@ -978,7 +1003,16 @@ def normalize_tool_call(call: Any) -> dict[str, Any]:
     if not isinstance(call, dict):
         raise ValueError("Each tool call must be an object.")
     tool = call.get("tool")
-    if tool not in {"search_nodes", "compile_context", "list_active_documents", "list_documents"}:
+    allowed_tools = {
+        "search_nodes",
+        "compile_context",
+        "get_node_context",
+        "get_document",
+        "get_document_tree",
+        "list_active_documents",
+        "list_documents",
+    }
+    if tool not in allowed_tools:
         raise ValueError(f"Unsupported planner tool: {tool}")
     arguments = call.get("arguments") or {}
     if not isinstance(arguments, dict):
@@ -1012,6 +1046,25 @@ def execute_tool_calls(
                 if not node_id:
                     raise ValueError("compile_context requires node_id.")
                 output = compile_context(db, node_id)
+            elif tool == "get_node_context":
+                node_id = arguments.get("node_id")
+                if not node_id:
+                    raise ValueError("get_node_context requires node_id.")
+                output = node_context(
+                    db,
+                    node_id,
+                    child_limit=bounded_limit(arguments.get("child_limit"), default=5),
+                )
+            elif tool == "get_document":
+                document_id = arguments.get("document_id")
+                if not document_id:
+                    raise ValueError("get_document requires document_id.")
+                output = get_document(db, document_id)
+            elif tool == "get_document_tree":
+                document_id = arguments.get("document_id")
+                if not document_id:
+                    raise ValueError("get_document_tree requires document_id.")
+                output = document_tree(db, document_id)
             elif tool == "list_documents":
                 output = list_documents(db, limit=bounded_limit(arguments.get("limit"), default=5))
             elif tool == "list_active_documents":
@@ -1621,6 +1674,8 @@ def included_nodes_from_tool_results(tool_results: list[dict[str, Any]]) -> list
             continue
         if result.get("tool") == "search_nodes":
             collect_included_search_context_records(result.get("output"), included)
+        elif result.get("tool") == "get_document_tree":
+            continue
         else:
             collect_included_nodes(result.get("output"), included)
     return list(included.values())

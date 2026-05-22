@@ -131,7 +131,7 @@ Current early read surface:
 - pending LLM-output ingestion jobs can be processed into unreviewed graph documents with generated-output labels and exchange/session provenance.
 - generated-output nodes can be explicitly reviewed through CLI/API and marked `unreviewed`, `implicit_endorsed`, `explicit_endorsed`, or `rejected`, updating node provenance and review history.
 - first iterative memory-agent retrieval loop: memory-agent model emits bounded JSON tool calls, Mnemosyne executes allowed retrieval tools, feeds observations back to the memory-agent, and only then calls the final answer model.
-- memory-agent prompts include the current session ID and compact active document summaries; the read-only tool surface includes `list_active_documents`.
+- memory-agent prompts include the current session ID and compact active document summaries; the read-only tool surface includes active-document listing plus exact document, document-tree, and node-context lookup tools.
 - active document titles, source paths, and labels feed near-match query guidance and fallback search vocabulary for the current session.
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
 - memory-agent search fallback and lexical ranking, with full console tool output but top-ranked context packaged for the answer model.

@@ -841,6 +841,22 @@ def test_parse_memory_agent_decision_accepts_active_document_tool() -> None:
     ]
 
 
+def test_parse_memory_agent_decision_accepts_exact_lookup_tools() -> None:
+    decision = parse_memory_agent_decision(
+        '{"status":"continue","tool_calls":['
+        '{"tool":"get_document","arguments":{"document_id":"doc1"}},'
+        '{"tool":"get_document_tree","arguments":{"document_id":"doc1"}},'
+        '{"tool":"get_node_context","arguments":{"node_id":"node1"}}'
+        "]}"
+    )
+
+    assert [call["tool"] for call in decision["tool_calls"]] == [
+        "get_document",
+        "get_document_tree",
+        "get_node_context",
+    ]
+
+
 def test_memory_agent_runtime_can_differ_from_answer_runtime() -> None:
     runtime = RuntimeConfig(
         answer_adapter="ollama_cli",
@@ -1035,6 +1051,64 @@ def test_execute_tool_calls_can_list_active_documents(monkeypatch) -> None:
             "title": "Active Doc",
         }
     ]
+
+
+def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    monkeypatch.setattr(
+        interaction,
+        "get_document",
+        lambda _db, document_id: {"document_id": document_id, "title": "Design"},
+    )
+    monkeypatch.setattr(
+        interaction,
+        "document_tree",
+        lambda _db, document_id: [{"document_id": document_id, "node_id": "node1"}],
+    )
+    monkeypatch.setattr(
+        interaction,
+        "node_context",
+        lambda _db, node_id, child_limit=5: {
+            "focus_node_id": node_id,
+            "node": {"node_id": node_id, "title": "Focus"},
+            "children": [{"node_id": "child1"}],
+            "child_limit": child_limit,
+        },
+    )
+
+    results = interaction.execute_tool_calls(
+        FakeDb(),
+        [
+            {"tool": "get_document", "arguments": {"document_id": "doc1"}},
+            {"tool": "get_document_tree", "arguments": {"document_id": "doc1"}},
+            {"tool": "get_node_context", "arguments": {"node_id": "node1", "child_limit": 99}},
+        ],
+    )
+
+    assert [result["ok"] for result in results] == [True, True, True]
+    assert results[0]["output"]["title"] == "Design"
+    assert results[1]["output"] == [{"document_id": "doc1", "node_id": "node1"}]
+    assert results[2]["output"]["child_limit"] == 10
+
+
+def test_document_tree_lookup_does_not_mark_tree_nodes_as_used() -> None:
+    included = included_nodes_from_tool_results(
+        [
+            {
+                "tool": "get_document_tree",
+                "ok": True,
+                "output": [{"node_id": "node1", "title": "Tree Node"}],
+            },
+            {
+                "tool": "get_node_context",
+                "ok": True,
+                "output": {"focus_node_id": "node2", "node": {"node_id": "node2"}},
+            },
+        ]
+    )
+
+    assert [record["node_id"] for record in included] == ["node2"]
 
 
 def test_active_document_vocabulary_values_extracts_titles_sources_and_labels() -> None:
