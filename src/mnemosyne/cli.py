@@ -26,7 +26,10 @@ from mnemosyne.ingestion.worker import discover_sources, process_next
 from mnemosyne.retrieval.queries import (
     build_prompt_envelope,
     compile_context,
+    expand_graph_paths,
+    expand_proximity,
     get_document,
+    graph_edges_for_node,
     list_documents,
     node_context,
     parse_iso_datetime,
@@ -239,6 +242,26 @@ def main() -> None:
     context = subcommands.add_parser("node-context")
     context.add_argument("node_id")
     context.add_argument("--child-limit", type=int, default=20)
+
+    graph_edges = subcommands.add_parser("graph-edges")
+    graph_edges.add_argument("node_id")
+    graph_edges.add_argument("--direction", choices=["incoming", "outgoing", "both"], default="both")
+    graph_edges.add_argument("--relation-type", default=None)
+    graph_edges.add_argument("--limit", type=int, default=10)
+
+    proximity = subcommands.add_parser("expand-proximity")
+    proximity.add_argument("node_id")
+    proximity.add_argument("--direction", choices=["incoming", "outgoing", "both"], default="both")
+    proximity.add_argument("--relation-type", default=None)
+    proximity.add_argument("--limit", type=int, default=10)
+
+    graph_paths = subcommands.add_parser("expand-graph-paths")
+    graph_paths.add_argument("node_id")
+    graph_paths.add_argument("--direction", choices=["incoming", "outgoing", "both"], default="both")
+    graph_paths.add_argument("--relation-type", default=None)
+    graph_paths.add_argument("--max-depth", type=int, default=2)
+    graph_paths.add_argument("--branch-limit", type=int, default=5)
+    graph_paths.add_argument("--limit", type=int, default=10)
 
     compile_ctx = subcommands.add_parser("compile-context")
     compile_ctx.add_argument("node_id")
@@ -594,6 +617,65 @@ def main() -> None:
         ensure_indexes(db)
         context_result = node_context(db, args.node_id, child_limit=args.child_limit)
         print(json.dumps({"ok": context_result is not None, "context": context_result}, indent=2))
+        return
+
+    if args.command == "graph-edges":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "edges": graph_edges_for_node(
+                        db,
+                        args.node_id,
+                        direction=args.direction,
+                        relation_type=args.relation_type,
+                        limit=args.limit,
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "expand-proximity":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "nodes": expand_proximity(
+                        db,
+                        args.node_id,
+                        direction=args.direction,
+                        relation_type=args.relation_type,
+                        limit=args.limit,
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "expand-graph-paths":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "paths": expand_graph_paths(
+                        db,
+                        args.node_id,
+                        direction=args.direction,
+                        relation_type=args.relation_type,
+                        max_depth=args.max_depth,
+                        branch_limit=args.branch_limit,
+                        limit=args.limit,
+                    ),
+                },
+                indent=2,
+            )
+        )
         return
 
     if args.command == "compile-context":

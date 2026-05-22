@@ -77,6 +77,7 @@ The current implementation has added several scaffold features and operational d
   - `list_active_documents`;
   - `list_documents`.
 - Exact lookup tools let the planner inspect known document IDs, document tree structure, node parent/child context, typed adjacent graph edges, one-hop proximity-ranked graph neighbors, and bounded multi-hop graph paths without re-querying by text. Proximity and graph-path expansion compile context for the top target nodes before final answer assembly. Document-tree lookup is treated as navigation metadata and does not by itself mark every tree node as used evidence for scoring.
+- CLI graph inspection commands expose the same single-hop edge, one-hop proximity, and bounded multi-hop path expansion helpers for operator diagnostics.
 - The memory-agent is instructed to return strict JSON decisions with either `continue` plus tool calls or `done`.
 - Python executes tool calls, records structured tool results, and feeds compact summaries back into later memory-agent iterations.
 - Proximity and graph-path summaries expose node previews, scores, and compact edge metadata so later memory-agent iterations can choose follow-up exact lookup or context compilation calls.

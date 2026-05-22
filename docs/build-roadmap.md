@@ -114,6 +114,7 @@ Current early read surface:
 - search nodes by text, label, endorsement label, document ID, and created-at bounds;
 - retrieve node context with document metadata, parent, and children.
 - compile a role-tagged context record set from a focus node, including ancestors, nearby siblings, and descendants.
+- CLI graph inspection commands for single-hop edges, one-hop proximity expansion, and bounded multi-hop path expansion.
 - render compiled context to Markdown with include/skip metadata under a character budget.
 - build a prompt envelope with system instruction, user query, rendered context, and estimated token budget metadata.
 - ask/chat commands using the retrieval pipeline and local Ollama CLI answer adapter by default;

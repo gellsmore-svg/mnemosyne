@@ -1,4 +1,7 @@
+import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from bson import ObjectId
 
@@ -7,6 +10,7 @@ from mnemosyne.cli import (
     document_ids_for_label,
     destructive_rebuild_refusal,
     existing_document_extra_labels,
+    main,
     rebuild_document_from_existing_source,
 )
 
@@ -99,6 +103,117 @@ def test_rebuild_document_uses_original_source_path_for_adapter_title(
 
     assert result["ok"] is True
     assert captured["title"] == "original-name"
+
+
+def test_cli_graph_edges_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["mnemosyne", "graph-edges", "node1", "--limit", "2"])
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.graph_edges_for_node",
+        lambda _db, node_id, direction="both", relation_type=None, limit=10: [
+            {"node_id": node_id, "direction": direction, "limit": limit}
+        ],
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "edges": [{"node_id": "node1", "direction": "both", "limit": 2}],
+    }
+
+
+def test_cli_expand_proximity_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "expand-proximity", "node1", "--direction", "incoming"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.expand_proximity",
+        lambda _db, node_id, direction="both", relation_type=None, limit=10: [
+            {"node_id": node_id, "direction": direction, "limit": limit}
+        ],
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "nodes": [{"node_id": "node1", "direction": "incoming", "limit": 10}],
+    }
+
+
+def test_cli_expand_graph_paths_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "expand-graph-paths",
+            "node1",
+            "--direction",
+            "outgoing",
+            "--max-depth",
+            "3",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+
+    def fake_expand_graph_paths(
+        _db,
+        node_id,
+        direction="both",
+        relation_type=None,
+        max_depth=2,
+        branch_limit=5,
+        limit=10,
+    ):
+        return [
+            {
+                "node_id": node_id,
+                "direction": direction,
+                "max_depth": max_depth,
+                "branch_limit": branch_limit,
+                "limit": limit,
+            }
+        ]
+
+    monkeypatch.setattr("mnemosyne.cli.expand_graph_paths", fake_expand_graph_paths)
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "paths": [
+            {
+                "node_id": "node1",
+                "direction": "outgoing",
+                "max_depth": 3,
+                "branch_limit": 5,
+                "limit": 10,
+            }
+        ],
+    }
 
 
 class FakeCollection:
