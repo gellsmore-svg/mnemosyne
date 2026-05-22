@@ -62,7 +62,10 @@ def save_exchange(
     )
     exchange_id = str(result.inserted_id)
     scored_node_count = record_node_usage(db, used_node_ids)
-    exchange_updates = {"scored_node_count": scored_node_count}
+    db.exchanges.update_one(
+        {"_id": result.inserted_id},
+        {"$set": {"scored_node_count": scored_node_count}},
+    )
     output_job_id = queue_exchange_output(
         db,
         exchange_id=exchange_id,
@@ -73,11 +76,10 @@ def save_exchange(
         active_document_ids=active_document_ids,
     )
     if output_job_id:
-        exchange_updates["output_ingestion_job_id"] = output_job_id
-    db.exchanges.update_one(
-        {"_id": result.inserted_id},
-        {"$set": exchange_updates},
-    )
+        db.exchanges.update_one(
+            {"_id": result.inserted_id},
+            {"$set": {"output_ingestion_job_id": output_job_id}},
+        )
     return exchange_id
 
 

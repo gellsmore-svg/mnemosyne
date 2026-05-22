@@ -91,6 +91,7 @@ The current implementation has added several scaffold features and operational d
 ### Observability And Persistence
 
 - Ask/chat/history flows persist exchanges.
+- Exchange usage-summary updates are persisted before output-ingestion queue linking, reducing score/summary drift if output queueing fails.
 - Saved exchanges update a session-scoped active document registry from answer `used_node_ids`.
 - Saved exchanges increment `usage_score` and update `last_used_at` on used non-rejected nodes after the exchange row exists; exchange history records the number of nodes updated as `scored_node_count`.
 - Serialized node search results expose raw `usage_score`, capped `usage_score_bonus`, and `last_used_at` for retrieval diagnostics.
@@ -267,18 +268,20 @@ The following are still deferred and should not be implied as complete:
 
 ## Current Project Status Snapshot
 
-As of 2026-05-21:
+As of 2026-05-22:
 
 - Git branch: `main`.
-- Latest synced commit before this retrieval-scoring slice: `a9cd0eb Track used node scores from exchanges`.
+- Latest synced commit before this exchange-consistency slice: `719197b Expose raw node usage scores`.
 - Working tree before this addendum: clean.
 - Mongo database: `mnemosyne_dev`.
 - Mongo counts at status check:
-  - documents: 1877;
-  - trees: 1877;
-  - nodes: 176428;
-  - exchanges: 70;
-  - sessions: 15;
+  - documents: 1879;
+  - trees: 1879;
+  - nodes: 176432;
+  - exchanges: 74;
+  - sessions: 18;
+  - active document rows: 5;
+  - output-ingestion rows: 2;
   - queue records: 8.
 - Queue status:
   - completed: 5;
@@ -292,7 +295,7 @@ As of 2026-05-21:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `172 passed`.
+- Current automated suite at last full run: `176 passed`.
 
 ## Recommended Next Work
 

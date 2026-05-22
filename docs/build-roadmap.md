@@ -114,6 +114,7 @@ Current early read surface:
 - ask/chat commands using the retrieval pipeline and local Ollama CLI answer adapter by default;
 - optional Ollama CLI answer adapter for real local model calls;
 - saved exchange records in MongoDB.
+- saved exchange usage-summary updates are written before output-ingestion queue linking, keeping `scored_node_count` aligned even if output queueing fails.
 - active document records are updated from answer `used_node_ids`, preserving session/document/source/node references for later continuity and endorsement work.
 - active document records accumulate referenced node IDs and labels across repeated session references.
 - saved exchanges increment `usage_score` and `last_used_at` on the used non-rejected nodes, giving retrieval feedback a first persisted signal.

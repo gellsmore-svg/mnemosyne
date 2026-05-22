@@ -141,6 +141,39 @@ def test_save_exchange_does_not_score_nodes_when_exchange_insert_fails() -> None
     assert db.nodes.rows[0]["usage_score"] == 4
 
 
+def test_save_exchange_records_score_count_before_output_queue_failure(monkeypatch) -> None:
+    import mnemosyne.sessions.exchanges as exchanges
+
+    db = FakeDb()
+    node_id = str(ObjectId())
+    db.nodes.rows.append(
+        {
+            "_id": ObjectId(node_id),
+            "endorsement_label": "unreviewed",
+            "usage_score": 4,
+        }
+    )
+
+    def fail_queue(*_args, **_kwargs):
+        raise RuntimeError("queue failed")
+
+    monkeypatch.setattr(exchanges, "queue_exchange_output", fail_queue)
+
+    with pytest.raises(RuntimeError):
+        save_exchange(
+            db,
+            query="What should be remembered?",
+            answer={"answer": "Remember this.", "used_node_ids": [node_id]},
+            prompt={"budget": {}, "context_metadata": {}},
+            focus_node_id=node_id,
+            session_id="session1",
+        )
+
+    assert db.nodes.rows[0]["usage_score"] == 5
+    assert db.exchanges.rows[0]["scored_node_count"] == 1
+    assert "output_ingestion_job_id" not in db.exchanges.rows[0]
+
+
 def test_list_output_ingestion_jobs_filters_and_serializes() -> None:
     db = FakeDb()
     now = datetime.now(timezone.utc)
