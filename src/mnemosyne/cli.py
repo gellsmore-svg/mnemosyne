@@ -13,6 +13,7 @@ from mnemosyne.db.indexes import ensure_indexes
 from mnemosyne.db.repositories import (
     DuplicateSourceError,
     backfill_schema_metadata,
+    backfill_structural_graph_edges,
     commit_ingestion,
     find_duplicate_by_checksum,
     document_tree,
@@ -193,6 +194,8 @@ def main() -> None:
     subcommands.add_parser("db-ping")
     subcommands.add_parser("backfill-source-metadata")
     subcommands.add_parser("backfill-schema-metadata")
+    structural_edges = subcommands.add_parser("backfill-structural-graph-edges")
+    structural_edges.add_argument("--limit", type=int, default=None)
     subcommands.add_parser("enqueue-inbox")
     subcommands.add_parser("process-next")
     subcommands.add_parser("process-inbox")
@@ -422,6 +425,16 @@ def main() -> None:
     if args.command == "backfill-schema-metadata":
         ensure_indexes(db)
         print(json.dumps({"ok": True, **backfill_schema_metadata(db)}, indent=2))
+        return
+
+    if args.command == "backfill-structural-graph-edges":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {"ok": True, **backfill_structural_graph_edges(db, limit=args.limit)},
+                indent=2,
+            )
+        )
         return
 
     if args.command == "enqueue-inbox":

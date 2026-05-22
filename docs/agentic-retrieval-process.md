@@ -135,6 +135,8 @@ Supported read-only tools are:
 
 `expand_graph_paths` performs bounded multi-hop graph traversal from a known node ID. Each hop uses the same edge score as proximity expansion, path scores multiply hop scores, cycles back through already visited nodes are skipped, and depth, branch, and result limits cap traversal. Python compiles context for the top two path targets before final answer assembly.
 
+Structural `contains` edges can be backfilled from existing parent/child node links. These edges provide source-faithful document-tree movement for graph traversal before semantic relation extraction exists. Equal-score structural paths use natural node-key/title ordering so siblings follow document order where possible.
+
 `execute_tool_calls()` wraps every tool result with:
 
 - index;

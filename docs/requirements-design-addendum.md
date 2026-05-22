@@ -37,6 +37,7 @@ The current implementation has added several scaffold features and operational d
 - Nodes, trees, and documents use `schema_version: 1`.
 - Node records include scaffold fields for summary, relations, proximity, usage score, and continuity-critical state.
 - Ingestion relation hints that reference known node keys are persisted as first-class `graph_edges` records with source/target node IDs, relation type, weight, confidence, direction, provenance, and document/tree scope.
+- Existing parent/child node links can be backfilled as structural `contains` graph edges. These are provenance-marked as derived from stored hierarchy, not semantic inference.
 - Label definitions are stored in MongoDB.
 
 ### Corpus Imports

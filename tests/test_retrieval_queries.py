@@ -475,6 +475,85 @@ def test_expand_graph_paths_scores_bounded_multi_hop_paths() -> None:
     assert str(focus_id) not in [path["node_id"] for path in paths]
 
 
+def test_expand_graph_paths_uses_natural_order_for_equal_structural_scores() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    first_id = ObjectId()
+    second_id = ObjectId()
+    tenth_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "node_key": "section-1",
+                "title": "Section",
+                "text": "Section text",
+            },
+            {
+                "_id": tenth_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "node_key": "section-1-paragraph-10",
+                "title": "Paragraph 10",
+                "text": "Tenth text",
+            },
+            {
+                "_id": second_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "node_key": "section-1-paragraph-2",
+                "title": "Paragraph 2",
+                "text": "Second text",
+            },
+            {
+                "_id": first_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "node_key": "section-1-paragraph-1",
+                "title": "Paragraph 1",
+                "text": "First text",
+            },
+        ],
+        [
+            {
+                "_id": ObjectId(),
+                "source_node_id": focus_id,
+                "target_node_id": tenth_id,
+                "relation_type": "contains",
+                "weight": 1.0,
+                "confidence": 1.0,
+            },
+            {
+                "_id": ObjectId(),
+                "source_node_id": focus_id,
+                "target_node_id": second_id,
+                "relation_type": "contains",
+                "weight": 1.0,
+                "confidence": 1.0,
+            },
+            {
+                "_id": ObjectId(),
+                "source_node_id": focus_id,
+                "target_node_id": first_id,
+                "relation_type": "contains",
+                "weight": 1.0,
+                "confidence": 1.0,
+            },
+        ],
+    )
+
+    paths = expand_graph_paths(db, str(focus_id), direction="outgoing")
+
+    assert [path["title"] for path in paths] == [
+        "Paragraph 1",
+        "Paragraph 2",
+        "Paragraph 10",
+    ]
+
+
 def test_expand_graph_paths_returns_empty_for_bad_node_id() -> None:
     assert expand_graph_paths(FakeDb([]), "bad") == []
 

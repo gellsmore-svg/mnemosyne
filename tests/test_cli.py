@@ -129,6 +129,40 @@ def test_cli_graph_edges_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_backfill_structural_graph_edges_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "backfill-structural-graph-edges", "--limit", "7"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.backfill_structural_graph_edges",
+        lambda _db, limit=None: {
+            "scanned_node_count": limit,
+            "edge_count": 3,
+            "skipped_existing_count": 4,
+            "skipped_missing_parent_count": 0,
+        },
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "scanned_node_count": 7,
+        "edge_count": 3,
+        "skipped_existing_count": 4,
+        "skipped_missing_parent_count": 0,
+    }
+
+
 def test_cli_expand_proximity_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

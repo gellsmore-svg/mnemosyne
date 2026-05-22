@@ -308,7 +308,7 @@ def expand_graph_paths(
                     "path_edges": path_edges,
                 }
                 previous = best_by_node.get(adjacent_id)
-                if previous is None or graph_path_sort_tuple(candidate) > graph_path_sort_tuple(previous):
+                if previous is None or graph_path_quality_tuple(candidate) > graph_path_quality_tuple(previous):
                     best_by_node[adjacent_id] = candidate
                 next_frontier.append(
                     {
@@ -320,12 +320,11 @@ def expand_graph_paths(
                 )
         frontier = sorted(
             next_frontier,
-            key=lambda item: (item["path_score"], item["node_id"]),
-            reverse=True,
+            key=frontier_sort_tuple,
         )[:branch_limit]
         if not frontier:
             break
-    candidates = sorted(best_by_node.values(), key=graph_path_sort_tuple, reverse=True)
+    candidates = sorted(best_by_node.values(), key=graph_path_output_sort_tuple)
     return candidates[:limit]
 
 
@@ -343,23 +342,52 @@ def sorted_path_edges(
         relation_type=relation_type,
         limit=max(branch_limit * 4, 20),
     )
-    edges.sort(
-        key=lambda edge: (
-            edge_proximity_score(edge),
-            edge.get("relation_type") or "",
-            edge.get("target_node_id") or "",
-        ),
-        reverse=True,
-    )
+    edges.sort(key=lambda edge: edge_path_sort_tuple(edge, node_id))
     return edges[:branch_limit]
 
 
-def graph_path_sort_tuple(path: dict[str, Any]) -> tuple[float, int, str]:
+def edge_path_sort_tuple(edge: dict[str, Any], node_id: str) -> tuple[float, tuple[tuple[int, Any], ...]]:
+    adjacent = adjacent_node_for_edge(edge, node_id) or {}
+    adjacent_key = (
+        adjacent.get("node_key")
+        or adjacent.get("title")
+        or adjacent.get("node_id")
+        or edge.get("target_node_id")
+        or edge.get("source_node_id")
+        or ""
+    )
+    return (-edge_proximity_score(edge), natural_sort_key(str(adjacent_key)))
+
+
+def frontier_sort_tuple(path: dict[str, Any]) -> tuple[float, tuple[tuple[int, Any], ...]]:
+    return (-float(path.get("path_score") or 0.0), natural_sort_key(str(path.get("node_id") or "")))
+
+
+def graph_path_quality_tuple(path: dict[str, Any]) -> tuple[float, int]:
     return (
         float(path.get("path_score") or 0.0),
         -int(path.get("path_depth") or 0),
-        str(path.get("title") or ""),
     )
+
+
+def graph_path_output_sort_tuple(path: dict[str, Any]) -> tuple[float, int, tuple[tuple[int, Any], ...]]:
+    return (
+        -float(path.get("path_score") or 0.0),
+        int(path.get("path_depth") or 0),
+        natural_sort_key(str(path.get("title") or path.get("node_id") or "")),
+    )
+
+
+def natural_sort_key(value: str) -> tuple[tuple[int, Any], ...]:
+    parts = []
+    for part in re.split(r"(\d+)", value):
+        if not part:
+            continue
+        if part.isdigit():
+            parts.append((0, int(part)))
+        else:
+            parts.append((1, part.lower()))
+    return tuple(parts)
 
 
 def bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:

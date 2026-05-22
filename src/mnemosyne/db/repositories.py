@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from bson import ObjectId
+from datetime import datetime, timezone
 from typing import Any
 
+from bson import ObjectId
 from pymongo.database import Database
 
 from mnemosyne.models.ingestion import (
@@ -277,6 +278,76 @@ def list_graph_edges_for_document(db: Database, document_id: object) -> list[dic
     if not hasattr(db, "graph_edges"):
         return []
     return list(db.graph_edges.find({"document_id": document_id}))
+
+
+def backfill_structural_graph_edges(db: Database, limit: int | None = None) -> dict[str, int]:
+    if not hasattr(db, "graph_edges"):
+        return {
+            "scanned_node_count": 0,
+            "edge_count": 0,
+            "skipped_existing_count": 0,
+            "skipped_missing_parent_count": 0,
+        }
+    edge_docs = []
+    scanned = 0
+    skipped_existing = 0
+    skipped_missing_parent = 0
+    for child in db.nodes.find({"parent_id": {"$exists": True, "$ne": None}}):
+        if limit is not None and scanned >= limit:
+            break
+        scanned += 1
+        parent = db.nodes.find_one({"_id": child.get("parent_id")})
+        if not parent:
+            skipped_missing_parent += 1
+            continue
+        if structural_edge_exists(db, parent["_id"], child["_id"]):
+            skipped_existing += 1
+            continue
+        edge_docs.append(structural_edge_doc(parent, child))
+    if edge_docs:
+        db.graph_edges.insert_many(edge_docs)
+    return {
+        "scanned_node_count": scanned,
+        "edge_count": len(edge_docs),
+        "skipped_existing_count": skipped_existing,
+        "skipped_missing_parent_count": skipped_missing_parent,
+    }
+
+
+def structural_edge_exists(db: Database, parent_id: object, child_id: object) -> bool:
+    return (
+        db.graph_edges.find_one(
+            {
+                "source_node_id": parent_id,
+                "target_node_id": child_id,
+                "relation_type": "contains",
+            }
+        )
+        is not None
+    )
+
+
+def structural_edge_doc(parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
+    timestamp = child.get("created_at") or parent.get("created_at") or datetime.now(timezone.utc)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "document_id": child.get("document_id") or parent.get("document_id"),
+        "tree_id": child.get("tree_id") or parent.get("tree_id"),
+        "source_node_id": parent["_id"],
+        "target_node_id": child["_id"],
+        "source_node_key": parent.get("node_key"),
+        "target_node_key": child.get("node_key"),
+        "relation_type": "contains",
+        "weight": 1.0,
+        "confidence": 1.0,
+        "direction": "directed",
+        "provenance": {
+            "adapter": "structural_backfill",
+            "source": "node_parent_link",
+        },
+        "created_at": timestamp,
+        "updated_at": datetime.now(timezone.utc),
+    }
 
 
 def summarize_node_text(text: str, limit: int = 500) -> str:

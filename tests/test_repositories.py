@@ -2,7 +2,11 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 
-from mnemosyne.db.repositories import commit_ingestion, rebuild_document
+from mnemosyne.db.repositories import (
+    backfill_structural_graph_edges,
+    commit_ingestion,
+    rebuild_document,
+)
 from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
 
@@ -139,6 +143,67 @@ def test_commit_ingestion_persists_relation_edges() -> None:
     assert edge["source_node_id"] != edge["target_node_id"]
 
 
+def test_backfill_structural_graph_edges_creates_parent_child_edges() -> None:
+    db = FakeDb()
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    parent_id = ObjectId()
+    child_id = ObjectId()
+    missing_parent_child_id = ObjectId()
+    db.nodes.rows.extend(
+        [
+            {
+                "_id": parent_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "node_key": "root",
+                "title": "Root",
+                "parent_id": None,
+            },
+            {
+                "_id": child_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "node_key": "child",
+                "title": "Child",
+                "parent_id": parent_id,
+            },
+            {
+                "_id": missing_parent_child_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "node_key": "orphan",
+                "title": "Orphan",
+                "parent_id": ObjectId(),
+            },
+        ]
+    )
+
+    result = backfill_structural_graph_edges(db)
+
+    assert result == {
+        "scanned_node_count": 2,
+        "edge_count": 1,
+        "skipped_existing_count": 0,
+        "skipped_missing_parent_count": 1,
+    }
+    assert len(db.graph_edges.rows) == 1
+    edge = db.graph_edges.rows[0]
+    assert edge["source_node_id"] == parent_id
+    assert edge["target_node_id"] == child_id
+    assert edge["source_node_key"] == "root"
+    assert edge["target_node_key"] == "child"
+    assert edge["relation_type"] == "contains"
+    assert edge["weight"] == 1.0
+    assert edge["confidence"] == 1.0
+    assert edge["provenance"]["source"] == "node_parent_link"
+
+    second = backfill_structural_graph_edges(db)
+
+    assert second["edge_count"] == 0
+    assert second["skipped_existing_count"] == 1
+
+
 def test_commit_ingestion_rolls_back_edges_on_insert_failure() -> None:
     db = FakeDb(fail_edges=True)
     result = IngestionResult(
@@ -238,6 +303,12 @@ class FakeDb:
 
 def matches(row, query):
     for key, expected in query.items():
+        if isinstance(expected, dict):
+            if "$exists" in expected and (key in row) is not expected["$exists"]:
+                return False
+            if "$ne" in expected and row.get(key) == expected["$ne"]:
+                return False
+            continue
         if row.get(key) != expected:
             return False
     return True
