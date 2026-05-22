@@ -1116,6 +1116,11 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
             }
         ],
     )
+    monkeypatch.setattr(
+        interaction,
+        "compile_context",
+        lambda _db, node_id: {"focus_node_id": node_id, "records": []},
+    )
 
     results = interaction.execute_tool_calls(
         FakeDb(),
@@ -1156,15 +1161,18 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
             "limit": 10,
         }
     ]
-    assert results[4]["output"] == [
-        {
-            "node_id": "node2",
-            "title": "Adjacent",
-            "proximity_score": 0.9,
-            "direction": "outgoing",
-            "limit": 10,
-        }
-    ]
+    assert results[4]["output"] == {
+        "matches": [
+            {
+                "node_id": "node2",
+                "title": "Adjacent",
+                "proximity_score": 0.9,
+                "direction": "outgoing",
+                "limit": 10,
+            }
+        ],
+        "compiled_contexts": [{"focus_node_id": "node2", "records": []}],
+    }
 
 
 def test_document_tree_lookup_does_not_mark_tree_nodes_as_used() -> None:
@@ -1721,6 +1729,49 @@ def test_prepare_tool_results_for_answer_keeps_top_two_search_contexts() -> None
     assert "matches" not in prepared[0]["output"]
 
 
+def test_prepare_tool_results_for_answer_keeps_proximity_contexts() -> None:
+    prepared = prepare_tool_results_for_answer(
+        [
+            {
+                "tool": "expand_proximity",
+                "ok": True,
+                "output": {
+                    "matches": [
+                        {"node_id": "near1", "title": "Nearby", "proximity_score": 0.85},
+                        {"node_id": "near2", "title": "Related", "proximity_score": 0.7},
+                    ],
+                    "compiled_contexts": [
+                        {
+                            "focus_node_id": "near1",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Nearby",
+                                    "node_id": "near1",
+                                    "labels": [],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Nearby node text.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert prepared[0]["output"]["top_match"] == {
+        "node_id": "near1",
+        "title": "Nearby",
+        "proximity_score": 0.85,
+    }
+    assert prepared[0]["output"]["top_contexts"][0]["focus_node_id"] == "near1"
+    assert prepared[0]["output"]["match_count"] == 2
+    assert "matches" not in prepared[0]["output"]
+
+
 def test_prepare_tool_results_for_answer_deduplicates_context_records() -> None:
     prepared = prepare_tool_results_for_answer(
         [
@@ -1913,6 +1964,52 @@ def test_render_tool_results_handles_empty_top_contexts() -> None:
     assert "Compiled context" not in rendered
 
 
+def test_render_tool_results_renders_proximity_context_as_markdown() -> None:
+    rendered = render_tool_results(
+        [
+            {
+                "tool": "expand_proximity",
+                "ok": True,
+                "arguments": {"node_id": "node1", "direction": "outgoing"},
+                "output": {
+                    "match_count": 1,
+                    "top_match": {
+                        "node_id": "near1",
+                        "title": "Nearby Node",
+                        "proximity_score": 0.85,
+                    },
+                    "top_contexts": [
+                        {
+                            "document": {"title": "Doc", "document_id": "doc1"},
+                            "focus_node_id": "near1",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Nearby Node",
+                                    "node_id": "near1",
+                                    "labels": ["source_section"],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Nearby context text.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert "### expand_proximity" in rendered
+    assert "- Source node ID: node1" in rendered
+    assert "- Direction: outgoing" in rendered
+    assert "- Relation type: <any>" in rendered
+    assert "- Proximity score: 0.85" in rendered
+    assert "Nearby context text." in rendered
+    assert '"top_contexts"' not in rendered
+
+
 def test_agentic_answer_envelope_includes_structured_context_document() -> None:
     envelope = build_agentic_answer_envelope(
         query="What is Mnemosyne?",
@@ -1990,8 +2087,9 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
     assert tree_output["node_count"] == 25
     assert len(tree_output["nodes"]) == 20
     proximity_output = context_document["tool_results"][2]["output"]
-    assert proximity_output["node_count"] == 25
-    assert len(proximity_output["nodes"]) == 20
+    assert proximity_output["top_match"] == {"node_id": "near0"}
+    assert proximity_output["match_count"] == 25
+    assert proximity_output["top_contexts"] == []
     assert "context_document" not in envelope["prompt_text"]
 
 
@@ -2042,6 +2140,40 @@ def test_included_nodes_from_tool_results_collects_multiple_contexts() -> None:
 
     assert {row["node_id"] for row in included} == {"node1", "node2"}
     assert all(row["chars"] < 500 for row in included)
+
+
+def test_included_nodes_from_tool_results_collects_proximity_contexts() -> None:
+    included = included_nodes_from_tool_results(
+        [
+            {
+                "tool": "expand_proximity",
+                "ok": True,
+                "output": {
+                    "top_match": {"node_id": "match-only", "title": "Nearby"},
+                    "top_contexts": [
+                        {
+                            "focus_node_id": "near1",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Nearby",
+                                    "node_id": "near1",
+                                    "labels": [],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Nearby rendered record.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert included[0]["node_id"] == "near1"
+    assert included[0]["role"] == "focus"
 
 
 def test_included_nodes_from_tool_results_falls_back_to_top_match_without_contexts() -> None:

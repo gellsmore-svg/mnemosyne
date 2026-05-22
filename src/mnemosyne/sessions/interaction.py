@@ -1104,7 +1104,7 @@ def execute_tool_calls(
                 node_id = arguments.get("node_id")
                 if not node_id:
                     raise ValueError("expand_proximity requires node_id.")
-                output = expand_proximity(
+                output = execute_expand_proximity_tool(
                     db,
                     node_id=node_id,
                     direction=graph_edge_direction(arguments.get("direction")),
@@ -1215,6 +1215,31 @@ def execute_search_nodes_tool(
         if context:
             compiled_contexts.append(context)
     return {"matches": top_matches, "compiled_contexts": compiled_contexts}, details
+
+
+def execute_expand_proximity_tool(
+    db: Database,
+    node_id: str,
+    direction: str = "both",
+    relation_type: str | None = None,
+    limit: int = 5,
+) -> dict[str, Any]:
+    matches = expand_proximity(
+        db,
+        node_id=node_id,
+        direction=direction,
+        relation_type=relation_type,
+        limit=limit,
+    )
+    compiled_contexts = []
+    for match in matches[:2]:
+        match_node_id = match.get("node_id")
+        if not match_node_id:
+            continue
+        context = compile_context(db, match_node_id)
+        if context:
+            compiled_contexts.append(context)
+    return {"matches": matches, "compiled_contexts": compiled_contexts}
 
 
 def normalize_query_text(value: Any) -> str | None:
@@ -1640,6 +1665,15 @@ def context_document_output(tool: str | None, output: Any) -> Any:
                 for context in output.get("top_contexts") or []
             ],
         }
+    if tool == "expand_proximity" and isinstance(output, dict):
+        return {
+            "top_match": output.get("top_match"),
+            "match_count": output.get("match_count", 0),
+            "top_contexts": [
+                context_document_context(context)
+                for context in output.get("top_contexts") or []
+            ],
+        }
     if tool == "get_document_tree" and isinstance(output, list):
         return {
             "node_count": len(output),
@@ -1687,7 +1721,7 @@ def context_document_record(record: dict[str, Any]) -> dict[str, Any]:
 def prepare_tool_results_for_answer(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     prepared = []
     for result in tool_results:
-        if result.get("tool") != "search_nodes" or not result.get("ok"):
+        if result.get("tool") not in {"search_nodes", "expand_proximity"} or not result.get("ok"):
             prepared.append(result)
             continue
         output = result.get("output") or {}
@@ -1717,40 +1751,73 @@ def render_tool_results(tool_results: list[dict[str, Any]]) -> str:
     blocks = []
     for result in tool_results:
         if result.get("tool") == "search_nodes" and result.get("ok"):
-            output = result.get("output") or {}
-            top_match = output.get("top_match") or {}
-            top_contexts = output.get("top_contexts") or []
-            lines = [
-                "### search_nodes",
-                "",
-                f"- Query: {result.get('arguments', {}).get('query') or '<none>'}",
-                f"- Match count: {output.get('match_count', 0)}",
-            ]
-            if top_match:
-                lines.extend(
-                    [
-                        f"- Top match: {top_match.get('title') or '<untitled>'}",
-                        f"- Top node ID: {top_match.get('node_id')}",
-                    ]
-                )
-            remaining_chars = ANSWER_CONTEXT_CHAR_BUDGET
-            for index, context in enumerate(top_contexts, start=1):
-                rendered = render_context_document(
-                    context,
-                    char_budget=remaining_chars,
-                    heading_level=4,
-                )
-                text = rendered["text"].strip()
-                if text:
-                    lines.extend(["", f"Compiled context {index}:", "", text])
-                    remaining_chars = max(0, remaining_chars - rendered["used_chars"])
-                if remaining_chars <= 0:
-                    break
+            lines = render_prepared_context_tool_result(
+                result,
+                heading="search_nodes",
+                argument_lines=[
+                    f"- Query: {result.get('arguments', {}).get('query') or '<none>'}",
+                ],
+            )
             lines.extend(render_search_details_lines(result.get("details") or {}))
             blocks.append("\n".join(lines))
             continue
+        if result.get("tool") == "expand_proximity" and result.get("ok"):
+            arguments = result.get("arguments") or {}
+            blocks.append(
+                "\n".join(
+                    render_prepared_context_tool_result(
+                        result,
+                        heading="expand_proximity",
+                        argument_lines=[
+                            f"- Source node ID: {arguments.get('node_id') or '<none>'}",
+                            f"- Direction: {arguments.get('direction') or 'both'}",
+                            f"- Relation type: {arguments.get('relation_type') or '<any>'}",
+                        ],
+                    )
+                )
+            )
+            continue
         blocks.append(json.dumps(result, indent=2, default=str))
     return "\n\n".join(blocks)
+
+
+def render_prepared_context_tool_result(
+    result: dict[str, Any],
+    heading: str,
+    argument_lines: list[str],
+) -> list[str]:
+    output = result.get("output") or {}
+    top_match = output.get("top_match") or {}
+    top_contexts = output.get("top_contexts") or []
+    lines = [
+        f"### {heading}",
+        "",
+        *argument_lines,
+        f"- Match count: {output.get('match_count', 0)}",
+    ]
+    if top_match:
+        lines.extend(
+            [
+                f"- Top match: {top_match.get('title') or '<untitled>'}",
+                f"- Top node ID: {top_match.get('node_id')}",
+            ]
+        )
+        if "proximity_score" in top_match:
+            lines.append(f"- Proximity score: {top_match.get('proximity_score')}")
+    remaining_chars = ANSWER_CONTEXT_CHAR_BUDGET
+    for index, context in enumerate(top_contexts, start=1):
+        rendered = render_context_document(
+            context,
+            char_budget=remaining_chars,
+            heading_level=4,
+        )
+        text = rendered["text"].strip()
+        if text:
+            lines.extend(["", f"Compiled context {index}:", "", text])
+            remaining_chars = max(0, remaining_chars - rendered["used_chars"])
+        if remaining_chars <= 0:
+            break
+    return lines
 
 
 def render_search_details_lines(details: dict[str, Any]) -> list[str]:
@@ -1821,7 +1888,7 @@ def included_nodes_from_tool_results(tool_results: list[dict[str, Any]]) -> list
     for result in tool_results:
         if not result.get("ok"):
             continue
-        if result.get("tool") == "search_nodes":
+        if result.get("tool") in {"search_nodes", "expand_proximity"}:
             collect_included_search_context_records(result.get("output"), included)
         elif result.get("tool") == "get_document_tree":
             continue

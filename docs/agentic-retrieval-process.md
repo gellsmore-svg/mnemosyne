@@ -130,7 +130,7 @@ Supported read-only tools are:
 
 `get_graph_edges` returns bounded incoming, outgoing, or bidirectional edge records for a known node ID, including compact source/target node previews. This is the first read-side graph traversal scaffold; it does not yet perform scored multi-hop traversal.
 
-`expand_proximity` ranks one-hop adjacent nodes from graph edges using a deterministic edge score derived from weight and confidence. It is a candidate expansion helper, not the final path-scoring algorithm.
+`expand_proximity` ranks one-hop adjacent nodes from graph edges using a deterministic edge score derived from weight and confidence. Python then compiles graph context for the top two adjacent nodes so proximity-expanded evidence can reach the final answer model as source records, not only as a ranked ID list. It is a candidate expansion helper, not the final path-scoring algorithm.
 
 `execute_tool_calls()` wraps every tool result with:
 
@@ -227,7 +227,7 @@ That function:
 5. Computes token and character budget estimates.
 6. Computes context metadata and included node IDs.
 
-For `search_nodes`, `prepare_tool_results_for_answer()` reduces the raw tool output to:
+For `search_nodes` and `expand_proximity`, `prepare_tool_results_for_answer()` reduces the raw tool output to:
 
 - top match;
 - up to two assembled contexts;
@@ -241,7 +241,7 @@ The structured `context_document` is stored in prompt `context_metadata` with:
 - original user query;
 - per-tool result records;
 - normalized search/query-assembly diagnostics where available;
-- top search match, match count, and assembled context records;
+- top search/proximity match, match count, and assembled context records;
 - capped document-tree navigation output.
 
 The final LLM still receives rendered Markdown prompt text. The structured context document exists for persistence, diagnostics, future API clients, and the eventual full context schema.
@@ -250,7 +250,7 @@ The final LLM still receives rendered Markdown prompt text. The structured conte
 
 The rendered final answer context deliberately puts evidence before diagnostics:
 
-1. Search query and match count.
+1. Search query or proximity source node and match count.
 2. Top match title and node ID.
 3. Compiled source context.
 4. Search diagnostics.
