@@ -215,10 +215,11 @@ After the memory-agent loop stops, Python calls `build_agentic_answer_envelope()
 That function:
 
 1. Prepares tool results with `prepare_tool_results_for_answer()`.
-2. Renders the prepared results with `render_tool_results()`.
-3. Builds the final prompt text.
-4. Computes token and character budget estimates.
-5. Computes context metadata and included node IDs.
+2. Builds a structured `context_document` from the same prepared results.
+3. Renders the prepared results with `render_tool_results()`.
+4. Builds the final prompt text.
+5. Computes token and character budget estimates.
+6. Computes context metadata and included node IDs.
 
 For `search_nodes`, `prepare_tool_results_for_answer()` reduces the raw tool output to:
 
@@ -227,6 +228,17 @@ For `search_nodes`, `prepare_tool_results_for_answer()` reduces the raw tool out
 - match count.
 
 `assemble_search_contexts()` deduplicates records across contexts and enforces a shared 4,000-character context budget.
+
+The structured `context_document` is stored in prompt `context_metadata` with:
+
+- schema version and context kind;
+- original user query;
+- per-tool result records;
+- normalized search/query-assembly diagnostics where available;
+- top search match, match count, and assembled context records;
+- capped document-tree navigation output.
+
+The final LLM still receives rendered Markdown prompt text. The structured context document exists for persistence, diagnostics, future API clients, and the eventual full context schema.
 
 ## Final Prompt Ordering
 

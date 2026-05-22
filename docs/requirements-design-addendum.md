@@ -77,6 +77,7 @@ The current implementation has added several scaffold features and operational d
 - Python executes tool calls, records structured tool results, and feeds compact summaries back into later memory-agent iterations.
 - Planner failure or no initial tool calls triggers a conservative fallback search.
 - Agentic final answer assembly can include up to two compiled search contexts, deduplicate repeated node records, and enforce a shared context budget.
+- Agentic final answer assembly now stores a structured `context_document` in prompt context metadata, including query, tool results, search diagnostics, assembled records, and capped document-tree navigation output. The final answer prompt remains Markdown-rendered for current models.
 - Search diagnostics are included after compiled source context so source evidence remains primary.
 
 ### Query Assembly

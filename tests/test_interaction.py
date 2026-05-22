@@ -7,6 +7,7 @@ from mnemosyne.sessions.interaction import (
     active_document_vocabulary_values,
     answer_query,
     build_active_document_source_fallback_envelope,
+    build_agentic_answer_envelope,
     build_memory_agent_prompt,
     build_query_assembly,
     combined_query_text,
@@ -1836,6 +1837,78 @@ def test_render_tool_results_handles_empty_top_contexts() -> None:
 
     assert "### search_nodes" in rendered
     assert "Compiled context" not in rendered
+
+
+def test_agentic_answer_envelope_includes_structured_context_document() -> None:
+    envelope = build_agentic_answer_envelope(
+        query="What is Mnemosyne?",
+        tool_results=[
+            {
+                "index": 0,
+                "tool": "search_nodes",
+                "arguments": {"query": "Mnemosyne"},
+                "ok": True,
+                "details": {
+                    "normalized_query": "Mnemosyne",
+                    "ranking_query": "Mnemosyne",
+                    "query_assembly": {"lexical_terms": ["Mnemosyne"]},
+                    "fallback_queries": [{"query": "Mnemosyne", "result_count": 1}],
+                },
+                "output": {
+                    "matches": [{"node_id": "node1", "title": "System Name"}],
+                    "compiled_contexts": [
+                        {
+                            "document": {"title": "Doc", "document_id": "doc1"},
+                            "focus_node_id": "node1",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "System Name",
+                                    "node_id": "node1",
+                                    "labels": ["source_section"],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {"source_path": "design.md"},
+                                    "text": "Mnemosyne is a memory layer.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+            {
+                "index": 1,
+                "tool": "get_document_tree",
+                "arguments": {"document_id": "doc1"},
+                "ok": True,
+                "output": [{"node_id": f"node{index}"} for index in range(25)],
+            },
+        ],
+        token_budget=2000,
+        reserved_response_tokens=500,
+    )
+
+    context_document = envelope["context_metadata"]["context_document"]
+    assert context_document["schema_version"] == 1
+    assert context_document["kind"] == "agentic_answer_context"
+    assert context_document["query"] == "What is Mnemosyne?"
+    search_output = context_document["tool_results"][0]["output"]
+    assert search_output["top_match"] == {"node_id": "node1", "title": "System Name"}
+    assert search_output["top_contexts"][0]["records"][0] == {
+        "node_id": "node1",
+        "role": "focus",
+        "distance": 0,
+        "title": "System Name",
+        "labels": ["source_section"],
+        "endorsement_label": "unreviewed",
+        "provenance": {"source_path": "design.md"},
+        "text": "Mnemosyne is a memory layer.",
+        "chars": 28,
+    }
+    tree_output = context_document["tool_results"][1]["output"]
+    assert tree_output["node_count"] == 25
+    assert len(tree_output["nodes"]) == 20
+    assert "context_document" not in envelope["prompt_text"]
 
 
 def test_included_nodes_from_tool_results_collects_multiple_contexts() -> None:

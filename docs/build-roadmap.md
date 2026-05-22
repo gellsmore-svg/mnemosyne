@@ -134,6 +134,7 @@ Current early read surface:
 - memory-agent prompts include the current session ID and compact active document summaries; the read-only tool surface includes active-document listing plus exact document, document-tree, and node-context lookup tools.
 - active document titles, source paths, and labels feed near-match query guidance and fallback search vocabulary for the current session.
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
+- agentic answer prompts persist a first structured `context_document` alongside the rendered Markdown context; this is a scaffold toward the full context schema.
 - memory-agent search fallback and lexical ranking, with full console tool output but top-ranked context packaged for the answer model.
 
 Known gaps after reconciliation:
@@ -142,7 +143,7 @@ Known gaps after reconciliation:
 - typed weighted graph edges, proximity scores, and semantic-map traversal are not implemented;
 - destructive rebuild commands are maintenance-only and require `--force-replace`; versioned replacement remains unimplemented;
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
-- the compiled context corpus does not yet match the full technical design schema;
+- the compiled context corpus has only a first structured scaffold and does not yet match the full technical design schema;
 - active document registry is only a first skeleton populated from used nodes, visible to the memory-agent, and used for narrow direct reference resolution/source fallback; it does not yet drive broad retrieval, endorsement, or restart state.
 - output ingestion is implemented only as conservative graph insertion plus explicit review labels; natural-language endorsement detection, relation extraction, restart state node, full traversal path scoring, unused-path decay, and REM consolidation are not started.
 

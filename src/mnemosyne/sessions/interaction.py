@@ -1485,6 +1485,10 @@ def build_agentic_answer_envelope(
         "If the tool results are insufficient, say so plainly."
     )
     answer_tool_results = prepare_tool_results_for_answer(tool_results)
+    context_document = build_agentic_context_document(
+        query=query,
+        tool_results=answer_tool_results,
+    )
     context_text = render_tool_results(answer_tool_results)
     overhead_text = "\n".join(
         [
@@ -1531,7 +1535,90 @@ def build_agentic_answer_envelope(
             "char_budget": ANSWER_CONTEXT_CHAR_BUDGET,
             "retrieval_status": "agentic_tool_context",
             "tool_result_count": len(tool_results),
+            "context_document": context_document,
         },
+    }
+
+
+def build_agentic_context_document(
+    query: str,
+    tool_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "kind": "agentic_answer_context",
+        "query": query,
+        "tool_results": [context_document_tool_result(result) for result in tool_results],
+    }
+
+
+def context_document_tool_result(result: dict[str, Any]) -> dict[str, Any]:
+    item = {
+        "index": result.get("index"),
+        "tool": result.get("tool"),
+        "arguments": result.get("arguments") or {},
+        "ok": bool(result.get("ok")),
+    }
+    if result.get("error"):
+        item["error"] = result.get("error")
+    details = result.get("details") or {}
+    if details:
+        item["details"] = {
+            "normalized_query": details.get("normalized_query"),
+            "ranking_query": details.get("ranking_query"),
+            "query_assembly": details.get("query_assembly") or {},
+            "fallback_queries": compact_fallback_query_details(
+                details.get("fallback_queries") or []
+            ),
+        }
+    item["output"] = context_document_output(
+        result.get("tool"),
+        result.get("output"),
+    )
+    return item
+
+
+def context_document_output(tool: str | None, output: Any) -> Any:
+    if tool == "search_nodes" and isinstance(output, dict):
+        return {
+            "top_match": output.get("top_match"),
+            "match_count": output.get("match_count", 0),
+            "top_contexts": [
+                context_document_context(context)
+                for context in output.get("top_contexts") or []
+            ],
+        }
+    if tool == "get_document_tree" and isinstance(output, list):
+        return {
+            "node_count": len(output),
+            "nodes": output[:20],
+        }
+    return output
+
+
+def context_document_context(context: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "document": context.get("document"),
+        "focus_node_id": context.get("focus_node_id"),
+        "records": [
+            context_document_record(record)
+            for record in context.get("records") or []
+        ],
+    }
+
+
+def context_document_record(record: dict[str, Any]) -> dict[str, Any]:
+    text = record.get("text") or record.get("text_preview") or ""
+    return {
+        "node_id": record.get("node_id"),
+        "role": record.get("role"),
+        "distance": record.get("distance"),
+        "title": record.get("title"),
+        "labels": record.get("labels") or [],
+        "endorsement_label": record.get("endorsement_label"),
+        "provenance": record.get("provenance") or {},
+        "text": text,
+        "chars": len(text),
     }
 
 
