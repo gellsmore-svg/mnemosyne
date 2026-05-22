@@ -280,6 +280,46 @@ def list_graph_edges_for_document(db: Database, document_id: object) -> list[dic
     return list(db.graph_edges.find({"document_id": document_id}))
 
 
+def graph_edge_status(db: Database, limit: int = 10) -> dict[str, Any]:
+    if not hasattr(db, "graph_edges"):
+        return {
+            "edge_count": 0,
+            "relation_types": [],
+            "provenance_sources": [],
+        }
+    return {
+        "edge_count": db.graph_edges.count_documents({}),
+        "relation_types": graph_edge_group_counts(db, "$relation_type", limit=limit),
+        "provenance_sources": graph_edge_group_counts(db, "$provenance.source", limit=limit),
+    }
+
+
+def graph_edge_group_counts(db: Database, field: str, limit: int = 10) -> list[dict[str, Any]]:
+    group_limit = bounded_graph_group_limit(limit)
+    rows = db.graph_edges.aggregate(
+        [
+            {"$group": {"_id": field, "count": {"$sum": 1}}},
+            {"$sort": {"count": -1, "_id": 1}},
+            {"$limit": group_limit},
+        ]
+    )
+    return [
+        {
+            "value": row.get("_id"),
+            "count": row.get("count", 0),
+        }
+        for row in rows
+    ]
+
+
+def bounded_graph_group_limit(value: Any, default: int = 10) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(1, min(parsed, 50))
+
+
 def backfill_structural_graph_edges(db: Database, limit: int | None = None) -> dict[str, int]:
     if not hasattr(db, "graph_edges"):
         return {

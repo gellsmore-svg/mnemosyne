@@ -163,6 +163,36 @@ def test_cli_backfill_structural_graph_edges_command(monkeypatch, capsys) -> Non
     }
 
 
+def test_cli_graph_status_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["mnemosyne", "graph-status", "--limit", "3"])
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.graph_edge_status",
+        lambda _db, limit=10: {
+            "edge_count": 12,
+            "relation_types": [{"value": "contains", "count": 12}],
+            "provenance_sources": [{"value": "node_parent_link", "count": 12}],
+            "limit": limit,
+        },
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "edge_count": 12,
+        "relation_types": [{"value": "contains", "count": 12}],
+        "provenance_sources": [{"value": "node_parent_link", "count": 12}],
+        "limit": 3,
+    }
+
+
 def test_cli_expand_proximity_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

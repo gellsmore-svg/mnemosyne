@@ -4,7 +4,9 @@ from bson import ObjectId
 
 from mnemosyne.db.repositories import (
     backfill_structural_graph_edges,
+    bounded_graph_group_limit,
     commit_ingestion,
+    graph_edge_status,
     rebuild_document,
 )
 from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
@@ -204,6 +206,88 @@ def test_backfill_structural_graph_edges_creates_parent_child_edges() -> None:
     assert second["skipped_existing_count"] == 1
 
 
+def test_graph_edge_status_counts_relations_and_provenance_sources() -> None:
+    db = FakeDb()
+    db.graph_edges.rows.extend(
+        [
+            {
+                "relation_type": "contains",
+                "provenance": {"source": "node_parent_link"},
+            },
+            {
+                "relation_type": "contains",
+                "provenance": {"source": "node_parent_link"},
+            },
+            {
+                "relation_type": "supports",
+                "provenance": {"source": "ingestion_node_relation"},
+            },
+        ]
+    )
+
+    assert graph_edge_status(db) == {
+        "edge_count": 3,
+        "relation_types": [
+            {"value": "contains", "count": 2},
+            {"value": "supports", "count": 1},
+        ],
+        "provenance_sources": [
+            {"value": "node_parent_link", "count": 2},
+            {"value": "ingestion_node_relation", "count": 1},
+        ],
+    }
+
+
+def test_graph_edge_status_handles_missing_graph_edges_collection() -> None:
+    db = object()
+
+    assert graph_edge_status(db) == {
+        "edge_count": 0,
+        "relation_types": [],
+        "provenance_sources": [],
+    }
+
+
+def test_graph_edge_status_reports_null_buckets() -> None:
+    db = FakeDb()
+    db.graph_edges.rows.append({})
+
+    assert graph_edge_status(db) == {
+        "edge_count": 1,
+        "relation_types": [{"value": None, "count": 1}],
+        "provenance_sources": [{"value": None, "count": 1}],
+    }
+
+
+def test_graph_edge_status_applies_limit_to_group_buckets() -> None:
+    db = FakeDb()
+    db.graph_edges.rows.extend(
+        [
+            {"relation_type": "alpha", "provenance": {"source": "a"}},
+            {"relation_type": "beta", "provenance": {"source": "b"}},
+            {"relation_type": "gamma", "provenance": {"source": "c"}},
+        ]
+    )
+
+    result = graph_edge_status(db, limit=2)
+
+    assert result["relation_types"] == [
+        {"value": "alpha", "count": 1},
+        {"value": "beta", "count": 1},
+    ]
+    assert result["provenance_sources"] == [
+        {"value": "a", "count": 1},
+        {"value": "b", "count": 1},
+    ]
+
+
+def test_bounded_graph_group_limit_clamps_explicit_limits() -> None:
+    assert bounded_graph_group_limit(0) == 1
+    assert bounded_graph_group_limit(-5) == 1
+    assert bounded_graph_group_limit(999) == 50
+    assert bounded_graph_group_limit("bad") == 10
+
+
 def test_commit_ingestion_rolls_back_edges_on_insert_failure() -> None:
     db = FakeDb(fail_edges=True)
     result = IngestionResult(
@@ -252,6 +336,25 @@ class FakeCollection:
 
     def find(self, query):
         return [dict(row) for row in self.rows if matches(row, query)]
+
+    def count_documents(self, query):
+        return len([row for row in self.rows if matches(row, query)])
+
+    def aggregate(self, pipeline):
+        group_field = pipeline[0]["$group"]["_id"].removeprefix("$")
+        sort_spec = pipeline[1].get("$sort", {})
+        counts = {}
+        for row in self.rows:
+            value = nested_get(row, group_field)
+            counts[value] = counts.get(value, 0) + 1
+        rows = [{"_id": key, "count": value} for key, value in counts.items()]
+        for field, direction in reversed(list(sort_spec.items())):
+            rows.sort(
+                key=lambda item, sort_field=field: mongo_sort_value(item.get(sort_field)),
+                reverse=direction < 0,
+            )
+        limit = pipeline[-1].get("$limit", len(rows))
+        return rows[:limit]
 
     def insert_one(self, row):
         if self.fail_insert:
@@ -312,3 +415,18 @@ def matches(row, query):
         if row.get(key) != expected:
             return False
     return True
+
+
+def nested_get(row, dotted_key):
+    value = row
+    for part in dotted_key.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
+def mongo_sort_value(value):
+    if value is None:
+        return (0, "")
+    return (1, value)

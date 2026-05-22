@@ -17,6 +17,7 @@ from mnemosyne.db.repositories import (
     commit_ingestion,
     find_duplicate_by_checksum,
     document_tree,
+    graph_edge_status,
     label_definitions,
     rebuild_document,
 )
@@ -194,6 +195,8 @@ def main() -> None:
     subcommands.add_parser("db-ping")
     subcommands.add_parser("backfill-source-metadata")
     subcommands.add_parser("backfill-schema-metadata")
+    graph_status = subcommands.add_parser("graph-status")
+    graph_status.add_argument("--limit", type=int, default=10)
     structural_edges = subcommands.add_parser("backfill-structural-graph-edges")
     structural_edges.add_argument("--limit", type=int, default=None)
     subcommands.add_parser("enqueue-inbox")
@@ -425,6 +428,11 @@ def main() -> None:
     if args.command == "backfill-schema-metadata":
         ensure_indexes(db)
         print(json.dumps({"ok": True, **backfill_schema_metadata(db)}, indent=2))
+        return
+
+    if args.command == "graph-status":
+        ensure_indexes(db)
+        print(json.dumps({"ok": True, **graph_edge_status(db, limit=args.limit)}, indent=2))
         return
 
     if args.command == "backfill-structural-graph-edges":
