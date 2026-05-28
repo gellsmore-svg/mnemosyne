@@ -179,10 +179,11 @@ The current system only implements pieces of steps 3, 6, and 7. Reviewed semanti
 1. Add schema constants and index planning for identity, policy, process, and weighting profile collections. Implemented for indexes and default seeds.
 2. Add read-only CLI/API listing and exact lookup for those collections. Implemented.
 3. Seed one shared identity and one default trust weighting profile. Implemented.
-4. Include active identity summaries in memory-agent prompts. Implemented as read-only prompt context only.
-5. Add retrieval filters for identity exclusions before any weighting changes.
+4. Include active identity summaries in memory-agent prompts. Implemented.
+5. Add retrieval filters for identity exclusions before any weighting changes. Implemented for the agentic search tool path; direct retrieval, proximity expansion, graph paths, and broader policy enforcement remain open.
 6. Add process-run persistence for restart/continuity state.
-7. Only after those constraints exist, consider narrowly scoped agent write proposals.
+7. Add trust/temporal weighting diagnostics before changing retrieval ranking.
+8. Only after those constraints exist, consider narrowly scoped agent write proposals.
 
 ## Open Questions
 

@@ -1229,6 +1229,37 @@ def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
     assert any(item["query"] == "Mnemosyne" for item in details["fallback_queries"])
 
 
+def test_execute_search_nodes_tool_passes_active_identity(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    identities = []
+
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5, identity=None):
+        identities.append(identity)
+        if identity:
+            return [{"node_id": "node1", "title": "Allowed"}]
+        return [
+            {"node_id": "node1", "title": "Allowed"},
+            {"node_id": "node2", "title": "Restricted"},
+        ]
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "compile_context", lambda _db, _node_id: None)
+    monkeypatch.setattr(
+        interaction,
+        "first_active_agent_identity",
+        lambda _db: {"identity_id": "restricted_agent", "excluded_labels": ["restricted"]},
+    )
+
+    output, details = execute_search_nodes_tool(FakeDb(), query="memory", session_id="s1")
+
+    assert output["matches"] == [{"node_id": "node1", "title": "Allowed"}]
+    assert identities[0] is None
+    assert identities[1]["identity_id"] == "restricted_agent"
+    assert details["active_identity_id"] == "restricted_agent"
+    assert details["identity_excluded_count"] == 1
+
+
 def test_execute_tool_calls_can_list_active_documents(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 

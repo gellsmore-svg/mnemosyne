@@ -18,6 +18,7 @@ from mnemosyne.retrieval.queries import (
     prioritize_records,
     render_context_document,
     render_record,
+    search_nodes,
     semantic_candidate_nodes,
     semantic_labels,
     serialize_document,
@@ -185,6 +186,86 @@ def test_semantic_labels_excludes_structural_source_labels() -> None:
     assert semantic_labels(
         ["source_chunk", "source_custom", "taj_mahal", "online_test", ""]
     ) == ["online_test", "taj_mahal"]
+
+
+def test_search_nodes_applies_identity_label_and_document_exclusions() -> None:
+    allowed_document_id = ObjectId()
+    excluded_document_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": ObjectId(),
+                "document_id": allowed_document_id,
+                "tree_id": ObjectId(),
+                "title": "Allowed memory",
+                "text": "memory",
+                "labels": ["source_chunk", "public"],
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": allowed_document_id,
+                "tree_id": ObjectId(),
+                "title": "Restricted memory",
+                "text": "memory",
+                "labels": ["source_chunk", "restricted"],
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": excluded_document_id,
+                "tree_id": ObjectId(),
+                "title": "Hidden document memory",
+                "text": "memory",
+                "labels": ["source_chunk", "public"],
+            },
+        ]
+    )
+
+    results = search_nodes(
+        db,
+        identity={
+            "excluded_labels": ["restricted"],
+            "excluded_document_ids": [str(excluded_document_id)],
+        },
+    )
+
+    assert [result["title"] for result in results] == ["Allowed memory"]
+
+
+def test_search_nodes_expands_candidate_window_when_identity_filters() -> None:
+    allowed_document_id = ObjectId()
+    excluded_document_id = ObjectId()
+    excluded_nodes = [
+        {
+            "_id": ObjectId(),
+            "document_id": excluded_document_id,
+            "tree_id": ObjectId(),
+            "title": f"Hidden memory {index}",
+            "text": "memory",
+            "labels": ["source_chunk"],
+        }
+        for index in range(5)
+    ]
+    db = FakeDb(
+        [
+            *excluded_nodes,
+            {
+                "_id": ObjectId(),
+                "document_id": allowed_document_id,
+                "tree_id": ObjectId(),
+                "title": "Allowed later memory",
+                "text": "memory",
+                "labels": ["source_chunk"],
+            },
+        ]
+    )
+
+    results = search_nodes(
+        db,
+        limit=1,
+        identity={"excluded_document_ids": [str(excluded_document_id)]},
+    )
+
+    assert [result["title"] for result in results] == ["Allowed later memory"]
 
 
 class FakeCursor(list):

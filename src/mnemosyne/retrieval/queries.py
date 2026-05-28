@@ -63,6 +63,7 @@ def search_nodes(
     created_after: datetime | None = None,
     created_before: datetime | None = None,
     limit: int = 20,
+    identity: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     filters: dict[str, Any] = {}
     if query:
@@ -82,10 +83,34 @@ def search_nodes(
         filters["created_at"] = created_filter
 
     candidate_limit = max(limit * 5, 50) if query else limit
+    if identity:
+        candidate_limit = max(candidate_limit * 2, limit * 10, 50)
     nodes = list(db.nodes.find(filters).sort("created_at", -1).limit(candidate_limit))
+    if identity:
+        nodes = filter_nodes_for_identity(nodes, identity)
     if query:
         nodes.sort(key=lambda node: node_search_sort_key(node, query), reverse=True)
     return [serialize_node(node) for node in nodes[:limit]]
+
+
+def filter_nodes_for_identity(
+    nodes: list[dict[str, Any]],
+    identity: dict[str, Any],
+) -> list[dict[str, Any]]:
+    return [node for node in nodes if node_visible_to_identity(node, identity)]
+
+
+def node_visible_to_identity(node: dict[str, Any], identity: dict[str, Any]) -> bool:
+    excluded_labels = set(identity.get("excluded_labels") or [])
+    if excluded_labels and excluded_labels.intersection(node.get("labels") or []):
+        return False
+    excluded_document_ids = set(str(value) for value in identity.get("excluded_document_ids") or [])
+    if excluded_document_ids and str(node.get("document_id")) in excluded_document_ids:
+        return False
+    excluded_tree_ids = set(str(value) for value in identity.get("excluded_tree_ids") or [])
+    if excluded_tree_ids and str(node.get("tree_id")) in excluded_tree_ids:
+        return False
+    return True
 
 
 def text_query_filters(query: str) -> list[dict[str, Any]]:

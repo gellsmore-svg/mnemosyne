@@ -1313,12 +1313,26 @@ def execute_search_nodes_tool(
     cleaned_query = normalize_query_text(query)
     ranking_query = combined_query_text(cleaned_query, original_query)
     query_assembly = build_query_assembly(cleaned_query, original_query)
-    matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
+    identity = first_active_agent_identity(db) if session_id else None
+    unrestricted_matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
+    matches = (
+        search_nodes_with_optional_identity(
+            db,
+            query=cleaned_query,
+            label=label,
+            limit=limit,
+            identity=identity,
+        )
+        if identity
+        else unrestricted_matches
+    )
     details: dict[str, Any] = {
         "normalized_query": cleaned_query,
         "ranking_query": ranking_query,
         "query_assembly": query_assembly,
         "fallback_queries": [],
+        "active_identity_id": identity.get("identity_id") if identity else None,
+        "identity_excluded_count": max(0, len(unrestricted_matches) - len(matches)),
     }
     if not matches and ranking_query:
         query_assembly = build_query_assembly(
@@ -1331,11 +1345,12 @@ def execute_search_nodes_tool(
         details["query_assembly"] = query_assembly
         seen = {row["node_id"] for row in matches}
         for fallback_query in fallback_queries(query_assembly):
-            fallback_results = search_nodes(
+            fallback_results = search_nodes_with_optional_identity(
                 db,
                 query=fallback_query,
                 label=label,
                 limit=fallback_candidate_limit(limit),
+                identity=identity,
             )
             details["fallback_queries"].append(
                 {
@@ -1355,6 +1370,23 @@ def execute_search_nodes_tool(
         if context:
             compiled_contexts.append(context)
     return {"matches": top_matches, "compiled_contexts": compiled_contexts}, details
+
+
+def first_active_agent_identity(db: Database) -> dict[str, Any] | None:
+    identities = active_agent_identities(db, limit=1)
+    return identities[0] if identities else None
+
+
+def search_nodes_with_optional_identity(
+    db: Database,
+    query: str | None,
+    label: str | None,
+    limit: int,
+    identity: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if identity:
+        return search_nodes(db, query=query, label=label, limit=limit, identity=identity)
+    return search_nodes(db, query=query, label=label, limit=limit)
 
 
 def execute_expand_proximity_tool(
