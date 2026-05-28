@@ -32,7 +32,10 @@ from mnemosyne.retrieval.queries import (
     search_nodes,
     semantic_candidate_nodes,
 )
-from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
+from mnemosyne.retrieval.trust import (
+    trust_temporal_diagnostic_for_node,
+    trust_temporal_diagnostics_for_nodes,
+)
 from mnemosyne.sessions.active_documents import list_active_documents
 from mnemosyne.sessions.exchanges import save_exchange
 
@@ -1675,18 +1678,43 @@ def annotate_matches_with_trust_diagnostics(
     identity: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     profile_id = identity.get("weighting_profile_id") if identity else None
+    diagnostics = compact_trust_diagnostics_for_nodes(
+        db,
+        [match.get("node_id") for match in matches],
+        weighting_profile_id=profile_id,
+    )
     annotated = []
     for match in matches:
         row = dict(match)
-        diagnostic = compact_trust_diagnostic_for_node(
-            db,
-            match.get("node_id"),
-            weighting_profile_id=profile_id,
-        )
+        diagnostic = diagnostics.get(str(match.get("node_id")))
         if diagnostic:
             row["trust_diagnostic"] = diagnostic
         annotated.append(row)
     return annotated
+
+
+def compact_trust_diagnostics_for_nodes(
+    db: Database,
+    node_ids: list[Any],
+    weighting_profile_id: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    valid_node_ids = [str(node_id) for node_id in node_ids if node_id]
+    if not valid_node_ids:
+        return {}
+    try:
+        results = trust_temporal_diagnostics_for_nodes(
+            db,
+            valid_node_ids,
+            weighting_profile_id=weighting_profile_id,
+        )
+    except Exception:
+        return {}
+    compacted = {}
+    for node_id, result in results.items():
+        diagnostic = compact_trust_diagnostic(result)
+        if diagnostic:
+            compacted[node_id] = diagnostic
+    return compacted
 
 
 def compact_trust_diagnostic_for_node(
@@ -1704,6 +1732,10 @@ def compact_trust_diagnostic_for_node(
         )
     except Exception:
         return None
+    return compact_trust_diagnostic(result)
+
+
+def compact_trust_diagnostic(result: dict[str, Any] | None) -> dict[str, Any] | None:
     if not result:
         return None
     diagnostic = result.get("diagnostic") or {}

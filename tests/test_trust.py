@@ -6,6 +6,7 @@ from mnemosyne.retrieval.trust import (
     temporal_recency_component,
     trust_temporal_diagnostic,
     trust_temporal_diagnostic_for_node,
+    trust_temporal_diagnostics_for_nodes,
 )
 
 
@@ -89,6 +90,47 @@ def test_trust_temporal_diagnostic_for_node_rejects_invalid_id() -> None:
     assert trust_temporal_diagnostic_for_node(FakeDb(nodes=[], profiles=[]), "bad-id") is None
 
 
+def test_trust_temporal_diagnostics_for_nodes_batches_node_lookup() -> None:
+    node_id = ObjectId()
+    other_id = ObjectId()
+    db = FakeDb(
+        nodes=[
+            {
+                "_id": node_id,
+                "document_id": ObjectId(),
+                "tree_id": ObjectId(),
+                "parent_id": None,
+                "title": "Node",
+                "text": "text",
+                "labels": ["source_chunk"],
+                "endorsement_label": "explicit_endorsed",
+                "usage_score": 0,
+                "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            },
+            {
+                "_id": other_id,
+                "document_id": ObjectId(),
+                "tree_id": ObjectId(),
+                "parent_id": None,
+                "title": "Other",
+                "text": "text",
+                "labels": ["source_chunk"],
+                "endorsement_label": "rejected",
+                "usage_score": 0,
+                "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            },
+        ],
+        profiles=[],
+    )
+
+    results = trust_temporal_diagnostics_for_nodes(db, [str(node_id), "bad-id", str(other_id)])
+
+    assert set(results) == {str(node_id), str(other_id)}
+    assert results[str(node_id)]["diagnostic"]["components"]["trust"] == 1.0
+    assert results[str(other_id)]["diagnostic"]["components"]["trust"] == 0.0
+    assert db.nodes.find_calls == 1
+
+
 def test_temporal_recency_component_defaults_to_fresh_without_half_life() -> None:
     now = datetime(2026, 1, 11, tzinfo=timezone.utc)
 
@@ -112,6 +154,7 @@ class FakeCursor(list):
 class FakeCollection:
     def __init__(self, rows):
         self.rows = rows
+        self.find_calls = 0
 
     def find_one(self, query, projection=None):
         row = next((item for item in self.rows if matches(item, query)), None)
@@ -122,6 +165,7 @@ class FakeCollection:
         return dict(row)
 
     def find(self, query, projection=None):
+        self.find_calls += 1
         rows = []
         for row in self.rows:
             if not matches(row, query):
@@ -140,4 +184,11 @@ class FakeDb:
 
 
 def matches(row, query):
-    return all(row.get(key) == value for key, value in query.items())
+    for key, value in query.items():
+        if isinstance(value, dict) and "$in" in value:
+            if row.get(key) not in value["$in"]:
+                return False
+            continue
+        if row.get(key) != value:
+            return False
+    return True

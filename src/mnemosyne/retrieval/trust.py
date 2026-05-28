@@ -44,6 +44,45 @@ def trust_temporal_diagnostic_for_node(
     }
 
 
+def trust_temporal_diagnostics_for_nodes(
+    db: Database,
+    node_ids: list[str],
+    *,
+    weighting_profile_id: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, dict[str, Any]]:
+    object_ids_by_text: dict[str, ObjectId] = {}
+    for node_id in node_ids:
+        try:
+            object_ids_by_text[str(node_id)] = ObjectId(str(node_id))
+        except (InvalidId, TypeError):
+            continue
+    if not object_ids_by_text:
+        return {}
+    nodes = list(db.nodes.find({"_id": {"$in": list(object_ids_by_text.values())}}))
+    nodes_by_id = {str(node["_id"]): node for node in nodes}
+    shared_profile = get_trust_weighting_profile(db, weighting_profile_id) if weighting_profile_id else None
+    profile_cache: dict[str, dict[str, Any] | None] = {}
+    diagnostics: dict[str, dict[str, Any]] = {}
+    for node_id in object_ids_by_text:
+        node = nodes_by_id.get(node_id)
+        if not node:
+            continue
+        profile = shared_profile
+        if profile is None:
+            profile_id = node.get("temporal_profile_id")
+            if profile_id:
+                if profile_id not in profile_cache:
+                    profile_cache[profile_id] = get_trust_weighting_profile(db, profile_id)
+                profile = profile_cache[profile_id]
+        diagnostics[node_id] = {
+            "node": serialize_node(node),
+            "weighting_profile": profile,
+            "diagnostic": trust_temporal_diagnostic(node, profile=profile, now=now),
+        }
+    return diagnostics
+
+
 def trust_temporal_diagnostic(
     node: dict[str, Any],
     *,

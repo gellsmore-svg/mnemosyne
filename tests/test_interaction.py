@@ -1591,13 +1591,15 @@ def test_execute_search_nodes_tool_adds_trust_diagnostics(monkeypatch) -> None:
     monkeypatch.setattr(interaction, "compile_context", lambda _db, _node_id: None)
     monkeypatch.setattr(
         interaction,
-        "trust_temporal_diagnostic_for_node",
-        lambda _db, node_id, weighting_profile_id=None: {
-            "weighting_profile": {"weighting_profile_id": weighting_profile_id},
-            "diagnostic": {
-                "score": 0.68,
-                "components": {"trust": 0.55, "temporal": 1.0},
-                "signals": {"endorsement_label": "unreviewed", "usage_score": 2},
+        "trust_temporal_diagnostics_for_nodes",
+        lambda _db, node_ids, weighting_profile_id=None: {
+            node_ids[0]: {
+                "weighting_profile": {"weighting_profile_id": weighting_profile_id},
+                "diagnostic": {
+                    "score": 0.68,
+                    "components": {"trust": 0.55, "temporal": 1.0},
+                    "signals": {"endorsement_label": "unreviewed", "usage_score": 2},
+                },
             },
         },
     )
@@ -1607,6 +1609,42 @@ def test_execute_search_nodes_tool_adds_trust_diagnostics(monkeypatch) -> None:
     assert output["matches"][0]["trust_diagnostic"]["score"] == 0.68
     assert details["trust_diagnostics"][0]["node_id"] == "node1"
     assert details["trust_diagnostics"][0]["components"]["trust"] == 0.55
+
+
+def test_execute_search_nodes_tool_batches_trust_diagnostics(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    calls = []
+
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5, identity=None):
+        return [
+            {"node_id": "node1", "title": "Memory 1", "labels": ["source_chunk"]},
+            {"node_id": "node2", "title": "Memory 2", "labels": ["source_chunk"]},
+        ]
+
+    def fake_trust_diagnostics(_db, node_ids, weighting_profile_id=None):
+        calls.append((list(node_ids), weighting_profile_id))
+        return {
+            node_id: {
+                "weighting_profile": {"weighting_profile_id": weighting_profile_id},
+                "diagnostic": {
+                    "score": 0.68,
+                    "components": {"trust": 0.55},
+                    "signals": {"endorsement_label": "unreviewed"},
+                },
+            }
+            for node_id in node_ids
+        }
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "compile_context", lambda _db, _node_id: None)
+    monkeypatch.setattr(interaction, "trust_temporal_diagnostics_for_nodes", fake_trust_diagnostics)
+
+    output, details = execute_search_nodes_tool(FakeDb(), query="memory")
+
+    assert calls == [(["node1", "node2"], None)]
+    assert len(output["matches"]) == 2
+    assert [item["node_id"] for item in details["trust_diagnostics"]] == ["node1", "node2"]
 
 
 def test_execute_tool_calls_can_list_active_documents(monkeypatch) -> None:
