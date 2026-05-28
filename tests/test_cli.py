@@ -434,6 +434,51 @@ def test_cli_semantic_edge_candidates_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_review_semantic_edge_candidate_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "review-semantic-edge-candidate",
+            "candidate1",
+            "--action",
+            "accept",
+            "--reviewer",
+            "cello",
+            "--note",
+            "Reviewed candidate.",
+            "--weight",
+            "0.8",
+            "--confidence",
+            "0.9",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.review_semantic_edge_candidate",
+        lambda _db, **kwargs: {"ok": True, **kwargs},
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "candidate_id": "candidate1",
+        "action": "accept",
+        "reviewer": "cello",
+        "note": "Reviewed candidate.",
+        "weight": 0.8,
+        "confidence": 0.9,
+    }
+
+
 class FakeCollection:
     def __init__(self, rows: list[dict]) -> None:
         self.rows = rows

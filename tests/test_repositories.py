@@ -11,6 +11,7 @@ from mnemosyne.db.repositories import (
     graph_edge_status,
     list_semantic_edge_candidates,
     rebuild_document,
+    review_semantic_edge_candidate,
 )
 from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
@@ -222,14 +223,14 @@ def test_create_reviewed_semantic_edge_persists_user_reviewed_edge() -> None:
                 "document_id": source_document_id,
                 "tree_id": ObjectId(),
                 "node_key": "source",
-                "labels": ["taj_mahal", "online_test"],
+                "labels": ["source_chunk", "taj_mahal", "online_test"],
             },
             {
                 "_id": target_id,
                 "document_id": target_document_id,
                 "tree_id": ObjectId(),
                 "node_key": "target",
-                "labels": ["taj_mahal", "memory_reference"],
+                "labels": ["source_chunk", "taj_mahal", "memory_reference"],
             },
         ]
     )
@@ -366,10 +367,95 @@ def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
             "source_title": "Source",
             "target_title": "Target",
             "created_by": "user",
+            "reviewer": None,
+            "review_note": None,
+            "edge_id": None,
             "created_at": "2026-05-28T00:00:00+00:00",
             "updated_at": "2026-05-28T00:00:00+00:00",
+            "reviewed_at": None,
         }
     ]
+
+
+def test_review_semantic_edge_candidate_accepts_and_creates_edge() -> None:
+    source_id = ObjectId()
+    target_id = ObjectId()
+    candidate_id = ObjectId()
+    db = FakeDb()
+    db.nodes.rows.extend(
+        [
+            {
+                "_id": source_id,
+                "document_id": ObjectId(),
+                "tree_id": ObjectId(),
+                "node_key": "source",
+                "labels": ["memory_reference"],
+            },
+            {
+                "_id": target_id,
+                "document_id": ObjectId(),
+                "tree_id": ObjectId(),
+                "node_key": "target",
+                "labels": ["memory_reference"],
+            },
+        ]
+    )
+    db.semantic_edge_candidates.rows.append(
+        {
+            "_id": candidate_id,
+            "status": "pending",
+            "source_node_id": source_id,
+            "target_node_id": target_id,
+            "relation_type": "related_to",
+        }
+    )
+
+    result = review_semantic_edge_candidate(
+        db,
+        candidate_id=str(candidate_id),
+        action="accept",
+        reviewer="cello",
+        note="Looks related.",
+        weight=0.8,
+        confidence=0.9,
+    )
+
+    assert result["ok"] is True
+    assert len(db.graph_edges.rows) == 1
+    assert result["candidate"]["status"] == "accepted"
+    assert result["candidate"]["reviewer"] == "cello"
+    assert result["candidate"]["review_note"] == "Looks related."
+    assert result["candidate"]["edge_id"] == result["edge"]["edge_id"]
+    assert result["edge"]["weight"] == 0.8
+    assert result["edge"]["confidence"] == 0.9
+
+
+def test_review_semantic_edge_candidate_rejects_pending_candidate() -> None:
+    candidate_id = ObjectId()
+    db = FakeDb()
+    db.semantic_edge_candidates.rows.append(
+        {
+            "_id": candidate_id,
+            "status": "pending",
+            "source_node_id": ObjectId(),
+            "target_node_id": ObjectId(),
+            "relation_type": "related_to",
+        }
+    )
+
+    result = review_semantic_edge_candidate(
+        db,
+        candidate_id=str(candidate_id),
+        action="reject",
+        reviewer="cello",
+        note="Too broad.",
+    )
+
+    assert result["ok"] is True
+    assert result["candidate"]["status"] == "rejected"
+    assert result["candidate"]["reviewer"] == "cello"
+    assert result["candidate"]["review_note"] == "Too broad."
+    assert db.graph_edges.rows == []
 
 
 def test_graph_edge_status_counts_relations_and_provenance_sources() -> None:

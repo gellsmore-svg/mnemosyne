@@ -23,6 +23,7 @@ from mnemosyne.db.repositories import (
     label_definitions,
     list_semantic_edge_candidates,
     rebuild_document,
+    review_semantic_edge_candidate,
 )
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
 from mnemosyne.ingestion.files import archive_source, move_request_file, sha256_file
@@ -288,6 +289,14 @@ def main() -> None:
     semantic_queue = subcommands.add_parser("semantic-edge-candidates")
     semantic_queue.add_argument("--status", default="pending")
     semantic_queue.add_argument("--limit", type=int, default=20)
+
+    semantic_candidate_review = subcommands.add_parser("review-semantic-edge-candidate")
+    semantic_candidate_review.add_argument("candidate_id")
+    semantic_candidate_review.add_argument("--action", required=True, choices=["accept", "reject"])
+    semantic_candidate_review.add_argument("--reviewer", default="user")
+    semantic_candidate_review.add_argument("--note", default=None)
+    semantic_candidate_review.add_argument("--weight", type=float, default=0.7)
+    semantic_candidate_review.add_argument("--confidence", type=float, default=0.6)
 
     semantic_edge = subcommands.add_parser("create-semantic-edge")
     semantic_edge.add_argument("source_node_id")
@@ -775,6 +784,24 @@ def main() -> None:
                         limit=args.limit,
                     ),
                 },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "review-semantic-edge-candidate":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                review_semantic_edge_candidate(
+                    db,
+                    candidate_id=args.candidate_id,
+                    action=args.action,
+                    reviewer=args.reviewer,
+                    note=args.note,
+                    weight=args.weight,
+                    confidence=args.confidence,
+                ),
                 indent=2,
             )
         )

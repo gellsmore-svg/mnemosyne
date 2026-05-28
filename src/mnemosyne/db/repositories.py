@@ -16,6 +16,8 @@ from mnemosyne.models.ingestion import (
     TreeRecord,
 )
 
+STRUCTURAL_LABELS = {"source_root", "source_section", "source_chunk"}
+
 
 class DuplicateSourceError(Exception):
     def __init__(self, checksum: str, existing_document_id: object) -> None:
@@ -436,7 +438,7 @@ def create_reviewed_semantic_edge(
         }
 
     now = datetime.now(timezone.utc)
-    shared_labels = sorted(set(source.get("labels") or []) & set(target.get("labels") or []))
+    shared_labels = shared_semantic_labels(source, target)
     edge_doc = {
         "schema_version": SCHEMA_VERSION,
         "document_id": source.get("document_id"),
@@ -575,6 +577,104 @@ def list_semantic_edge_candidates(
     return [serialize_semantic_edge_candidate(row) for row in rows]
 
 
+def review_semantic_edge_candidate(
+    db: Database,
+    candidate_id: str,
+    action: str,
+    reviewer: str = "user",
+    note: str | None = None,
+    weight: Any = 0.7,
+    confidence: Any = 0.6,
+) -> dict[str, Any]:
+    if not hasattr(db, "semantic_edge_candidates"):
+        return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
+    object_id = parse_object_id(candidate_id)
+    if object_id is None:
+        return {"ok": False, "reason": "invalid_candidate_id", "candidate_id": candidate_id}
+    candidate = db.semantic_edge_candidates.find_one({"_id": object_id})
+    if not candidate:
+        return {"ok": False, "reason": "candidate_not_found", "candidate_id": candidate_id}
+    if candidate.get("status") != "pending":
+        return {
+            "ok": False,
+            "reason": "candidate_not_pending",
+            "candidate": serialize_semantic_edge_candidate(candidate),
+        }
+
+    normalized_action = str(action or "").strip().lower()
+    if normalized_action == "reject":
+        updated = update_semantic_edge_candidate_status(
+            db,
+            object_id,
+            status="rejected",
+            reviewer=reviewer,
+            note=note,
+        )
+        return {"ok": True, "candidate": serialize_semantic_edge_candidate(updated)}
+    if normalized_action != "accept":
+        return {"ok": False, "reason": "invalid_action", "action": action}
+
+    edge_result = create_reviewed_semantic_edge(
+        db,
+        source_node_id=str(candidate.get("source_node_id")),
+        target_node_id=str(candidate.get("target_node_id")),
+        relation_type=candidate.get("relation_type") or "related_to",
+        weight=weight,
+        confidence=confidence,
+        reviewer=reviewer,
+        note=note,
+    )
+    if not edge_result.get("ok"):
+        return {
+            "ok": False,
+            "reason": "edge_creation_failed",
+            "edge_result": edge_result,
+            "candidate": serialize_semantic_edge_candidate(candidate),
+        }
+    updated = update_semantic_edge_candidate_status(
+        db,
+        object_id,
+        status="accepted",
+        reviewer=reviewer,
+        note=note,
+        edge_id=edge_result.get("edge", {}).get("edge_id"),
+    )
+    return {
+        "ok": True,
+        "edge": edge_result.get("edge"),
+        "candidate": serialize_semantic_edge_candidate(updated),
+    }
+
+
+def update_semantic_edge_candidate_status(
+    db: Database,
+    candidate_id: ObjectId,
+    status: str,
+    reviewer: str,
+    note: str | None,
+    edge_id: str | None = None,
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    review = {
+        "action": status,
+        "reviewer": reviewer,
+        "note": note,
+        "reviewed_at": now,
+    }
+    updates: dict[str, Any] = {
+        "status": status,
+        "reviewer": reviewer,
+        "review_note": note,
+        "reviewed_at": now,
+        "updated_at": now,
+        "review": review,
+    }
+    if edge_id:
+        updates["edge_id"] = edge_id
+    db.semantic_edge_candidates.update_one({"_id": candidate_id}, {"$set": updates})
+    return db.semantic_edge_candidates.find_one({"_id": candidate_id}) or {}
+
+
 def serialize_semantic_edge_candidate(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "candidate_id": str(row["_id"]) if row.get("_id") else None,
@@ -595,8 +695,12 @@ def serialize_semantic_edge_candidate(row: dict[str, Any]) -> dict[str, Any]:
         "source_title": row.get("source_title"),
         "target_title": row.get("target_title"),
         "created_by": row.get("created_by"),
+        "reviewer": row.get("reviewer"),
+        "review_note": row.get("review_note"),
+        "edge_id": row.get("edge_id"),
         "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
         "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+        "reviewed_at": row.get("reviewed_at").isoformat() if row.get("reviewed_at") else None,
     }
 
 
@@ -606,6 +710,14 @@ def bounded_candidate_limit(value: Any, maximum: int = 50) -> int:
     except (TypeError, ValueError):
         parsed = 10
     return max(1, min(parsed, maximum))
+
+
+def shared_semantic_labels(source: dict[str, Any], target: dict[str, Any]) -> list[str]:
+    return sorted(
+        label
+        for label in set(source.get("labels") or []) & set(target.get("labels") or [])
+        if label and label not in STRUCTURAL_LABELS and not label.startswith("source_")
+    )
 
 
 def parse_object_id(value: str) -> ObjectId | None:
