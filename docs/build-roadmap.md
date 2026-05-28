@@ -142,7 +142,7 @@ Current early read surface:
 - memory-agent prompts include the current session ID and compact active document summaries; the read-only tool surface includes active-document listing plus exact document, document-tree, and node-context lookup tools.
 - memory-agent prompts include compact active identity summaries as governance context; agentic search applies active identity label/document/tree exclusions before returning matches, while direct retrieval and graph traversal remain unchanged.
 - CLI and FastAPI expose read-only governance listing and exact lookup for agent identities, trust weighting profiles, governance policies, and process objects.
-- CLI and FastAPI expose process-run persistence for explicit operator/API creation, listing, exact lookup, step/exchange updates, and exception proposals.
+- CLI and FastAPI expose process-run persistence for explicit operator/API creation, listing, exact lookup, step/exchange updates, and exception proposals; answer requests also create an `answer_query` process run and link the saved exchange on completion.
 - CLI and FastAPI expose read-only per-node trust/temporal diagnostics for selected weighting profiles; direct retrieval traces and agentic search diagnostics include compact versions, and these scores are explanatory only and do not affect retrieval ranking.
 - memory-agent graph-edge lookup can inspect bounded incoming/outgoing typed relations for a known node ID.
 - memory-agent one-hop proximity expansion can rank adjacent graph nodes by edge weight/confidence.
@@ -163,7 +163,7 @@ Known gaps after reconciliation:
 - the compiled context corpus has only a first structured scaffold and does not yet match the full technical design schema;
 - active document registry is only a first skeleton populated from used nodes, visible to the memory-agent, and used for narrow direct reference resolution/source fallback; it does not yet drive broad retrieval, endorsement, or restart state.
 - output ingestion is implemented only as conservative graph insertion plus explicit review labels; natural-language endorsement detection, relation extraction, restart state node, full traversal path scoring, unused-path decay, and REM consolidation are not started.
-- identity, governance policy, process-object, process-run, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; first read-only CLI/API listing and exact lookup commands, default seed records, memory-agent identity prompt summaries, agentic search identity exclusions, explicit process-run persistence, and trust/temporal diagnostics in retrieval traces exist, but trust/temporal ranking effects and automatic process enforcement are not implemented yet.
+- identity, governance policy, process-object, process-run, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; first read-only CLI/API listing and exact lookup commands, default seed records, memory-agent identity prompt summaries, agentic search identity exclusions, answer-process run persistence, and trust/temporal diagnostics in retrieval traces exist, but trust/temporal ranking effects and automatic process enforcement are not implemented yet.
 
 Minimum build:
 

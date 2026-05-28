@@ -325,6 +325,90 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert "plain prompt" in result["process_trace"][1]["output"]["context_text"]
 
 
+def test_answer_query_records_process_run(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    created = []
+    updates = []
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            return {
+                "adapter": "fake",
+                "answer": "direct answer",
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *args, **kwargs: None)
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+    monkeypatch.setattr(
+        interaction,
+        "create_process_run",
+        lambda _db, **kwargs: created.append(kwargs) or {"run_id": "run1"},
+    )
+    monkeypatch.setattr(
+        interaction,
+        "update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+
+    result = answer_query(FakeDb(), AppConfig(), "plain prompt", session_id="s1")
+
+    assert result["process_run_id"] == "run1"
+    assert created == [
+        {
+            "process_id": "answer_query",
+            "session_id": "s1",
+            "current_step_id": "direct_retrieval",
+            "status": "active",
+        }
+    ]
+    assert updates == [
+        {
+            "run_id": "run1",
+            "status": "completed",
+            "current_step_id": "answer_saved",
+            "completed_step_id": "answer_adapter",
+            "exchange_id": "exchange1",
+            "exception": None,
+        }
+    ]
+
+
+def test_answer_query_marks_process_run_blocked_when_adapter_fails(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    updates = []
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            raise RuntimeError("adapter offline")
+
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *args, **kwargs: None)
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+    monkeypatch.setattr(
+        interaction,
+        "create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1"},
+    )
+    monkeypatch.setattr(
+        interaction,
+        "update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+
+    result = answer_query(FakeDb(), AppConfig(), "plain prompt", session_id="s1")
+
+    assert result["ok"] is False
+    assert result["process_run_id"] == "run1"
+    assert updates[0]["status"] == "blocked"
+    assert updates[0]["current_step_id"] == "answer_adapter_failed"
+    assert updates[0]["exception"]["reason"] == "answer_adapter_failed"
+    assert "adapter offline" in updates[0]["exception"]["note"]
+
+
 def test_answer_query_uses_active_document_source_fallback(monkeypatch, tmp_path) -> None:
     import mnemosyne.sessions.interaction as interaction
 

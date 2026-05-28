@@ -12,7 +12,7 @@ from pymongo.database import Database
 
 from mnemosyne.adapters.answer import answer_adapter
 from mnemosyne.config import AppConfig
-from mnemosyne.db.governance import list_agent_identities
+from mnemosyne.db.governance import create_process_run, list_agent_identities, update_process_run
 from mnemosyne.db.repositories import document_tree
 from mnemosyne.retrieval.queries import (
     build_prompt_envelope,
@@ -85,6 +85,7 @@ QUERY_STOPWORDS = {
     "your",
     "will",
 }
+ANSWER_PROCESS_ID = "answer_query"
 
 
 def answer_query(
@@ -120,6 +121,11 @@ def answer_query(
         runtime_config.ollama_model = ollama_model
     if retrieval_mode:
         runtime_config.retrieval_mode = retrieval_mode
+    process_run_id = start_answer_process_run(
+        db,
+        session_id=session_id,
+        retrieval_mode=runtime_config.retrieval_mode,
+    )
     if runtime_config.retrieval_mode == "agentic":
         return answer_query_agentic(
             db=db,
@@ -130,6 +136,7 @@ def answer_query(
             selected_node_id=focus_node_id,
             session_id=session_id,
             process_trace=process_trace,
+            process_run_id=process_run_id,
         )
 
     selected_node_id = focus_node_id
@@ -225,6 +232,17 @@ def answer_query(
     try:
         answer = answer_adapter(runtime_config).answer(prompt)
     except Exception as error:
+        finish_answer_process_run(
+            db,
+            process_run_id,
+            status="blocked",
+            current_step_id="answer_adapter_failed",
+            exception={
+                "reason": "answer_adapter_failed",
+                "proposal": "Inspect adapter/model configuration and retry.",
+                "note": str(error),
+            },
+        )
         adapter_step["output"] = {
             "ok": False,
             "error": str(error),
@@ -236,6 +254,7 @@ def answer_query(
             "adapter": runtime_config.answer_adapter,
             "model": runtime_config.ollama_model,
             "focus_node_id": selected_node_id,
+            "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
     adapter_step["output"] = {
@@ -254,6 +273,14 @@ def answer_query(
         session_id=session_id,
         process_trace=process_trace,
     )
+    finish_answer_process_run(
+        db,
+        process_run_id,
+        status="completed",
+        current_step_id="answer_saved",
+        completed_step_id="answer_adapter",
+        exchange_id=exchange_id,
+    )
     return {
         "ok": True,
         "exchange_id": exchange_id,
@@ -266,6 +293,7 @@ def answer_query(
         "used_node_ids": answer["used_node_ids"],
         "budget": prompt["budget"],
         "retrieval_status": retrieval_status,
+        "process_run_id": process_run_id,
         "process_trace": process_trace,
     }
 
@@ -279,6 +307,7 @@ def answer_query_agentic(
     selected_node_id: str | None,
     session_id: str,
     process_trace: list[dict[str, Any]],
+    process_run_id: str | None = None,
 ) -> dict[str, Any]:
     tool_results = run_memory_agent_loop(
         db=db,
@@ -313,6 +342,17 @@ def answer_query_agentic(
     try:
         answer = answer_adapter(runtime_config).answer(prompt)
     except Exception as error:
+        finish_answer_process_run(
+            db,
+            process_run_id,
+            status="blocked",
+            current_step_id="answer_adapter_failed",
+            exception={
+                "reason": "answer_adapter_failed",
+                "proposal": "Inspect adapter/model configuration and retry.",
+                "note": str(error),
+            },
+        )
         adapter_step["output"] = {
             "ok": False,
             "error": str(error),
@@ -324,6 +364,7 @@ def answer_query_agentic(
             "adapter": runtime_config.answer_adapter,
             "model": runtime_config.ollama_model,
             "focus_node_id": selected_node_id,
+            "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
     adapter_step["output"] = {
@@ -342,6 +383,14 @@ def answer_query_agentic(
         session_id=session_id,
         process_trace=process_trace,
     )
+    finish_answer_process_run(
+        db,
+        process_run_id,
+        status="completed",
+        current_step_id="answer_saved",
+        completed_step_id="answer_adapter",
+        exchange_id=exchange_id,
+    )
     return {
         "ok": True,
         "exchange_id": exchange_id,
@@ -354,8 +403,54 @@ def answer_query_agentic(
         "used_node_ids": answer["used_node_ids"],
         "budget": prompt["budget"],
         "retrieval_status": retrieval_status,
+        "process_run_id": process_run_id,
         "process_trace": process_trace,
     }
+
+
+def start_answer_process_run(
+    db: Database,
+    *,
+    session_id: str,
+    retrieval_mode: str,
+) -> str | None:
+    try:
+        run = create_process_run(
+            db,
+            process_id=ANSWER_PROCESS_ID,
+            session_id=session_id,
+            current_step_id=f"{retrieval_mode}_retrieval",
+            status="active",
+        )
+    except Exception:
+        return None
+    return run.get("run_id")
+
+
+def finish_answer_process_run(
+    db: Database,
+    run_id: str | None,
+    *,
+    status: str,
+    current_step_id: str,
+    completed_step_id: str | None = None,
+    exchange_id: str | None = None,
+    exception: dict[str, Any] | None = None,
+) -> None:
+    if not run_id:
+        return
+    try:
+        update_process_run(
+            db,
+            run_id,
+            status=status,
+            current_step_id=current_step_id,
+            completed_step_id=completed_step_id,
+            exchange_id=exchange_id,
+            exception=exception,
+        )
+    except Exception:
+        return
 
 
 def select_focus_node(db: Database, query: str) -> str | None:
