@@ -16,10 +16,12 @@ from mnemosyne.db.repositories import (
     backfill_structural_graph_edges,
     commit_ingestion,
     create_reviewed_semantic_edge,
+    enqueue_semantic_edge_candidates,
     find_duplicate_by_checksum,
     document_tree,
     graph_edge_status,
     label_definitions,
+    list_semantic_edge_candidates,
     rebuild_document,
 )
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
@@ -275,6 +277,17 @@ def main() -> None:
     semantic_candidates.add_argument("node_id")
     semantic_candidates.add_argument("--include-same-document", action="store_true")
     semantic_candidates.add_argument("--limit", type=int, default=10)
+
+    enqueue_semantic = subcommands.add_parser("enqueue-semantic-candidates")
+    enqueue_semantic.add_argument("node_id")
+    enqueue_semantic.add_argument("--include-same-document", action="store_true")
+    enqueue_semantic.add_argument("--relation-type", default="related_to")
+    enqueue_semantic.add_argument("--created-by", default="user")
+    enqueue_semantic.add_argument("--limit", type=int, default=10)
+
+    semantic_queue = subcommands.add_parser("semantic-edge-candidates")
+    semantic_queue.add_argument("--status", default="pending")
+    semantic_queue.add_argument("--limit", type=int, default=20)
 
     semantic_edge = subcommands.add_parser("create-semantic-edge")
     semantic_edge.add_argument("source_node_id")
@@ -725,6 +738,40 @@ def main() -> None:
                         db,
                         args.node_id,
                         include_same_document=args.include_same_document,
+                        limit=args.limit,
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "enqueue-semantic-candidates":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                enqueue_semantic_edge_candidates(
+                    db,
+                    node_id=args.node_id,
+                    include_same_document=args.include_same_document,
+                    relation_type=args.relation_type,
+                    created_by=args.created_by,
+                    limit=args.limit,
+                ),
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "semantic-edge-candidates":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "candidates": list_semantic_edge_candidates(
+                        db,
+                        status=args.status,
                         limit=args.limit,
                     ),
                 },

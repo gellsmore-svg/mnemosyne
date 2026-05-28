@@ -40,6 +40,7 @@ The current implementation has added several scaffold features and operational d
 - Existing parent/child node links can be backfilled as structural `contains` graph edges. These are provenance-marked as derived from stored hierarchy, not semantic inference.
 - Graph status diagnostics report total edge count plus relation-type and provenance-source breakdowns.
 - Semantic-candidate diagnostics are read-only: they rank nodes sharing meaningful non-structural labels, excluding source-root containers, but do not write inferred graph edges.
+- Semantic-edge candidate queue commands can enqueue pending review rows from semantic-candidate diagnostics and list them for batched operator review.
 - Reviewed semantic-edge promotion is operator controlled: a CLI command can create a typed directed edge between two known nodes with reviewer/note provenance, shared-label evidence, duplicate protection, and bounded weight/confidence. Memory-agent tool calls remain read-only.
 - Label definitions are stored in MongoDB.
 
@@ -82,7 +83,7 @@ The current implementation has added several scaffold features and operational d
   - `list_active_documents`;
   - `list_documents`.
 - Exact lookup tools let the planner inspect known document IDs, document tree structure, node parent/child context, typed adjacent graph edges, one-hop proximity-ranked graph neighbors, bounded multi-hop graph paths, and read-only semantic candidates without re-querying by text. Proximity, graph-path, and semantic-candidate expansion compile context for the top target nodes before final answer assembly. Document-tree lookup is treated as navigation metadata and does not by itself mark every tree node as used evidence for scoring.
-- CLI graph inspection commands expose the same single-hop edge, one-hop proximity, bounded multi-hop path expansion, semantic-candidate diagnostics, and reviewed semantic-edge promotion helpers for operator diagnostics.
+- CLI graph inspection commands expose the same single-hop edge, one-hop proximity, bounded multi-hop path expansion, semantic-candidate diagnostics, candidate queue, and reviewed semantic-edge promotion helpers for operator diagnostics.
 - The memory-agent is instructed to return strict JSON decisions with either `continue` plus tool calls or `done`.
 - Python executes tool calls, records structured tool results, and feeds compact summaries back into later memory-agent iterations.
 - Proximity and graph-path summaries expose node previews, scores, and compact edge metadata so later memory-agent iterations can choose follow-up exact lookup or context compilation calls.
@@ -328,7 +329,7 @@ As of 2026-05-22:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `220 passed`.
+- Current automated suite at last full run: `224 passed`.
 
 ## Recommended Next Work
 
@@ -345,5 +346,5 @@ Next implementation candidates:
 2. Broaden near-match vocabulary carefully, next with active documents.
 3. Broaden source-document fallback beyond active-document reference prompts.
 4. Add active document registry skeleton.
-5. Add a reviewed semantic-edge candidate queue so candidate inspection and edge promotion can be batched.
+5. Add candidate accept/reject actions so reviewed semantic-edge candidates can be resolved without manual source/target node copying.
 6. Add embedding interface and a brute-force baseline evaluation harness.

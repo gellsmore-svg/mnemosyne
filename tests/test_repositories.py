@@ -7,7 +7,9 @@ from mnemosyne.db.repositories import (
     bounded_graph_group_limit,
     commit_ingestion,
     create_reviewed_semantic_edge,
+    enqueue_semantic_edge_candidates,
     graph_edge_status,
+    list_semantic_edge_candidates,
     rebuild_document,
 )
 from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
@@ -268,6 +270,108 @@ def test_create_reviewed_semantic_edge_persists_user_reviewed_edge() -> None:
     assert duplicate["reason"] == "duplicate_edge"
 
 
+def test_enqueue_semantic_edge_candidates_stores_pending_review_rows(monkeypatch) -> None:
+    source_id = ObjectId()
+    target_id = ObjectId()
+    document_id = ObjectId()
+    db = FakeDb()
+    db.nodes.rows.append(
+        {
+            "_id": source_id,
+            "document_id": document_id,
+            "tree_id": ObjectId(),
+            "node_key": "source",
+            "title": "Source",
+            "labels": ["taj_mahal"],
+        }
+    )
+
+    monkeypatch.setattr(
+        "mnemosyne.retrieval.queries.semantic_candidate_nodes",
+        lambda _db, node_id, limit=10, include_same_document=False: [
+            {
+                "node_id": str(target_id),
+                "document_id": str(ObjectId()),
+                "node_key": "target",
+                "title": "Target",
+                "shared_labels": ["taj_mahal"],
+                "shared_label_count": 1,
+            }
+        ],
+    )
+
+    result = enqueue_semantic_edge_candidates(
+        db,
+        node_id=str(source_id),
+        relation_type="Related To",
+        created_by="cello",
+    )
+
+    assert result["ok"] is True
+    assert result["candidate_count"] == 1
+    assert result["enqueued_count"] == 1
+    assert len(db.semantic_edge_candidates.rows) == 1
+    row = db.semantic_edge_candidates.rows[0]
+    assert row["status"] == "pending"
+    assert row["source_node_id"] == source_id
+    assert row["target_node_id"] == target_id
+    assert row["source_document_id"] == document_id
+    assert row["relation_type"] == "related_to"
+    assert row["shared_labels"] == ["taj_mahal"]
+    assert row["created_by"] == "cello"
+
+    duplicate = enqueue_semantic_edge_candidates(db, node_id=str(source_id))
+
+    assert duplicate["enqueued_count"] == 0
+    assert duplicate["skipped_existing_count"] == 1
+
+
+def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
+    source_id = ObjectId()
+    target_id = ObjectId()
+    timestamp = datetime(2026, 5, 28, tzinfo=timezone.utc)
+    db = FakeDb()
+    db.semantic_edge_candidates.rows.append(
+        {
+            "_id": ObjectId(),
+            "status": "pending",
+            "source_node_id": source_id,
+            "target_node_id": target_id,
+            "relation_type": "related_to",
+            "shared_labels": ["memory_reference"],
+            "shared_label_count": 1,
+            "source_title": "Source",
+            "target_title": "Target",
+            "created_by": "user",
+            "created_at": timestamp,
+            "updated_at": timestamp,
+        }
+    )
+
+    rows = list_semantic_edge_candidates(db)
+
+    assert rows == [
+        {
+            "candidate_id": str(db.semantic_edge_candidates.rows[0]["_id"]),
+            "status": "pending",
+            "source_node_id": str(source_id),
+            "target_node_id": str(target_id),
+            "source_document_id": None,
+            "target_document_id": None,
+            "source_node_key": None,
+            "target_node_key": None,
+            "relation_type": "related_to",
+            "shared_labels": ["memory_reference"],
+            "shared_label_count": 1,
+            "source_title": "Source",
+            "target_title": "Target",
+            "created_by": "user",
+            "created_at": "2026-05-28T00:00:00+00:00",
+            "updated_at": "2026-05-28T00:00:00+00:00",
+        }
+    ]
+
+
 def test_graph_edge_status_counts_relations_and_provenance_sources() -> None:
     db = FakeDb()
     db.graph_edges.rows.extend(
@@ -386,6 +490,15 @@ class FakeInsertResult:
         self.inserted_id = inserted_id
 
 
+class FakeCursor(list):
+    def sort(self, field, direction=1):
+        super().sort(key=lambda row: mongo_sort_value(nested_get(row, field)), reverse=direction < 0)
+        return self
+
+    def limit(self, value):
+        return FakeCursor(self[:value])
+
+
 class FakeCollection:
     def __init__(self, fail_insert=False, fail_insert_many=False):
         self.rows = []
@@ -397,7 +510,7 @@ class FakeCollection:
         return dict(row) if row else None
 
     def find(self, query):
-        return [dict(row) for row in self.rows if matches(row, query)]
+        return FakeCursor([dict(row) for row in self.rows if matches(row, query)])
 
     def count_documents(self, query):
         return len([row for row in self.rows if matches(row, query)])
@@ -430,7 +543,9 @@ class FakeCollection:
         if self.fail_insert_many:
             raise RuntimeError("edge insert failed")
         for row in rows:
-            self.rows.append(dict(row))
+            row = dict(row)
+            row.setdefault("_id", ObjectId())
+            self.rows.append(row)
         return None
 
     def replace_one(self, query, replacement):
@@ -464,6 +579,7 @@ class FakeDb:
         self.trees = FakeCollection()
         self.nodes = FakeCollection(fail_insert=fail_nodes)
         self.graph_edges = FakeCollection(fail_insert_many=fail_edges)
+        self.semantic_edge_candidates = FakeCollection()
 
 
 def matches(row, query):

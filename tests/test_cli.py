@@ -367,6 +367,73 @@ def test_cli_create_semantic_edge_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_enqueue_semantic_candidates_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "enqueue-semantic-candidates",
+            "node1",
+            "--include-same-document",
+            "--relation-type",
+            "supports",
+            "--created-by",
+            "cello",
+            "--limit",
+            "3",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.enqueue_semantic_edge_candidates",
+        lambda _db, **kwargs: {"ok": True, **kwargs},
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "node_id": "node1",
+        "include_same_document": True,
+        "relation_type": "supports",
+        "created_by": "cello",
+        "limit": 3,
+    }
+
+
+def test_cli_semantic_edge_candidates_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "semantic-edge-candidates", "--status", "pending", "--limit", "4"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.list_semantic_edge_candidates",
+        lambda _db, status="pending", limit=20: [{"status": status, "limit": limit}],
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "candidates": [{"status": "pending", "limit": 4}],
+    }
+
+
 class FakeCollection:
     def __init__(self, rows: list[dict]) -> None:
         self.rows = rows

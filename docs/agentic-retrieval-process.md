@@ -138,6 +138,8 @@ Supported read-only tools are:
 
 `semantic_candidates` inspects read-only label-overlap candidates for a known node. It excludes structural labels and source-root containers, can optionally include same-document candidates, and compiles context for the top two candidates. It does not write inferred graph edges.
 
+Operator CLI commands can enqueue these candidates into a pending semantic-edge review queue and can later create reviewed semantic edges explicitly. Those write operations are outside the memory-agent tool surface.
+
 Structural `contains` edges can be backfilled from existing parent/child node links. These edges provide source-faithful document-tree movement for graph traversal before semantic relation extraction exists. Equal-score structural paths use natural node-key/title ordering so siblings follow document order where possible.
 
 `execute_tool_calls()` wraps every tool result with:

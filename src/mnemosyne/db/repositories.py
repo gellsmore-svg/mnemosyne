@@ -480,6 +480,134 @@ def create_reviewed_semantic_edge(
     }
 
 
+def enqueue_semantic_edge_candidates(
+    db: Database,
+    node_id: str,
+    limit: int = 10,
+    include_same_document: bool = False,
+    relation_type: str = "related_to",
+    created_by: str = "user",
+) -> dict[str, Any]:
+    if not hasattr(db, "semantic_edge_candidates"):
+        return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
+    source_id = parse_object_id(node_id)
+    if source_id is None:
+        return {"ok": False, "reason": "invalid_source_node_id", "source_node_id": node_id}
+    source = db.nodes.find_one({"_id": source_id})
+    if not source:
+        return {"ok": False, "reason": "source_node_not_found", "source_node_id": node_id}
+    relation = normalized_relation_type(relation_type)
+    if not relation:
+        return {"ok": False, "reason": "invalid_relation_type", "relation_type": relation_type}
+
+    from mnemosyne.retrieval.queries import semantic_candidate_nodes
+
+    candidates = semantic_candidate_nodes(
+        db,
+        node_id=node_id,
+        limit=bounded_candidate_limit(limit),
+        include_same_document=include_same_document,
+    )
+    now = datetime.now(timezone.utc)
+    inserted = []
+    skipped_existing = 0
+    skipped_invalid = 0
+    for candidate in candidates:
+        target_id = parse_object_id(candidate.get("node_id"))
+        if target_id is None:
+            skipped_invalid += 1
+            continue
+        existing = db.semantic_edge_candidates.find_one(
+            {
+                "source_node_id": source_id,
+                "target_node_id": target_id,
+                "relation_type": relation,
+            }
+        )
+        if existing:
+            skipped_existing += 1
+            continue
+        inserted.append(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "status": "pending",
+                "source_node_id": source_id,
+                "target_node_id": target_id,
+                "source_document_id": source.get("document_id"),
+                "target_document_id": parse_object_id(candidate.get("document_id")),
+                "source_node_key": source.get("node_key"),
+                "target_node_key": candidate.get("node_key"),
+                "relation_type": relation,
+                "shared_labels": candidate.get("shared_labels") or [],
+                "shared_label_count": candidate.get("shared_label_count") or 0,
+                "source_title": source.get("title"),
+                "target_title": candidate.get("title"),
+                "created_by": created_by,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+    if inserted:
+        db.semantic_edge_candidates.insert_many(inserted)
+    return {
+        "ok": True,
+        "source_node_id": str(source_id),
+        "candidate_count": len(candidates),
+        "enqueued_count": len(inserted),
+        "skipped_existing_count": skipped_existing,
+        "skipped_invalid_count": skipped_invalid,
+    }
+
+
+def list_semantic_edge_candidates(
+    db: Database,
+    status: str | None = "pending",
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    if not hasattr(db, "semantic_edge_candidates"):
+        return []
+    query = {}
+    if status:
+        query["status"] = status
+    rows = db.semantic_edge_candidates.find(query).sort("created_at", -1).limit(
+        bounded_candidate_limit(limit, maximum=100)
+    )
+    return [serialize_semantic_edge_candidate(row) for row in rows]
+
+
+def serialize_semantic_edge_candidate(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "candidate_id": str(row["_id"]) if row.get("_id") else None,
+        "status": row.get("status"),
+        "source_node_id": str(row["source_node_id"]) if row.get("source_node_id") else None,
+        "target_node_id": str(row["target_node_id"]) if row.get("target_node_id") else None,
+        "source_document_id": str(row["source_document_id"])
+        if row.get("source_document_id")
+        else None,
+        "target_document_id": str(row["target_document_id"])
+        if row.get("target_document_id")
+        else None,
+        "source_node_key": row.get("source_node_key"),
+        "target_node_key": row.get("target_node_key"),
+        "relation_type": row.get("relation_type"),
+        "shared_labels": row.get("shared_labels") or [],
+        "shared_label_count": row.get("shared_label_count") or 0,
+        "source_title": row.get("source_title"),
+        "target_title": row.get("target_title"),
+        "created_by": row.get("created_by"),
+        "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
+        "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+    }
+
+
+def bounded_candidate_limit(value: Any, maximum: int = 50) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = 10
+    return max(1, min(parsed, maximum))
+
+
 def parse_object_id(value: str) -> ObjectId | None:
     try:
         return ObjectId(str(value))

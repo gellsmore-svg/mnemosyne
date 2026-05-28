@@ -109,6 +109,11 @@ def ensure_indexes(db: Database) -> None:
         [("source_node_id", 1), ("target_node_id", 1), ("relation_type", 1)],
         unique=True,
     )
+    db.semantic_edge_candidates.create_index([("status", 1), ("created_at", -1)])
+    db.semantic_edge_candidates.create_index(
+        [("source_node_id", 1), ("target_node_id", 1), ("relation_type", 1)],
+        unique=True,
+    )
     db.queue.create_index([("status", 1), ("created_at", 1)])
     db.queue.create_index("checksum_sha256")
     db.queue.create_index("path")
