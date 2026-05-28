@@ -34,6 +34,7 @@ from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
 from mnemosyne.ingestion.files import move_request_file, sha256_file
 from mnemosyne.ingestion.worker import discover_sources, process_next
 from mnemosyne.retrieval.queries import list_documents, search_nodes
+from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
 from mnemosyne.sessions.exchanges import recent_exchanges
 from mnemosyne.sessions.interaction import answer_query
 from mnemosyne.sessions.active_documents import list_active_documents
@@ -165,6 +166,18 @@ def create_app() -> FastAPI:
     def governance_trust_weighting_profile(weighting_profile_id: str) -> dict[str, Any]:
         profile = get_trust_weighting_profile(db, weighting_profile_id)
         return {"ok": profile is not None, "profile": profile}
+
+    @app.get("/api/governance/trust-diagnostics/nodes/{node_id}")
+    def governance_trust_diagnostic(
+        node_id: str,
+        profile_id: str | None = None,
+    ) -> dict[str, Any]:
+        diagnostic = trust_temporal_diagnostic_for_node(
+            db,
+            node_id,
+            weighting_profile_id=profile_id,
+        )
+        return {"ok": diagnostic is not None, "result": diagnostic}
 
     @app.get("/api/governance/policies")
     def governance_policies(limit: int = 20) -> dict[str, Any]:

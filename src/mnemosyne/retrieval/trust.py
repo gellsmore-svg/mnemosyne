@@ -1,0 +1,159 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from math import pow
+from typing import Any
+
+from bson import ObjectId
+from bson.errors import InvalidId
+from pymongo.database import Database
+
+from mnemosyne.db.governance import get_trust_weighting_profile
+from mnemosyne.retrieval.queries import parsed_usage_score, serialize_node
+
+
+ENDORSEMENT_TRUST = {
+    "explicit_endorsed": 1.0,
+    "implicit_endorsed": 0.8,
+    "unreviewed": 0.55,
+    "rejected": 0.0,
+}
+
+
+def trust_temporal_diagnostic_for_node(
+    db: Database,
+    node_id: str,
+    *,
+    weighting_profile_id: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    try:
+        object_id = ObjectId(node_id)
+    except (InvalidId, TypeError):
+        return None
+    node = db.nodes.find_one({"_id": object_id})
+    if not node:
+        return None
+    profile_id = weighting_profile_id or node.get("temporal_profile_id")
+    profile = get_trust_weighting_profile(db, profile_id) if profile_id else None
+    diagnostic = trust_temporal_diagnostic(node, profile=profile, now=now)
+    return {
+        "node": serialize_node(node),
+        "weighting_profile": profile,
+        "diagnostic": diagnostic,
+    }
+
+
+def trust_temporal_diagnostic(
+    node: dict[str, Any],
+    *,
+    profile: dict[str, Any] | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    current_time = now or datetime.now(timezone.utc)
+    profile = profile or {}
+    trust_score = explicit_or_endorsement_trust(node)
+    recency_component = temporal_recency_component(
+        node.get("last_verified_at") or node.get("created_at"),
+        profile.get("default_decay_half_life_days"),
+        current_time,
+    )
+    stability = bounded_float(profile.get("stability_importance"), default=0.0)
+    temporal_component = bounded_float(stability + ((1.0 - stability) * recency_component))
+    frequency_component = min(parsed_usage_score(node.get("usage_score")) / 10.0, 1.0)
+    verification_component = verification_score(node)
+    weights = {
+        "trust": 1.0,
+        "temporal": bounded_float(profile.get("recency_importance"), default=0.0),
+        "frequency": bounded_float(profile.get("frequency_importance"), default=0.0),
+        "verification": bounded_float(profile.get("verification_importance"), default=0.0),
+    }
+    weighted_score = weighted_average(
+        {
+            "trust": trust_score,
+            "temporal": temporal_component,
+            "frequency": frequency_component,
+            "verification": verification_component,
+        },
+        weights,
+    )
+    return {
+        "score": round(weighted_score, 4),
+        "components": {
+            "trust": round(trust_score, 4),
+            "temporal": round(temporal_component, 4),
+            "recency": round(recency_component, 4),
+            "frequency": round(frequency_component, 4),
+            "verification": round(verification_component, 4),
+        },
+        "weights": weights,
+        "signals": {
+            "endorsement_label": node.get("endorsement_label"),
+            "explicit_trust_score": node.get("trust_score"),
+            "usage_score": parsed_usage_score(node.get("usage_score")),
+            "created_at": iso(node.get("created_at")),
+            "last_used_at": iso(node.get("last_used_at")),
+            "last_verified_at": iso(node.get("last_verified_at")),
+            "verification_required": bool(node.get("verification_required")),
+        },
+    }
+
+
+def explicit_or_endorsement_trust(node: dict[str, Any]) -> float:
+    if node.get("trust_score") is not None:
+        return bounded_float(node.get("trust_score"))
+    return ENDORSEMENT_TRUST.get(node.get("endorsement_label"), 0.5)
+
+
+def verification_score(node: dict[str, Any]) -> float:
+    if not node.get("verification_required"):
+        return 1.0
+    if node.get("last_verified_at"):
+        return 1.0
+    return 0.0
+
+
+def temporal_recency_component(
+    timestamp: Any,
+    half_life_days: Any,
+    now: datetime,
+) -> float:
+    half_life = positive_float_or_none(half_life_days)
+    if not timestamp or not half_life:
+        return 1.0
+    if not isinstance(timestamp, datetime):
+        return 1.0
+    age_seconds = max(0.0, (now - timestamp).total_seconds())
+    age_days = age_seconds / 86400.0
+    return bounded_float(pow(0.5, age_days / half_life))
+
+
+def weighted_average(values: dict[str, float], weights: dict[str, float]) -> float:
+    total_weight = sum(weights.values())
+    if total_weight <= 0:
+        return 0.0
+    return sum(values[key] * weights[key] for key in weights) / total_weight
+
+
+def bounded_float(value: Any, *, default: float = 0.5) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(0.0, min(parsed, 1.0))
+
+
+def positive_float_or_none(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def iso(value: Any) -> str | None:
+    if not value:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return None

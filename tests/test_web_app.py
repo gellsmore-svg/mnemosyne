@@ -170,6 +170,29 @@ def test_governance_trust_weighting_profile_endpoint_reports_missing(monkeypatch
     }
 
 
+def test_governance_trust_diagnostic_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.trust_temporal_diagnostic_for_node",
+        lambda _db, node_id, weighting_profile_id=None: {
+            "node_id": node_id,
+            "profile_id": weighting_profile_id,
+        },
+    )
+
+    response = client.get(
+        "/api/governance/trust-diagnostics/nodes/node1",
+        params={"profile_id": "default_balanced"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "result": {"node_id": "node1", "profile_id": "default_balanced"},
+    }
+
+
 def test_governance_policies_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 

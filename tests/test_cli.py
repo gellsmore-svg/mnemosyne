@@ -575,6 +575,35 @@ def test_cli_trust_weighting_profile_command_reports_missing(monkeypatch, capsys
     }
 
 
+def test_cli_trust_diagnostic_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "trust-diagnostic", "node1", "--profile-id", "default_balanced"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.trust_temporal_diagnostic_for_node",
+        lambda _db, node_id, weighting_profile_id=None: {
+            "node_id": node_id,
+            "profile_id": weighting_profile_id,
+        },
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "result": {"node_id": "node1", "profile_id": "default_balanced"},
+    }
+
+
 def test_cli_process_runs_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

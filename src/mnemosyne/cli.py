@@ -58,6 +58,7 @@ from mnemosyne.retrieval.queries import (
     search_nodes,
     semantic_candidate_nodes,
 )
+from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
 from mnemosyne.sessions.active_documents import list_active_documents
 from mnemosyne.sessions.exchanges import recent_exchanges
 from mnemosyne.sessions.endorsements import (
@@ -235,6 +236,9 @@ def main() -> None:
     trust_profiles.add_argument("--limit", type=int, default=20)
     trust_profile = subcommands.add_parser("trust-weighting-profile")
     trust_profile.add_argument("weighting_profile_id")
+    trust_diagnostic = subcommands.add_parser("trust-diagnostic")
+    trust_diagnostic.add_argument("node_id")
+    trust_diagnostic.add_argument("--profile-id", default=None)
 
     governance_policies = subcommands.add_parser("governance-policies")
     governance_policies.add_argument("--limit", type=int, default=20)
@@ -621,6 +625,16 @@ def main() -> None:
         ensure_indexes(db)
         profile = get_trust_weighting_profile(db, args.weighting_profile_id)
         print(json.dumps({"ok": profile is not None, "profile": profile}, indent=2))
+        return
+
+    if args.command == "trust-diagnostic":
+        ensure_indexes(db)
+        diagnostic = trust_temporal_diagnostic_for_node(
+            db,
+            args.node_id,
+            weighting_profile_id=args.profile_id,
+        )
+        print(json.dumps({"ok": diagnostic is not None, "result": diagnostic}, indent=2))
         return
 
     if args.command == "governance-policies":
