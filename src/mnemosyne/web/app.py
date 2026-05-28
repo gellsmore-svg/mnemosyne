@@ -221,7 +221,7 @@ def create_app() -> FastAPI:
     @app.post("/api/governance/process-runs")
     def governance_create_process_run(request: CreateProcessRunRequest) -> dict[str, Any]:
         if request.status not in PROCESS_RUN_STATUSES:
-            return {"ok": False, "error": "unsupported_process_run_status"}
+            return {"ok": False, "error": "unsupported_process_run_status", "run": None}
         return {
             "ok": True,
             "run": create_process_run(

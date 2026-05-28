@@ -324,6 +324,22 @@ def test_governance_create_process_run_endpoint(monkeypatch) -> None:
     assert response.json()["run"]["current_step_id"] == "inspect_state"
 
 
+def test_governance_create_process_run_endpoint_reports_invalid_status() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/governance/process-runs",
+        json={"process_id": "restart_continuity", "status": "invalid"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": False,
+        "error": "unsupported_process_run_status",
+        "run": None,
+    }
+
+
 def test_governance_update_process_run_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 

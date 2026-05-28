@@ -1356,8 +1356,8 @@ def test_execute_search_nodes_tool_passes_active_identity(monkeypatch) -> None:
         if identity:
             return [{"node_id": "node1", "title": "Allowed"}]
         return [
-            {"node_id": "node1", "title": "Allowed"},
-            {"node_id": "node2", "title": "Restricted"},
+            {"node_id": "node1", "title": "Allowed", "labels": ["public"]},
+            {"node_id": "node2", "title": "Restricted", "labels": ["restricted"]},
         ]
 
     monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
@@ -1375,6 +1375,7 @@ def test_execute_search_nodes_tool_passes_active_identity(monkeypatch) -> None:
     assert identities[1]["identity_id"] == "restricted_agent"
     assert details["active_identity_id"] == "restricted_agent"
     assert details["identity_excluded_count"] == 1
+    assert details["identity_exclusion_sample_size"] == 2
 
 
 def test_execute_search_nodes_tool_adds_trust_diagnostics(monkeypatch) -> None:

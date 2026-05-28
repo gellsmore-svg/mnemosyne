@@ -25,6 +25,7 @@ from mnemosyne.retrieval.queries import (
     get_document,
     graph_edges_for_node,
     list_documents,
+    node_visible_to_identity,
     node_context,
     render_context_document,
     render_record,
@@ -1416,25 +1417,36 @@ def execute_search_nodes_tool(
     ranking_query = combined_query_text(cleaned_query, original_query)
     query_assembly = build_query_assembly(cleaned_query, original_query)
     identity = first_active_agent_identity(db) if session_id else None
-    unrestricted_matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
-    matches = (
-        search_nodes_with_optional_identity(
+    identity_excluded_count = 0
+    identity_exclusion_sample_size = 0
+    if identity:
+        unrestricted_sample = search_nodes(
+            db,
+            query=cleaned_query,
+            label=label,
+            limit=max(limit * 10, 50),
+        )
+        identity_exclusion_sample_size = len(unrestricted_sample)
+        identity_excluded_count = sum(
+            1 for row in unrestricted_sample if not node_visible_to_identity(row, identity)
+        )
+        matches = search_nodes_with_optional_identity(
             db,
             query=cleaned_query,
             label=label,
             limit=limit,
             identity=identity,
         )
-        if identity
-        else unrestricted_matches
-    )
+    else:
+        matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
     details: dict[str, Any] = {
         "normalized_query": cleaned_query,
         "ranking_query": ranking_query,
         "query_assembly": query_assembly,
         "fallback_queries": [],
         "active_identity_id": identity.get("identity_id") if identity else None,
-        "identity_excluded_count": max(0, len(unrestricted_matches) - len(matches)),
+        "identity_excluded_count": identity_excluded_count,
+        "identity_exclusion_sample_size": identity_exclusion_sample_size,
     }
     if not matches and ranking_query:
         query_assembly = build_query_assembly(
@@ -1519,11 +1531,14 @@ def compact_trust_diagnostic_for_node(
 ) -> dict[str, Any] | None:
     if not node_id:
         return None
-    result = trust_temporal_diagnostic_for_node(
-        db,
-        str(node_id),
-        weighting_profile_id=weighting_profile_id,
-    )
+    try:
+        result = trust_temporal_diagnostic_for_node(
+            db,
+            str(node_id),
+            weighting_profile_id=weighting_profile_id,
+        )
+    except Exception:
+        return None
     if not result:
         return None
     diagnostic = result.get("diagnostic") or {}

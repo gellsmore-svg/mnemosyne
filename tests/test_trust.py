@@ -95,6 +95,12 @@ def test_temporal_recency_component_defaults_to_fresh_without_half_life() -> Non
     assert temporal_recency_component(datetime(2026, 1, 1, tzinfo=timezone.utc), None, now) == 1.0
 
 
+def test_temporal_recency_component_handles_naive_mongo_datetimes() -> None:
+    now = datetime(2026, 1, 11, tzinfo=timezone.utc)
+
+    assert temporal_recency_component(datetime(2026, 1, 1), 10, now) == 0.5
+
+
 class FakeCursor(list):
     def sort(self, *_args):
         return self

@@ -123,7 +123,7 @@ def temporal_recency_component(
         return 1.0
     if not isinstance(timestamp, datetime):
         return 1.0
-    age_seconds = max(0.0, (now - timestamp).total_seconds())
+    age_seconds = max(0.0, (aware_utc(now) - aware_utc(timestamp)).total_seconds())
     age_days = age_seconds / 86400.0
     return bounded_float(pow(0.5, age_days / half_life))
 
@@ -149,6 +149,12 @@ def positive_float_or_none(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def iso(value: Any) -> str | None:
