@@ -542,7 +542,9 @@ def prepare_direct_answer_prompt(
             prompt["context_metadata"]["retrieval_status"] = retrieval_status
     else:
         prompt = None
-        if is_active_document_reference:
+        if not active_documents:
+            active_documents = list_active_documents(db, session_id=session_id, limit=5)
+        if active_documents:
             prompt = build_active_document_source_fallback_envelope(
                 active_documents=active_documents,
                 query=query,

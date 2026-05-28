@@ -134,7 +134,7 @@ Current early read surface:
 - saved exchanges increment `usage_score` and `last_used_at` on the used non-rejected nodes, giving retrieval feedback a first persisted signal.
 - direct retrieval applies a capped usage-score boost and last-used tie-breaker, while keeping rejection/provenance penalties dominant; serialized nodes expose raw `usage_score` plus capped `usage_score_bonus`.
 - direct retrieval uses active document scoping for reference-shaped session prompts such as "this document" or "previous source", checking all active documents for topical matches before falling back to the first active document root/default node.
-- direct retrieval can read a bounded excerpt from an active document's local archive/source path as a source fallback when reference-shaped prompts cannot produce a Mongo focus node.
+- direct retrieval can read a bounded excerpt from an active document's local archive/source path as a source fallback when no Mongo focus node is available, including but no longer limited to reference-shaped prompts.
 - saved answer text is queued as pending LLM-output ingestion work, linked back to the originating exchange and session.
 - pending LLM-output ingestion jobs can be processed into unreviewed graph documents with generated-output labels and exchange/session provenance.
 - generated-output nodes can be explicitly reviewed through CLI/API and marked `unreviewed`, `implicit_endorsed`, `explicit_endorsed`, or `rejected`, updating node provenance and review history.
@@ -162,7 +162,7 @@ Known gaps after reconciliation:
 - destructive rebuild commands are maintenance-only and require `--force-replace`; versioned replacement remains unimplemented;
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
 - the compiled context corpus has only a first structured scaffold and does not yet match the full technical design schema;
-- active document registry is only a first skeleton populated from used nodes, visible to the memory-agent, and used for narrow direct reference resolution/source fallback; it does not yet drive broad retrieval, endorsement, or restart state.
+- active document registry is only a first skeleton populated from used nodes, visible to the memory-agent, and used for direct source fallback after no-focus retrieval misses; it does not yet drive broad retrieval, endorsement, or restart state.
 - output ingestion is implemented only as conservative graph insertion plus explicit review labels; natural-language endorsement detection, relation extraction, restart state node, full traversal path scoring, unused-path decay, and REM consolidation are not started.
 - identity, governance policy, process-object, process-run, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; first read-only CLI/API listing and exact lookup commands, default seed records, memory-agent identity prompt summaries, agentic search identity exclusions, answer-process run persistence, and trust/temporal diagnostics in retrieval traces exist, but trust/temporal ranking effects and automatic process enforcement are not implemented yet.
 

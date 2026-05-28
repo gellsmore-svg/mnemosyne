@@ -120,7 +120,7 @@ The current implementation has added several scaffold features and operational d
 - Active document API/CLI serialization returns stable sorted labels and node IDs.
 - Agentic retrieval exposes active documents to the memory-agent through prompt context and a read-only `list_active_documents` tool.
 - Direct retrieval scopes reference-shaped session prompts such as "this document" or "previous source" to the session's active documents before falling back to broad corpus retrieval, checks all active documents for topical matches, and can use the first active document root/default node when no active document has a topical match.
-- Direct retrieval can use a bounded local source-document fallback for reference-shaped active-document prompts when no Mongo focus node is available. The fallback reads the active document's archived/source file path, injects a capped excerpt into the final-answer prompt, records `source_fallback` metadata, and keeps `included`/`used_node_ids` empty so node usage scoring is not distorted.
+- Direct retrieval can use a bounded local source-document fallback for active-document sessions when no Mongo focus node is available, including but no longer limited to reference-shaped prompts. The fallback reads the active document's archived/source file path, injects a capped excerpt into the final-answer prompt, records `source_fallback` metadata, and keeps `included`/`used_node_ids` empty so node usage scoring is not distorted.
 - Saved answer text is captured in `output_ingestion_queue` as pending `llm_answer` work with exchange/session provenance, used node IDs, active document IDs, adapter/model metadata, and a content hash.
 - Pending output-ingestion jobs can be processed into unreviewed graph documents, trees, and nodes labelled `generated_output` and `llm_answer`.
 - Generated-output nodes can be explicitly reviewed through CLI/API, updating `endorsement_label`, `provenance.endorsement_label`, and node review metadata/history.
@@ -332,7 +332,7 @@ As of 2026-05-22:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `283 passed`.
+- Current automated suite at last full run: `284 passed`.
 - Forward-looking governed cognitive architecture requirements are captured in `docs/mnemosyne-cognitive-architecture-draft.md`; current docs use `Mnemosyne`, with a future product rename likely because of a GitHub name collision.
 - Candidate identity, governance policy, process-object, process-run, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; first read-only CLI/API listing and exact lookup commands, default seed records, memory-agent identity prompt summaries, agentic search exclusion filtering for labels/documents/trees with sampled exclusion diagnostics, answer-process run persistence with blocked-state cleanup for retrieval/planning/adapter/save failures and soft continuation on process-run persistence failures, and read-only trust/temporal diagnostics in retrieval traces with batched search-result annotation exist, but trust/temporal ranking effects and automatic process enforcement are not implemented yet.
 
@@ -349,7 +349,7 @@ Next implementation candidates:
 
 1. Add a confidence threshold for deciding when weak partial matches should still trigger near-match fallback.
 2. Broaden near-match vocabulary carefully, next with active documents.
-3. Broaden source-document fallback beyond active-document reference prompts.
+3. Broaden source-document fallback beyond active-document reference prompts. Implemented for active-document source fallback after no-focus direct retrieval misses.
 4. Add active document registry skeleton.
 5. Add embedding interface and a brute-force baseline evaluation harness.
 6. Evaluate when trust/temporal diagnostics should influence ranking, with a feature flag and before/after tests.

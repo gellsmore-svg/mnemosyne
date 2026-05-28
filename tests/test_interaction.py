@@ -602,6 +602,56 @@ def test_answer_query_uses_active_document_source_fallback(monkeypatch, tmp_path
     )
 
 
+def test_answer_query_uses_active_document_source_fallback_after_no_focus_match(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    source_path = tmp_path / "active-source.md"
+    source_path.write_text(
+        "# Active Source\n\nA local source fallback can answer broader follow-up questions.",
+        encoding="utf-8",
+    )
+    captured = {}
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            captured["prompt"] = prompt
+            return {
+                "adapter": "fake",
+                "answer": "source fallback answer",
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        interaction,
+        "list_active_documents",
+        lambda _db, session_id, limit=5: [
+            {
+                "document_id": "doc1",
+                "title": "Active Source",
+                "source": {"path": str(source_path)},
+            }
+        ],
+    )
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+
+    result = answer_query(
+        FakeDb(),
+        AppConfig(runtime=RuntimeConfig(answer_adapter="fake")),
+        "What source evidence is available?",
+        session_id="s1",
+    )
+
+    assert result["ok"] is True
+    assert result["retrieval_status"] == "active_document_source_fallback"
+    assert "local source fallback" in captured["prompt"]["context_text"]
+    assert captured["prompt"]["context_metadata"]["source_fallback"]["document_id"] == "doc1"
+
+
 def test_active_document_source_fallback_skips_unreadable_first_document(tmp_path) -> None:
     second_source = tmp_path / "second.md"
     second_source.write_text("Second source evidence survives fallback.", encoding="utf-8")
