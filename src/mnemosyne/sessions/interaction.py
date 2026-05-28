@@ -154,11 +154,11 @@ def answer_query(
             process_run_id,
             status="blocked",
             current_step_id="retrieval_failed",
-            exception={
-                "reason": "retrieval_failed",
-                "proposal": "Inspect retrieval preparation and retry.",
-                "note": str(error),
-            },
+            exception=answer_exception_payload(
+                "retrieval_failed",
+                "Inspect retrieval preparation and retry.",
+                error,
+            ),
         )
         process_trace.append(
             {
@@ -220,11 +220,11 @@ def answer_query(
             process_run_id,
             status="blocked",
             current_step_id="answer_adapter_failed",
-            exception={
-                "reason": "answer_adapter_failed",
-                "proposal": "Inspect adapter/model configuration and retry.",
-                "note": str(error),
-            },
+            exception=answer_exception_payload(
+                "answer_adapter_failed",
+                "Inspect adapter/model configuration and retry.",
+                error,
+            ),
         )
         adapter_step["output"] = {
             "ok": False,
@@ -247,15 +247,45 @@ def answer_query(
         "adapter": answer["adapter"],
         "model": answer.get("model"),
     }
-    exchange_id = save_exchange(
-        db,
-        query=query,
-        answer=answer,
-        prompt=prompt,
-        focus_node_id=selected_node_id,
-        session_id=session_id,
-        process_trace=process_trace,
-    )
+    try:
+        exchange_id = save_exchange(
+            db,
+            query=query,
+            answer=answer,
+            prompt=prompt,
+            focus_node_id=selected_node_id,
+            session_id=session_id,
+            process_trace=process_trace,
+        )
+    except Exception as error:
+        finish_answer_process_run(
+            db,
+            process_run_id,
+            status="blocked",
+            current_step_id="answer_save_failed",
+            exception=answer_exception_payload(
+                "answer_save_failed",
+                "Inspect exchange persistence and retry.",
+                error,
+            ),
+        )
+        process_trace.append(
+            {
+                "step": "save_exchange",
+                "input": {"session_id": session_id, "focus_node_id": selected_node_id},
+                "output": {"ok": False, "error": str(error), "type": type(error).__name__},
+            }
+        )
+        return {
+            "ok": False,
+            "reason": "answer_save_failed",
+            "message": str(error),
+            "adapter": runtime_config.answer_adapter,
+            "model": runtime_config.ollama_model,
+            "focus_node_id": selected_node_id,
+            "process_run_id": process_run_id,
+            "process_trace": process_trace,
+        }
     finish_answer_process_run(
         db,
         process_run_id,
@@ -314,11 +344,11 @@ def answer_query_agentic(
             process_run_id,
             status="blocked",
             current_step_id="agentic_retrieval_failed",
-            exception={
-                "reason": "agentic_retrieval_failed",
-                "proposal": "Inspect memory-agent planning/tool execution and retry.",
-                "note": str(error),
-            },
+            exception=answer_exception_payload(
+                "agentic_retrieval_failed",
+                "Inspect memory-agent planning/tool execution and retry.",
+                error,
+            ),
         )
         process_trace.append(
             {
@@ -363,11 +393,11 @@ def answer_query_agentic(
             process_run_id,
             status="blocked",
             current_step_id="answer_adapter_failed",
-            exception={
-                "reason": "answer_adapter_failed",
-                "proposal": "Inspect adapter/model configuration and retry.",
-                "note": str(error),
-            },
+            exception=answer_exception_payload(
+                "answer_adapter_failed",
+                "Inspect adapter/model configuration and retry.",
+                error,
+            ),
         )
         adapter_step["output"] = {
             "ok": False,
@@ -390,15 +420,45 @@ def answer_query_agentic(
         "adapter": answer["adapter"],
         "model": answer.get("model"),
     }
-    exchange_id = save_exchange(
-        db,
-        query=query,
-        answer=answer,
-        prompt=prompt,
-        focus_node_id=selected_node_id,
-        session_id=session_id,
-        process_trace=process_trace,
-    )
+    try:
+        exchange_id = save_exchange(
+            db,
+            query=query,
+            answer=answer,
+            prompt=prompt,
+            focus_node_id=selected_node_id,
+            session_id=session_id,
+            process_trace=process_trace,
+        )
+    except Exception as error:
+        finish_answer_process_run(
+            db,
+            process_run_id,
+            status="blocked",
+            current_step_id="answer_save_failed",
+            exception=answer_exception_payload(
+                "answer_save_failed",
+                "Inspect exchange persistence and retry.",
+                error,
+            ),
+        )
+        process_trace.append(
+            {
+                "step": "save_exchange",
+                "input": {"session_id": session_id, "focus_node_id": selected_node_id},
+                "output": {"ok": False, "error": str(error), "type": type(error).__name__},
+            }
+        )
+        return {
+            "ok": False,
+            "reason": "answer_save_failed",
+            "message": str(error),
+            "adapter": runtime_config.answer_adapter,
+            "model": runtime_config.ollama_model,
+            "focus_node_id": selected_node_id,
+            "process_run_id": process_run_id,
+            "process_trace": process_trace,
+        }
     finish_answer_process_run(
         db,
         process_run_id,
@@ -421,6 +481,15 @@ def answer_query_agentic(
         "retrieval_status": retrieval_status,
         "process_run_id": process_run_id,
         "process_trace": process_trace,
+    }
+
+
+def answer_exception_payload(reason: str, proposal: str, error: Exception) -> dict[str, str]:
+    return {
+        "reason": reason,
+        "proposal": proposal,
+        "note": str(error),
+        "type": type(error).__name__,
     }
 
 

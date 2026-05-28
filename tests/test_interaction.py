@@ -406,7 +406,53 @@ def test_answer_query_marks_process_run_blocked_when_adapter_fails(monkeypatch) 
     assert updates[0]["status"] == "blocked"
     assert updates[0]["current_step_id"] == "answer_adapter_failed"
     assert updates[0]["exception"]["reason"] == "answer_adapter_failed"
+    assert updates[0]["exception"]["type"] == "RuntimeError"
     assert "adapter offline" in updates[0]["exception"]["note"]
+
+
+def test_answer_query_marks_process_run_blocked_when_exchange_save_fails(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    updates = []
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            return {
+                "adapter": "fake",
+                "answer": "answer text",
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *args, **kwargs: None)
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(
+        interaction,
+        "save_exchange",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("write failed")),
+    )
+    monkeypatch.setattr(
+        interaction,
+        "create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1"},
+    )
+    monkeypatch.setattr(
+        interaction,
+        "update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+
+    result = answer_query(FakeDb(), AppConfig(), "plain prompt", session_id="s1")
+
+    assert result["ok"] is False
+    assert result["reason"] == "answer_save_failed"
+    assert result["process_run_id"] == "run1"
+    assert result["process_trace"][-1]["step"] == "save_exchange"
+    assert result["process_trace"][-1]["output"]["ok"] is False
+    assert updates[0]["status"] == "blocked"
+    assert updates[0]["current_step_id"] == "answer_save_failed"
+    assert updates[0]["exception"]["reason"] == "answer_save_failed"
+    assert updates[0]["exception"]["type"] == "RuntimeError"
+    assert "write failed" in updates[0]["exception"]["note"]
 
 
 def test_answer_query_marks_process_run_blocked_when_retrieval_fails(monkeypatch) -> None:
@@ -438,6 +484,7 @@ def test_answer_query_marks_process_run_blocked_when_retrieval_fails(monkeypatch
     assert updates[0]["status"] == "blocked"
     assert updates[0]["current_step_id"] == "retrieval_failed"
     assert updates[0]["exception"]["reason"] == "retrieval_failed"
+    assert updates[0]["exception"]["type"] == "RuntimeError"
     assert "retrieval broke" in updates[0]["exception"]["note"]
 
 
@@ -743,7 +790,98 @@ def test_agentic_answer_query_marks_process_run_blocked_when_planning_fails(monk
     assert updates[0]["status"] == "blocked"
     assert updates[0]["current_step_id"] == "agentic_retrieval_failed"
     assert updates[0]["exception"]["reason"] == "agentic_retrieval_failed"
+    assert updates[0]["exception"]["type"] == "RuntimeError"
     assert "planner broke" in updates[0]["exception"]["note"]
+
+
+def test_agentic_answer_query_marks_process_run_blocked_when_adapter_fails(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    updates = []
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+                return {
+                    "adapter": "fake",
+                    "answer": '{"status":"done","tool_calls":[]}',
+                    "used_node_ids": [],
+                }
+            raise RuntimeError("agentic adapter offline")
+
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(
+        interaction,
+        "create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1"},
+    )
+    monkeypatch.setattr(
+        interaction,
+        "update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+    config = AppConfig(runtime=RuntimeConfig(retrieval_mode="agentic", answer_adapter="fake"))
+
+    result = answer_query(FakeDb(), config, "find memory", session_id="s1")
+
+    assert result["ok"] is False
+    assert result["reason"] == "answer_adapter_failed"
+    assert result["process_run_id"] == "run1"
+    assert updates[0]["status"] == "blocked"
+    assert updates[0]["current_step_id"] == "answer_adapter_failed"
+    assert updates[0]["exception"]["reason"] == "answer_adapter_failed"
+    assert updates[0]["exception"]["type"] == "RuntimeError"
+    assert "agentic adapter offline" in updates[0]["exception"]["note"]
+
+
+def test_agentic_answer_query_marks_process_run_blocked_when_exchange_save_fails(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    updates = []
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+                return {
+                    "adapter": "fake",
+                    "answer": '{"status":"done","tool_calls":[]}',
+                    "used_node_ids": [],
+                }
+            return {
+                "adapter": "fake",
+                "answer": "final answer",
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(
+        interaction,
+        "save_exchange",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("agentic write failed")),
+    )
+    monkeypatch.setattr(
+        interaction,
+        "create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1"},
+    )
+    monkeypatch.setattr(
+        interaction,
+        "update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+    config = AppConfig(runtime=RuntimeConfig(retrieval_mode="agentic", answer_adapter="fake"))
+
+    result = answer_query(FakeDb(), config, "find memory", session_id="s1")
+
+    assert result["ok"] is False
+    assert result["reason"] == "answer_save_failed"
+    assert result["process_run_id"] == "run1"
+    assert result["process_trace"][-1]["step"] == "save_exchange"
+    assert updates[0]["status"] == "blocked"
+    assert updates[0]["current_step_id"] == "answer_save_failed"
+    assert updates[0]["exception"]["reason"] == "answer_save_failed"
+    assert updates[0]["exception"]["type"] == "RuntimeError"
+    assert "agentic write failed" in updates[0]["exception"]["note"]
 
 
 def test_agentic_answer_query_falls_back_when_planner_stops_without_tools(monkeypatch) -> None:
