@@ -334,9 +334,9 @@ As of 2026-05-22:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `289 passed`.
+- Current automated suite at last full run: `291 passed`.
 - Forward-looking governed cognitive architecture requirements are captured in `docs/mnemosyne-cognitive-architecture-draft.md`; current docs use `Mnemosyne`, with a future product rename likely because of a GitHub name collision.
-- Candidate identity, governance policy, process-object, process-run, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; first read-only CLI/API listing and exact lookup commands, default seed records, memory-agent identity prompt summaries, agentic search exclusion filtering for labels/documents/trees with sampled exclusion diagnostics, answer-process run persistence with blocked-state cleanup for retrieval/planning/adapter/save failures and soft continuation on process-run persistence failures, and read-only trust/temporal diagnostics in retrieval traces with batched search-result annotation exist, but trust/temporal ranking effects and automatic process enforcement are not implemented yet.
+- Candidate identity, governance policy, process-object, process-run, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; first read-only CLI/API listing and exact lookup commands, default seed records, memory-agent identity prompt summaries, agentic search exclusion filtering for labels/documents/trees with sampled exclusion diagnostics, answer-process and ingest-source run persistence with blocked-state cleanup and soft continuation on process-run persistence failures, and read-only trust/temporal diagnostics in retrieval traces with batched search-result annotation exist, but trust/temporal ranking effects and automatic process enforcement are not implemented yet.
 
 ## Recommended Next Work
 
@@ -355,4 +355,4 @@ Next implementation candidates:
 4. Add active document registry skeleton.
 5. Add embedding interface and a brute-force baseline evaluation harness.
 6. Evaluate when trust/temporal diagnostics should influence ranking, with a feature flag and before/after tests.
-7. Expand process-run integration beyond answer requests into ingestion and semantic-edge review workflows.
+7. Expand process-run integration beyond answer requests into ingestion and semantic-edge review workflows. Implemented for ingestion queue source jobs; semantic-edge review remains open.

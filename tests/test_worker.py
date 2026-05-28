@@ -1,6 +1,9 @@
 from pathlib import Path
 
-from mnemosyne.ingestion.worker import discover_sources
+from bson import ObjectId
+
+from mnemosyne.config import AppConfig
+from mnemosyne.ingestion.worker import discover_sources, process_next
 
 
 def test_discover_sources_only_returns_supported_files(tmp_path: Path) -> None:
@@ -16,3 +19,96 @@ def test_discover_sources_only_returns_supported_files(tmp_path: Path) -> None:
 
 def test_discover_sources_handles_missing_folder(tmp_path: Path) -> None:
     assert discover_sources(tmp_path / "missing") == []
+
+
+def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path) -> None:
+    import mnemosyne.ingestion.worker as worker
+
+    updates = []
+    source = tmp_path / "source.md"
+    source.write_text("# Source\n\nText.", encoding="utf-8")
+
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending",
+        lambda _db: {
+            "_id": ObjectId(),
+            "path": str(source),
+            "checksum_sha256": "abc123",
+            "attempts": 0,
+        },
+    )
+    monkeypatch.setattr(worker, "archive_source", lambda path, archive_dir, checksum: tmp_path / "archive.md")
+    monkeypatch.setattr(worker, "move_request_file", lambda path, destination, checksum: tmp_path / "processed.md")
+    monkeypatch.setattr(
+        worker,
+        "commit_ingestion",
+        lambda _db, result: {"document_id": "doc1", "tree_id": "tree1", "node_ids": ["node1"]},
+    )
+    monkeypatch.setattr(worker, "complete_job", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        worker,
+        "create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1", **kwargs},
+    )
+    monkeypatch.setattr(
+        worker,
+        "update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+
+    result = process_next(FakeDb(), AppConfig())
+
+    assert result["ok"] is True
+    assert result["process_run_id"] == "run1"
+    assert updates == [
+        {
+            "run_id": "run1",
+            "status": "completed",
+            "current_step_id": "ingestion_committed",
+            "completed_step_id": "commit_ingestion",
+            "exception": None,
+        }
+    ]
+
+
+def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch, tmp_path: Path) -> None:
+    import mnemosyne.ingestion.worker as worker
+
+    updates = []
+    missing = tmp_path / "missing.md"
+
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending",
+        lambda _db: {
+            "_id": ObjectId(),
+            "path": str(missing),
+            "checksum_sha256": "abc123",
+            "attempts": 0,
+        },
+    )
+    monkeypatch.setattr(worker, "fail_job", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        worker,
+        "create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1", **kwargs},
+    )
+    monkeypatch.setattr(
+        worker,
+        "update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+
+    result = process_next(FakeDb(), AppConfig())
+
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    assert result["process_run_id"] == "run1"
+    assert updates[0]["status"] == "blocked"
+    assert updates[0]["current_step_id"] == "source_missing"
+    assert updates[0]["exception"]["reason"] == "source_missing"
+
+
+class FakeDb:
+    pass
