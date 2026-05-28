@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from mnemosyne.db.governance import (
     bounded_governance_limit,
+    get_agent_identity,
     list_agent_identities,
     list_trust_weighting_profiles,
 )
@@ -32,6 +33,21 @@ def test_list_governance_rows_sorts_limits_and_serializes_dates() -> None:
     rows = list_agent_identities(db, limit=1)
 
     assert rows == [{"identity_id": "alpha", "updated_at": "2026-05-28T00:00:00+00:00"}]
+
+
+def test_get_governance_row_returns_serialized_match_or_none() -> None:
+    db = FakeDb()
+    timestamp = datetime(2026, 5, 28, tzinfo=timezone.utc)
+    db.agent_identities.rows.append(
+        {"_id": "internal", "identity_id": "mnemosyne_shared", "updated_at": timestamp}
+    )
+
+    assert get_agent_identity(db, "mnemosyne_shared") == {
+        "identity_id": "mnemosyne_shared",
+        "updated_at": "2026-05-28T00:00:00+00:00",
+    }
+    assert get_agent_identity(db, "missing") is None
+    assert get_agent_identity(db, "") is None
 
 
 def test_list_trust_weighting_profiles_uses_profile_sort_key() -> None:
@@ -75,6 +91,14 @@ class FakeCollection:
             else:
                 rows.append(dict(row))
         return FakeCursor(rows)
+
+    def find_one(self, query, projection=None):
+        row = next((item for item in self.rows if matches(item, query)), None)
+        if row is None:
+            return None
+        if projection and projection.get("_id") == 0:
+            return {key: value for key, value in row.items() if key != "_id"}
+        return dict(row)
 
     def update_one(self, query, update, upsert=False):
         row = next((item for item in self.rows if matches(item, query)), None)

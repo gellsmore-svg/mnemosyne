@@ -501,6 +501,28 @@ def test_cli_agent_identities_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_agent_identity_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["mnemosyne", "agent-identity", "mnemosyne_shared"])
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.get_agent_identity",
+        lambda _db, identity_id: {"identity_id": identity_id},
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "identity": {"identity_id": "mnemosyne_shared"},
+    }
+
+
 def test_cli_trust_weighting_profiles_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
@@ -524,6 +546,32 @@ def test_cli_trust_weighting_profiles_command(monkeypatch, capsys) -> None:
     assert output == {
         "ok": True,
         "profiles": [{"weighting_profile_id": "default_balanced", "limit": 2}],
+    }
+
+
+def test_cli_trust_weighting_profile_command_reports_missing(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "trust-weighting-profile", "missing"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.get_trust_weighting_profile",
+        lambda _db, weighting_profile_id: None,
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": False,
+        "profile": None,
     }
 
 

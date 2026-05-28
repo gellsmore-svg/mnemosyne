@@ -11,6 +11,10 @@ from pydantic import BaseModel
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.db.governance import (
+    get_agent_identity,
+    get_governance_policy,
+    get_process_object,
+    get_trust_weighting_profile,
     list_agent_identities,
     list_governance_policies,
     list_process_objects,
@@ -127,17 +131,37 @@ def create_app() -> FastAPI:
     def governance_agent_identities(limit: int = 20) -> dict[str, Any]:
         return {"ok": True, "identities": list_agent_identities(db, limit=limit)}
 
+    @app.get("/api/governance/agent-identities/{identity_id}")
+    def governance_agent_identity(identity_id: str) -> dict[str, Any]:
+        identity = get_agent_identity(db, identity_id)
+        return {"ok": identity is not None, "identity": identity}
+
     @app.get("/api/governance/trust-weighting-profiles")
     def governance_trust_weighting_profiles(limit: int = 20) -> dict[str, Any]:
         return {"ok": True, "profiles": list_trust_weighting_profiles(db, limit=limit)}
+
+    @app.get("/api/governance/trust-weighting-profiles/{weighting_profile_id}")
+    def governance_trust_weighting_profile(weighting_profile_id: str) -> dict[str, Any]:
+        profile = get_trust_weighting_profile(db, weighting_profile_id)
+        return {"ok": profile is not None, "profile": profile}
 
     @app.get("/api/governance/policies")
     def governance_policies(limit: int = 20) -> dict[str, Any]:
         return {"ok": True, "policies": list_governance_policies(db, limit=limit)}
 
+    @app.get("/api/governance/policies/{policy_id}")
+    def governance_policy(policy_id: str) -> dict[str, Any]:
+        policy = get_governance_policy(db, policy_id)
+        return {"ok": policy is not None, "policy": policy}
+
     @app.get("/api/governance/process-objects")
     def governance_process_objects(limit: int = 20) -> dict[str, Any]:
         return {"ok": True, "processes": list_process_objects(db, limit=limit)}
+
+    @app.get("/api/governance/process-objects/{process_id}")
+    def governance_process_object(process_id: str) -> dict[str, Any]:
+        process = get_process_object(db, process_id)
+        return {"ok": process is not None, "process": process}
 
     @app.get("/api/output-ingestion")
     def output_ingestion(

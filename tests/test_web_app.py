@@ -119,6 +119,23 @@ def test_governance_agent_identities_endpoint(monkeypatch) -> None:
     }
 
 
+def test_governance_agent_identity_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.get_agent_identity",
+        lambda _db, identity_id: {"identity_id": identity_id},
+    )
+
+    response = client.get("/api/governance/agent-identities/mnemosyne_shared")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "identity": {"identity_id": "mnemosyne_shared"},
+    }
+
+
 def test_governance_trust_weighting_profiles_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
@@ -133,6 +150,23 @@ def test_governance_trust_weighting_profiles_endpoint(monkeypatch) -> None:
     assert response.json() == {
         "ok": True,
         "profiles": [{"weighting_profile_id": "default_balanced", "limit": 3}],
+    }
+
+
+def test_governance_trust_weighting_profile_endpoint_reports_missing(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.get_trust_weighting_profile",
+        lambda _db, weighting_profile_id: None,
+    )
+
+    response = client.get("/api/governance/trust-weighting-profiles/missing")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": False,
+        "profile": None,
     }
 
 
@@ -153,6 +187,23 @@ def test_governance_policies_endpoint(monkeypatch) -> None:
     }
 
 
+def test_governance_policy_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.get_governance_policy",
+        lambda _db, policy_id: {"policy_id": policy_id},
+    )
+
+    response = client.get("/api/governance/policies/read_only")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "policy": {"policy_id": "read_only"},
+    }
+
+
 def test_governance_process_objects_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
@@ -167,6 +218,23 @@ def test_governance_process_objects_endpoint(monkeypatch) -> None:
     assert response.json() == {
         "ok": True,
         "processes": [{"process_id": "review_before_write", "limit": 5}],
+    }
+
+
+def test_governance_process_object_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.get_process_object",
+        lambda _db, process_id: {"process_id": process_id},
+    )
+
+    response = client.get("/api/governance/process-objects/review_before_write")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "process": {"process_id": "review_before_write"},
     }
 
 

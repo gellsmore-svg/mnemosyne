@@ -10,6 +10,10 @@ from mnemosyne.adapters.mock import MockIngestionAdapter
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.db.governance import (
+    get_agent_identity,
+    get_governance_policy,
+    get_process_object,
+    get_trust_weighting_profile,
     list_agent_identities,
     list_governance_policies,
     list_process_objects,
@@ -219,15 +223,23 @@ def main() -> None:
 
     agent_identities = subcommands.add_parser("agent-identities")
     agent_identities.add_argument("--limit", type=int, default=20)
+    agent_identity = subcommands.add_parser("agent-identity")
+    agent_identity.add_argument("identity_id")
 
     trust_profiles = subcommands.add_parser("trust-weighting-profiles")
     trust_profiles.add_argument("--limit", type=int, default=20)
+    trust_profile = subcommands.add_parser("trust-weighting-profile")
+    trust_profile.add_argument("weighting_profile_id")
 
     governance_policies = subcommands.add_parser("governance-policies")
     governance_policies.add_argument("--limit", type=int, default=20)
+    governance_policy = subcommands.add_parser("governance-policy")
+    governance_policy.add_argument("policy_id")
 
     process_objects = subcommands.add_parser("process-objects")
     process_objects.add_argument("--limit", type=int, default=20)
+    process_object = subcommands.add_parser("process-object")
+    process_object.add_argument("process_id")
 
     active_documents = subcommands.add_parser("active-documents")
     active_documents.add_argument("--session-id", default="default")
@@ -561,6 +573,12 @@ def main() -> None:
         )
         return
 
+    if args.command == "agent-identity":
+        ensure_indexes(db)
+        identity = get_agent_identity(db, args.identity_id)
+        print(json.dumps({"ok": identity is not None, "identity": identity}, indent=2))
+        return
+
     if args.command == "trust-weighting-profiles":
         ensure_indexes(db)
         print(
@@ -569,6 +587,12 @@ def main() -> None:
                 indent=2,
             )
         )
+        return
+
+    if args.command == "trust-weighting-profile":
+        ensure_indexes(db)
+        profile = get_trust_weighting_profile(db, args.weighting_profile_id)
+        print(json.dumps({"ok": profile is not None, "profile": profile}, indent=2))
         return
 
     if args.command == "governance-policies":
@@ -581,6 +605,12 @@ def main() -> None:
         )
         return
 
+    if args.command == "governance-policy":
+        ensure_indexes(db)
+        policy = get_governance_policy(db, args.policy_id)
+        print(json.dumps({"ok": policy is not None, "policy": policy}, indent=2))
+        return
+
     if args.command == "process-objects":
         ensure_indexes(db)
         print(
@@ -589,6 +619,12 @@ def main() -> None:
                 indent=2,
             )
         )
+        return
+
+    if args.command == "process-object":
+        ensure_indexes(db)
+        process = get_process_object(db, args.process_id)
+        print(json.dumps({"ok": process is not None, "process": process}, indent=2))
         return
 
     if args.command == "sessions":
