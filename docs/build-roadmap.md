@@ -148,6 +148,7 @@ Current early read surface:
 - memory-agent one-hop proximity expansion can rank adjacent graph nodes by edge weight/confidence.
 - memory-agent bounded graph-path expansion can rank multi-hop path targets by multiplied edge weight/confidence and compile context for the top targets.
 - active document titles, source paths, and labels feed near-match query guidance and fallback search vocabulary for the current session.
+- near-match fallback runs after empty searches and after weak initial matches below the configured score threshold, so low-quality partial hits do not block typo-tolerant corrected probes.
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
 - memory-agent iteration traces include planner response format and thinking controls, so JSON-mode planner behavior is diagnosable from saved traces.
 - agentic answer prompts persist a first structured `context_document` alongside the rendered Markdown context; this is a scaffold toward the full context schema.

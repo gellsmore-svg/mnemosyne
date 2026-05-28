@@ -62,6 +62,7 @@ TEXT_SOURCE_SUFFIXES = {
 }
 NEAR_MATCH_MIN_SCORE = 0.78
 NEAR_MATCH_MAX_VOCABULARY = 2000
+WEAK_MATCH_FALLBACK_SCORE = 5
 QUERY_STOPWORDS = {
     "what",
     "does",
@@ -872,7 +873,7 @@ def ranked_focus_matches(
                 if row["node_id"] not in seen:
                     seen.add(row["node_id"])
                     matches.append(row)
-        if not matches:
+        if weak_match_fallback_needed(matches, assembly):
             assembly = build_query_assembly(
                 cleaned_query,
                 vocabulary=near_match_vocabulary(db),
@@ -1578,6 +1579,18 @@ def fallback_candidate_limit(result_limit: int) -> int:
     return max(result_limit * 4, 20)
 
 
+def weak_match_fallback_needed(
+    matches: list[dict[str, Any]],
+    query_assembly: dict[str, Any],
+    threshold: int = WEAK_MATCH_FALLBACK_SCORE,
+) -> bool:
+    if not query_assembly.get("ranking_query"):
+        return False
+    if not matches:
+        return True
+    return max(score_node_match(row, query_assembly) for row in matches) < threshold
+
+
 def execute_search_nodes_tool(
     db: Database,
     query: str | None,
@@ -1621,7 +1634,9 @@ def execute_search_nodes_tool(
         "identity_excluded_count": identity_excluded_count,
         "identity_exclusion_sample_size": identity_exclusion_sample_size,
     }
-    if not matches and ranking_query:
+    fallback_trigger = None
+    if ranking_query and weak_match_fallback_needed(matches, query_assembly):
+        fallback_trigger = "empty_results" if not matches else "weak_matches"
         query_assembly = build_query_assembly(
             cleaned_query,
             original_query,
@@ -1630,6 +1645,8 @@ def execute_search_nodes_tool(
             else near_match_vocabulary(db),
         )
         details["query_assembly"] = query_assembly
+        details["fallback_trigger"] = fallback_trigger
+        details["weak_match_score_threshold"] = WEAK_MATCH_FALLBACK_SCORE
         seen = {row["node_id"] for row in matches}
         for fallback_query in fallback_queries(query_assembly):
             fallback_results = search_nodes_with_optional_identity(

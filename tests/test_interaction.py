@@ -2155,6 +2155,31 @@ def test_execute_search_nodes_tool_uses_near_match_terms_after_empty_search(monk
     assert "technical" in calls
 
 
+def test_execute_search_nodes_tool_uses_near_match_terms_after_weak_match(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    calls = []
+
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5, identity=None):
+        calls.append(query)
+        if query == "tecnical":
+            return [{"node_id": "weak", "title": "Reference", "text_preview": "Generic note."}]
+        if query == "technical":
+            return [{"node_id": "strong", "title": "Technical Design"}]
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "compile_context", lambda _db, _node_id: None)
+    monkeypatch.setattr(interaction, "near_match_vocabulary", lambda _db: ["technical"])
+
+    output, details = execute_search_nodes_tool(FakeDb(), query="tecnical")
+
+    assert output["matches"][0]["node_id"] == "strong"
+    assert details["fallback_trigger"] == "weak_matches"
+    assert details["weak_match_score_threshold"] == 5
+    assert "technical" in calls
+
+
 def test_execute_search_nodes_tool_uses_original_query_for_intent_terms(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 
@@ -2222,6 +2247,35 @@ def test_ranked_focus_matches_uses_near_match_terms_after_empty_search(monkeypat
     matches = ranked_focus_matches(FakeDb(), query="tecnical", label=None, limit=3)
 
     assert matches[0]["node_id"] == "node1"
+    assert "technical" in calls
+
+
+def test_ranked_focus_matches_uses_near_match_terms_after_weak_match(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    calls = []
+
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
+        calls.append(query)
+        if query == "tecnical":
+            return [{"node_id": "weak", "title": "Reference", "text_preview": "Generic note."}]
+        if query == "technical":
+            return [
+                {
+                    "node_id": "strong",
+                    "title": "Technical Design",
+                    "text_preview": "Technical design note.",
+                    "labels": ["source_section"],
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "near_match_vocabulary", lambda _db: ["technical"])
+
+    matches = ranked_focus_matches(FakeDb(), query="tecnical", label=None, limit=3)
+
+    assert matches[0]["node_id"] == "strong"
     assert "technical" in calls
 
 

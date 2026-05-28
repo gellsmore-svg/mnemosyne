@@ -332,7 +332,7 @@ As of 2026-05-22:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `284 passed`.
+- Current automated suite at last full run: `286 passed`.
 - Forward-looking governed cognitive architecture requirements are captured in `docs/mnemosyne-cognitive-architecture-draft.md`; current docs use `Mnemosyne`, with a future product rename likely because of a GitHub name collision.
 - Candidate identity, governance policy, process-object, process-run, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; first read-only CLI/API listing and exact lookup commands, default seed records, memory-agent identity prompt summaries, agentic search exclusion filtering for labels/documents/trees with sampled exclusion diagnostics, answer-process run persistence with blocked-state cleanup for retrieval/planning/adapter/save failures and soft continuation on process-run persistence failures, and read-only trust/temporal diagnostics in retrieval traces with batched search-result annotation exist, but trust/temporal ranking effects and automatic process enforcement are not implemented yet.
 
@@ -347,7 +347,7 @@ Near-term consolidation:
 
 Next implementation candidates:
 
-1. Add a confidence threshold for deciding when weak partial matches should still trigger near-match fallback.
+1. Add a confidence threshold for deciding when weak partial matches should still trigger near-match fallback. Implemented with diagnostic `fallback_trigger` metadata for agentic search.
 2. Broaden near-match vocabulary carefully, next with active documents.
 3. Broaden source-document fallback beyond active-document reference prompts. Implemented for active-document source fallback after no-focus direct retrieval misses.
 4. Add active document registry skeleton.
