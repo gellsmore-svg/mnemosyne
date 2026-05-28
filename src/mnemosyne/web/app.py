@@ -10,6 +10,12 @@ from pydantic import BaseModel
 
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
+from mnemosyne.db.governance import (
+    list_agent_identities,
+    list_governance_policies,
+    list_process_objects,
+    list_trust_weighting_profiles,
+)
 from mnemosyne.db.indexes import ensure_indexes
 from mnemosyne.db.repositories import (
     list_semantic_edge_candidates,
@@ -116,6 +122,22 @@ def create_app() -> FastAPI:
             "session_id": session_id,
             "documents": list_active_documents(db, session_id=session_id, limit=limit),
         }
+
+    @app.get("/api/governance/agent-identities")
+    def governance_agent_identities(limit: int = 20) -> dict[str, Any]:
+        return {"ok": True, "identities": list_agent_identities(db, limit=limit)}
+
+    @app.get("/api/governance/trust-weighting-profiles")
+    def governance_trust_weighting_profiles(limit: int = 20) -> dict[str, Any]:
+        return {"ok": True, "profiles": list_trust_weighting_profiles(db, limit=limit)}
+
+    @app.get("/api/governance/policies")
+    def governance_policies(limit: int = 20) -> dict[str, Any]:
+        return {"ok": True, "policies": list_governance_policies(db, limit=limit)}
+
+    @app.get("/api/governance/process-objects")
+    def governance_process_objects(limit: int = 20) -> dict[str, Any]:
+        return {"ok": True, "processes": list_process_objects(db, limit=limit)}
 
     @app.get("/api/output-ingestion")
     def output_ingestion(

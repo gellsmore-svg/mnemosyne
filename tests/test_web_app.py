@@ -102,6 +102,74 @@ def test_active_documents_endpoint_filters_by_session() -> None:
     assert data["documents"][0]["title"] == "Active Doc"
 
 
+def test_governance_agent_identities_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_agent_identities",
+        lambda _db, limit=20: [{"identity_id": "mnemosyne_shared", "limit": limit}],
+    )
+
+    response = client.get("/api/governance/agent-identities", params={"limit": 2})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "identities": [{"identity_id": "mnemosyne_shared", "limit": 2}],
+    }
+
+
+def test_governance_trust_weighting_profiles_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_trust_weighting_profiles",
+        lambda _db, limit=20: [{"weighting_profile_id": "default_balanced", "limit": limit}],
+    )
+
+    response = client.get("/api/governance/trust-weighting-profiles", params={"limit": 3})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "profiles": [{"weighting_profile_id": "default_balanced", "limit": 3}],
+    }
+
+
+def test_governance_policies_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_governance_policies",
+        lambda _db, limit=20: [{"policy_id": "read_only", "limit": limit}],
+    )
+
+    response = client.get("/api/governance/policies", params={"limit": 4})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "policies": [{"policy_id": "read_only", "limit": 4}],
+    }
+
+
+def test_governance_process_objects_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_process_objects",
+        lambda _db, limit=20: [{"process_id": "review_before_write", "limit": limit}],
+    )
+
+    response = client.get("/api/governance/process-objects", params={"limit": 5})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "processes": [{"process_id": "review_before_write", "limit": 5}],
+    }
+
+
 def test_output_ingestion_endpoint_filters_by_session() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)
