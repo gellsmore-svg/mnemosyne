@@ -12,6 +12,7 @@ from pymongo.database import Database
 
 from mnemosyne.adapters.answer import answer_adapter
 from mnemosyne.config import AppConfig
+from mnemosyne.db.governance import list_agent_identities
 from mnemosyne.db.repositories import document_tree
 from mnemosyne.retrieval.queries import (
     build_prompt_envelope,
@@ -651,6 +652,7 @@ def build_planner_prompt(query: str, focus_node_id: str | None = None) -> str:
         focus_node_id=focus_node_id,
         session_id="default",
         active_documents=[],
+        active_identities=[],
         history=[],
     )
 
@@ -661,6 +663,7 @@ def build_memory_agent_prompt(
     session_id: str,
     active_documents: list[dict[str, Any]],
     history: list[dict[str, Any]],
+    active_identities: list[dict[str, Any]] | None = None,
 ) -> str:
     query_assembly = build_query_assembly(
         query,
@@ -700,6 +703,9 @@ def build_memory_agent_prompt(
             "Active documents:",
             json.dumps(active_documents, indent=2, default=str),
             "",
+            "Active identities:",
+            json.dumps(compact_agent_identities(active_identities or []), indent=2, default=str),
+            "",
             "Query assembly:",
             render_query_assembly_guidance(query_assembly),
             "",
@@ -710,6 +716,33 @@ def build_memory_agent_prompt(
             query,
         ]
     )
+
+
+def active_agent_identities(db: Database, limit: int = 3) -> list[dict[str, Any]]:
+    if not hasattr(db, "agent_identities"):
+        return []
+    return list_agent_identities(db, limit=limit)
+
+
+def compact_agent_identities(identities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    compact = []
+    for identity in identities:
+        compact.append(
+            {
+                "identity_id": identity.get("identity_id"),
+                "title": identity.get("title"),
+                "kind": identity.get("kind"),
+                "description": identity.get("description"),
+                "trusted_labels": identity.get("trusted_labels") or [],
+                "excluded_labels": identity.get("excluded_labels") or [],
+                "allowed_relation_types": identity.get("allowed_relation_types") or [],
+                "excluded_relation_types": identity.get("excluded_relation_types") or [],
+                "weighting_profile_id": identity.get("weighting_profile_id"),
+                "required_process_ids": identity.get("required_process_ids") or [],
+                "governance_policy_ids": identity.get("governance_policy_ids") or [],
+            }
+        )
+    return compact
 
 
 def run_memory_agent_loop(
@@ -730,6 +763,7 @@ def run_memory_agent_loop(
             focus_node_id=focus_node_id,
             session_id=session_id,
             active_documents=list_active_documents(db, session_id=session_id, limit=5),
+            active_identities=active_agent_identities(db),
             history=history,
         )
         step = {

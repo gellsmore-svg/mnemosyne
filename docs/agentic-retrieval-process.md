@@ -51,6 +51,7 @@ Python injects:
 - optional `focus_node_id`;
 - current `session_id`;
 - compact active document summaries for the session;
+- compact active identity summaries for governance context;
 - deterministic query assembly guidance;
 - summarized prior memory-agent iterations;
 - the original user prompt.

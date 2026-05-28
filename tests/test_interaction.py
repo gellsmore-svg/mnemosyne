@@ -926,6 +926,38 @@ def test_build_memory_agent_prompt_includes_query_assembly_guidance() -> None:
     assert "Mnemosyne Technical Design" in prompt
 
 
+def test_build_memory_agent_prompt_includes_active_identity_summary() -> None:
+    prompt = build_memory_agent_prompt(
+        query="Find memory governance context",
+        focus_node_id=None,
+        session_id="governance-session",
+        active_documents=[],
+        active_identities=[
+            {
+                "identity_id": "mnemosyne_shared",
+                "title": "Mnemosyne Shared Identity",
+                "kind": "shared",
+                "description": "Project-wide retrieval and governance scaffold.",
+                "trusted_labels": ["memory_reference"],
+                "excluded_labels": ["restricted"],
+                "allowed_relation_types": ["related_to"],
+                "excluded_relation_types": ["hidden_from_testing_agent"],
+                "weighting_profile_id": "default_balanced",
+                "required_process_ids": ["review_before_write"],
+                "governance_policy_ids": ["read_only_memory_agent"],
+                "ignored_large_field": "not included",
+            }
+        ],
+        history=[],
+    )
+
+    assert "Active identities:" in prompt
+    assert "mnemosyne_shared" in prompt
+    assert "default_balanced" in prompt
+    assert "read_only_memory_agent" in prompt
+    assert "ignored_large_field" not in prompt
+
+
 def test_memory_agent_tool_summary_includes_search_diagnostics() -> None:
     summary = summarize_tool_results_for_memory_agent(
         [
