@@ -377,6 +377,65 @@ def test_answer_query_records_process_run(monkeypatch) -> None:
     ]
 
 
+def test_answer_query_continues_when_process_run_create_fails(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            return {
+                "adapter": "fake",
+                "answer": "direct answer",
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *args, **kwargs: None)
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+    monkeypatch.setattr(
+        interaction,
+        "create_process_run",
+        lambda _db, **kwargs: (_ for _ in ()).throw(RuntimeError("process DB down")),
+    )
+
+    result = answer_query(FakeDb(), AppConfig(), "plain prompt", session_id="s1")
+
+    assert result["ok"] is True
+    assert result["exchange_id"] == "exchange1"
+    assert result["process_run_id"] is None
+
+
+def test_answer_query_continues_when_process_run_update_fails(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            return {
+                "adapter": "fake",
+                "answer": "direct answer",
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *args, **kwargs: None)
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+    monkeypatch.setattr(
+        interaction,
+        "create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1"},
+    )
+    monkeypatch.setattr(
+        interaction,
+        "update_process_run",
+        lambda _db, run_id, **kwargs: (_ for _ in ()).throw(RuntimeError("process update failed")),
+    )
+
+    result = answer_query(FakeDb(), AppConfig(), "plain prompt", session_id="s1")
+
+    assert result["ok"] is True
+    assert result["exchange_id"] == "exchange1"
+    assert result["process_run_id"] == "run1"
+
+
 def test_answer_query_marks_process_run_blocked_when_adapter_fails(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 
