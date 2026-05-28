@@ -10,14 +10,19 @@ from mnemosyne.adapters.mock import MockIngestionAdapter
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.db.governance import (
+    PROCESS_RUN_STATUSES,
+    create_process_run,
     get_agent_identity,
     get_governance_policy,
     get_process_object,
+    get_process_run,
     get_trust_weighting_profile,
     list_agent_identities,
     list_governance_policies,
     list_process_objects,
+    list_process_runs,
     list_trust_weighting_profiles,
+    update_process_run,
 )
 from mnemosyne.db.indexes import ensure_indexes
 from mnemosyne.db.repositories import (
@@ -240,6 +245,29 @@ def main() -> None:
     process_objects.add_argument("--limit", type=int, default=20)
     process_object = subcommands.add_parser("process-object")
     process_object.add_argument("process_id")
+
+    process_runs = subcommands.add_parser("process-runs")
+    process_runs.add_argument("--session-id", default=None)
+    process_runs.add_argument("--status", default=None, choices=sorted(PROCESS_RUN_STATUSES))
+    process_runs.add_argument("--limit", type=int, default=20)
+    process_run = subcommands.add_parser("process-run")
+    process_run.add_argument("run_id")
+    start_process_run = subcommands.add_parser("start-process-run")
+    start_process_run.add_argument("process_id")
+    start_process_run.add_argument("--session-id", default="default")
+    start_process_run.add_argument("--identity-id", default=None)
+    start_process_run.add_argument("--current-step-id", default=None)
+    start_process_run.add_argument("--status", default="active", choices=sorted(PROCESS_RUN_STATUSES))
+    update_process_run_parser = subcommands.add_parser("update-process-run")
+    update_process_run_parser.add_argument("run_id")
+    update_process_run_parser.add_argument("--status", default=None, choices=sorted(PROCESS_RUN_STATUSES))
+    update_process_run_parser.add_argument("--current-step-id", default=None)
+    update_process_run_parser.add_argument("--completed-step-id", default=None)
+    update_process_run_parser.add_argument("--exchange-id", default=None)
+    update_process_run_parser.add_argument("--exception-reason", default=None)
+    update_process_run_parser.add_argument("--exception-proposal", default=None)
+    update_process_run_parser.add_argument("--exception-reviewer", default=None)
+    update_process_run_parser.add_argument("--exception-note", default=None)
 
     active_documents = subcommands.add_parser("active-documents")
     active_documents.add_argument("--session-id", default="default")
@@ -625,6 +653,65 @@ def main() -> None:
         ensure_indexes(db)
         process = get_process_object(db, args.process_id)
         print(json.dumps({"ok": process is not None, "process": process}, indent=2))
+        return
+
+    if args.command == "process-runs":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "runs": list_process_runs(
+                        db,
+                        session_id=args.session_id,
+                        status=args.status,
+                        limit=args.limit,
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "process-run":
+        ensure_indexes(db)
+        run = get_process_run(db, args.run_id)
+        print(json.dumps({"ok": run is not None, "run": run}, indent=2))
+        return
+
+    if args.command == "start-process-run":
+        ensure_indexes(db)
+        run = create_process_run(
+            db,
+            process_id=args.process_id,
+            session_id=args.session_id,
+            identity_id=args.identity_id,
+            current_step_id=args.current_step_id,
+            status=args.status,
+        )
+        print(json.dumps({"ok": True, "run": run}, indent=2))
+        return
+
+    if args.command == "update-process-run":
+        ensure_indexes(db)
+        exception = None
+        if args.exception_reason or args.exception_proposal:
+            exception = {
+                "reason": args.exception_reason,
+                "proposal": args.exception_proposal,
+                "reviewer": args.exception_reviewer,
+                "note": args.exception_note,
+            }
+        run = update_process_run(
+            db,
+            args.run_id,
+            status=args.status,
+            current_step_id=args.current_step_id,
+            completed_step_id=args.completed_step_id,
+            exchange_id=args.exchange_id,
+            exception=exception,
+        )
+        print(json.dumps({"ok": run is not None, "run": run}, indent=2))
         return
 
     if args.command == "sessions":

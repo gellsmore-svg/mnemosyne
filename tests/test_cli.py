@@ -575,6 +575,107 @@ def test_cli_trust_weighting_profile_command_reports_missing(monkeypatch, capsys
     }
 
 
+def test_cli_process_runs_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "process-runs", "--session-id", "s1", "--status", "active", "--limit", "2"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.list_process_runs",
+        lambda _db, session_id=None, status=None, limit=20: [
+            {"run_id": "run1", "session_id": session_id, "status": status, "limit": limit}
+        ],
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "runs": [{"run_id": "run1", "session_id": "s1", "status": "active", "limit": 2}],
+    }
+
+
+def test_cli_start_process_run_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "start-process-run",
+            "restart_continuity",
+            "--session-id",
+            "s1",
+            "--identity-id",
+            "mnemosyne_shared",
+            "--current-step-id",
+            "inspect_state",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1", **kwargs},
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["ok"] is True
+    assert output["run"]["process_id"] == "restart_continuity"
+    assert output["run"]["current_step_id"] == "inspect_state"
+
+
+def test_cli_update_process_run_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "update-process-run",
+            "run1",
+            "--status",
+            "exception_requested",
+            "--completed-step-id",
+            "inspect_state",
+            "--exception-reason",
+            "better path",
+            "--exception-proposal",
+            "skip duplicate step",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.update_process_run",
+        lambda _db, run_id, **kwargs: {"run_id": run_id, **kwargs},
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["ok"] is True
+    assert output["run"]["run_id"] == "run1"
+    assert output["run"]["status"] == "exception_requested"
+    assert output["run"]["exception"]["reason"] == "better path"
+
+
 class FakeCollection:
     def __init__(self, rows: list[dict]) -> None:
         self.rows = rows

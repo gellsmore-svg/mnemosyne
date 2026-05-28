@@ -11,14 +11,19 @@ from pydantic import BaseModel
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.db.governance import (
+    PROCESS_RUN_STATUSES,
+    create_process_run,
     get_agent_identity,
     get_governance_policy,
     get_process_object,
+    get_process_run,
     get_trust_weighting_profile,
     list_agent_identities,
     list_governance_policies,
     list_process_objects,
+    list_process_runs,
     list_trust_weighting_profiles,
+    update_process_run,
 )
 from mnemosyne.db.indexes import ensure_indexes
 from mnemosyne.db.repositories import (
@@ -71,6 +76,22 @@ class ReviewSemanticEdgeCandidateRequest(BaseModel):
     note: str | None = None
     weight: float = 0.7
     confidence: float = 0.6
+
+
+class CreateProcessRunRequest(BaseModel):
+    process_id: str
+    session_id: str = "web"
+    identity_id: str | None = None
+    current_step_id: str | None = None
+    status: str = "active"
+
+
+class UpdateProcessRunRequest(BaseModel):
+    status: str | None = None
+    current_step_id: str | None = None
+    completed_step_id: str | None = None
+    exchange_id: str | None = None
+    exception: dict[str, Any] | None = None
 
 
 def create_app() -> FastAPI:
@@ -162,6 +183,61 @@ def create_app() -> FastAPI:
     def governance_process_object(process_id: str) -> dict[str, Any]:
         process = get_process_object(db, process_id)
         return {"ok": process is not None, "process": process}
+
+    @app.get("/api/governance/process-runs")
+    def governance_process_runs(
+        limit: int = 20,
+        session_id: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "runs": list_process_runs(
+                db,
+                session_id=session_id,
+                status=status,
+                limit=limit,
+            ),
+        }
+
+    @app.get("/api/governance/process-runs/{run_id}")
+    def governance_process_run(run_id: str) -> dict[str, Any]:
+        run = get_process_run(db, run_id)
+        return {"ok": run is not None, "run": run}
+
+    @app.post("/api/governance/process-runs")
+    def governance_create_process_run(request: CreateProcessRunRequest) -> dict[str, Any]:
+        if request.status not in PROCESS_RUN_STATUSES:
+            return {"ok": False, "error": "unsupported_process_run_status"}
+        return {
+            "ok": True,
+            "run": create_process_run(
+                db,
+                process_id=request.process_id,
+                session_id=request.session_id,
+                identity_id=request.identity_id,
+                current_step_id=request.current_step_id,
+                status=request.status,
+            ),
+        }
+
+    @app.patch("/api/governance/process-runs/{run_id}")
+    def governance_update_process_run(
+        run_id: str,
+        request: UpdateProcessRunRequest,
+    ) -> dict[str, Any]:
+        if request.status is not None and request.status not in PROCESS_RUN_STATUSES:
+            return {"ok": False, "error": "unsupported_process_run_status", "run": None}
+        run = update_process_run(
+            db,
+            run_id,
+            status=request.status,
+            current_step_id=request.current_step_id,
+            completed_step_id=request.completed_step_id,
+            exchange_id=request.exchange_id,
+            exception=request.exception,
+        )
+        return {"ok": run is not None, "run": run}
 
     @app.get("/api/output-ingestion")
     def output_ingestion(

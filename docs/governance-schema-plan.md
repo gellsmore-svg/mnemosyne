@@ -181,7 +181,7 @@ The current system only implements pieces of steps 3, 6, and 7. Reviewed semanti
 3. Seed one shared identity and one default trust weighting profile. Implemented.
 4. Include active identity summaries in memory-agent prompts. Implemented.
 5. Add retrieval filters for identity exclusions before any weighting changes. Implemented for the agentic search tool path; direct retrieval, proximity expansion, graph paths, and broader policy enforcement remain open.
-6. Add process-run persistence for restart/continuity state.
+6. Add process-run persistence for restart/continuity state. Implemented as explicit helper/CLI/API persistence for process starts, progress updates, exchange links, and exception proposals; automatic enforcement remains open.
 7. Add trust/temporal weighting diagnostics before changing retrieval ranking.
 8. Only after those constraints exist, consider narrowly scoped agent write proposals.
 

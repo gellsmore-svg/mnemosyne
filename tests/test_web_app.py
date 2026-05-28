@@ -238,6 +238,88 @@ def test_governance_process_object_endpoint(monkeypatch) -> None:
     }
 
 
+def test_governance_process_runs_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_process_runs",
+        lambda _db, session_id=None, status=None, limit=20: [
+            {"run_id": "run1", "session_id": session_id, "status": status, "limit": limit}
+        ],
+    )
+
+    response = client.get(
+        "/api/governance/process-runs",
+        params={"session_id": "s1", "status": "active", "limit": 6},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "runs": [{"run_id": "run1", "session_id": "s1", "status": "active", "limit": 6}],
+    }
+
+
+def test_governance_process_run_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.get_process_run",
+        lambda _db, run_id: {"run_id": run_id},
+    )
+
+    response = client.get("/api/governance/process-runs/run1")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "run": {"run_id": "run1"},
+    }
+
+
+def test_governance_create_process_run_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1", **kwargs},
+    )
+
+    response = client.post(
+        "/api/governance/process-runs",
+        json={
+            "process_id": "restart_continuity",
+            "session_id": "s1",
+            "identity_id": "mnemosyne_shared",
+            "current_step_id": "inspect_state",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["run"]["process_id"] == "restart_continuity"
+    assert response.json()["run"]["current_step_id"] == "inspect_state"
+
+
+def test_governance_update_process_run_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.update_process_run",
+        lambda _db, run_id, **kwargs: {"run_id": run_id, **kwargs},
+    )
+
+    response = client.patch(
+        "/api/governance/process-runs/run1",
+        json={"status": "completed", "completed_step_id": "write_restart"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["run"]["run_id"] == "run1"
+    assert response.json()["run"]["status"] == "completed"
+
+
 def test_output_ingestion_endpoint_filters_by_session() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)
