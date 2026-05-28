@@ -140,6 +140,49 @@ async function loadJobs() {
   );
 }
 
+async function loadSemanticCandidates() {
+  const data = await api("/api/review/semantic-edge-candidates?status=pending&limit=8");
+  $("semanticCandidateStatus").textContent = `Candidates: ${data.candidates.length} pending shown`;
+  $("semanticCandidates").replaceChildren(
+    ...data.candidates.map((candidate) => {
+      const el = item(
+        `<strong>${html(candidate.relation_type)}</strong>` +
+        `<div>${html(candidate.source_title)} -> ${html(candidate.target_title)}</div>` +
+        `<div class="muted">${html(candidate.candidate_id)} | labels ${html((candidate.shared_labels || []).join(", "))}</div>`
+      );
+      const actions = document.createElement("div");
+      actions.className = "button-row";
+      const accept = document.createElement("button");
+      accept.textContent = "Accept";
+      accept.addEventListener("click", () => reviewSemanticCandidate(candidate.candidate_id, "accept"));
+      const reject = document.createElement("button");
+      reject.textContent = "Reject";
+      reject.className = "secondary";
+      reject.addEventListener("click", () => reviewSemanticCandidate(candidate.candidate_id, "reject"));
+      actions.append(accept, reject);
+      el.appendChild(actions);
+      return el;
+    })
+  );
+}
+
+async function reviewSemanticCandidate(candidateId, action) {
+  const data = await api("/api/review/semantic-edge-candidate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      candidate_id: candidateId,
+      action,
+      reviewer: "web",
+      note: `${action} from web operator panel`,
+    }),
+  });
+  $("semanticCandidateStatus").textContent = data.ok
+    ? `Candidate ${action}ed`
+    : `Review failed: ${data.reason || "unknown"}`;
+  await loadSemanticCandidates();
+}
+
 async function searchNodes() {
   const query = encodeURIComponent($("searchQuery").value);
   const data = await api(`/api/search?query=${query}&limit=8`);
@@ -254,6 +297,7 @@ async function refresh() {
     loadHistory(),
     loadQueue(),
     loadJobs(),
+    loadSemanticCandidates(),
     searchNodes(),
   ]);
 }
@@ -265,6 +309,7 @@ $("refresh").addEventListener("click", refresh);
 $("processInbox").addEventListener("click", processInbox);
 $("loadHistory").addEventListener("click", loadHistory);
 $("loadJobs").addEventListener("click", loadJobs);
+$("loadSemanticCandidates").addEventListener("click", loadSemanticCandidates);
 $("sessionId").addEventListener("change", () => {
   $("historySession").value = $("sessionId").value;
   loadHistory();

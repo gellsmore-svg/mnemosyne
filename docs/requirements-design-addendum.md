@@ -42,6 +42,7 @@ The current implementation has added several scaffold features and operational d
 - Semantic-candidate diagnostics are read-only: they rank nodes sharing meaningful non-structural labels, excluding source-root containers, but do not write inferred graph edges.
 - Semantic-edge candidate queue commands can enqueue pending review rows from semantic-candidate diagnostics and list them for batched operator review.
 - Semantic-edge candidate review can accept a queued candidate into a reviewed graph edge or reject it with reviewer/note metadata.
+- FastAPI and the web operator panel expose semantic-edge candidate listing and accept/reject review actions.
 - Reviewed semantic-edge promotion is operator controlled: a CLI command can create a typed directed edge between two known nodes with reviewer/note provenance, shared-label evidence, duplicate protection, and bounded weight/confidence. Memory-agent tool calls remain read-only.
 - Label definitions are stored in MongoDB.
 
@@ -330,7 +331,7 @@ As of 2026-05-22:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `227 passed`.
+- Current automated suite at last full run: `229 passed`.
 
 ## Recommended Next Work
 
@@ -347,5 +348,5 @@ Next implementation candidates:
 2. Broaden near-match vocabulary carefully, next with active documents.
 3. Broaden source-document fallback beyond active-document reference prompts.
 4. Add active document registry skeleton.
-5. Surface semantic-edge candidate review in the web/API operator panel.
+5. Add retrieval-path diagnostics that show when reviewed semantic edges affect proximity/path expansion.
 6. Add embedding interface and a brute-force baseline evaluation harness.

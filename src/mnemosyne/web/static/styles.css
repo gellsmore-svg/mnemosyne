@@ -68,6 +68,10 @@ button {
   cursor: pointer;
 }
 
+button.secondary {
+  background: #475569;
+}
+
 input,
 select,
 textarea {
@@ -212,6 +216,17 @@ pre {
 .item button {
   margin-top: 8px;
   padding: 6px 9px;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.button-row button {
+  margin-top: 0;
 }
 
 .muted {

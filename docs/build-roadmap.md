@@ -119,6 +119,7 @@ Current early read surface:
 - CLI and memory-agent semantic-candidate diagnostics for read-only label-overlap candidate inspection before writing inferred semantic edges.
 - CLI semantic-edge candidate queue commands can enqueue pending review rows from semantic candidates and list them for batched operator review.
 - CLI semantic-edge candidate review can accept queued candidates into reviewed graph edges or reject them with reviewer/note metadata.
+- FastAPI and the web operator panel can list pending semantic-edge candidates and accept/reject them through reviewed API calls.
 - CLI reviewed semantic-edge promotion can turn two known nodes into a typed directed graph edge with reviewer/note provenance, bounded weight/confidence, duplicate protection, and shared-label evidence.
 - render compiled context to Markdown with include/skip metadata under a character budget.
 - build a prompt envelope with system instruction, user query, rendered context, and estimated token budget metadata.

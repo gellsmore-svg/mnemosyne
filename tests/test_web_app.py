@@ -227,6 +227,60 @@ def test_endorse_node_endpoint(monkeypatch) -> None:
     }
 
 
+def test_semantic_edge_candidates_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_semantic_edge_candidates",
+        lambda _db, status="pending", limit=20: [
+            {"candidate_id": "candidate1", "status": status, "limit": limit}
+        ],
+    )
+
+    response = client.get(
+        "/api/review/semantic-edge-candidates",
+        params={"status": "pending", "limit": 2},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "candidates": [{"candidate_id": "candidate1", "status": "pending", "limit": 2}],
+    }
+
+
+def test_review_semantic_edge_candidate_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.review_semantic_edge_candidate",
+        lambda _db, **kwargs: {"ok": True, **kwargs},
+    )
+
+    response = client.post(
+        "/api/review/semantic-edge-candidate",
+        json={
+            "candidate_id": "candidate1",
+            "action": "accept",
+            "reviewer": "tester",
+            "note": "looks useful",
+            "weight": 0.8,
+            "confidence": 0.9,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "candidate_id": "candidate1",
+        "action": "accept",
+        "reviewer": "tester",
+        "note": "looks useful",
+        "weight": 0.8,
+        "confidence": 0.9,
+    }
+
+
 def test_history_endpoint_filters_seeded_rows() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)

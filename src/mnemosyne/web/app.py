@@ -11,6 +11,10 @@ from pydantic import BaseModel
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.db.indexes import ensure_indexes
+from mnemosyne.db.repositories import (
+    list_semantic_edge_candidates,
+    review_semantic_edge_candidate,
+)
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
 from mnemosyne.ingestion.files import move_request_file, sha256_file
 from mnemosyne.ingestion.worker import discover_sources, process_next
@@ -48,6 +52,15 @@ class EndorseNodeRequest(BaseModel):
     endorsement: str
     reviewer: str = "user"
     note: str | None = None
+
+
+class ReviewSemanticEdgeCandidateRequest(BaseModel):
+    candidate_id: str
+    action: str
+    reviewer: str = "user"
+    note: str | None = None
+    weight: float = 0.7
+    confidence: float = 0.6
 
 
 def create_app() -> FastAPI:
@@ -150,6 +163,32 @@ def create_app() -> FastAPI:
             endorsement_label=request.endorsement,
             reviewer=request.reviewer,
             note=request.note,
+        )
+
+    @app.get("/api/review/semantic-edge-candidates")
+    def semantic_edge_candidates(
+        limit: int = 20,
+        status: str | None = "pending",
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "candidates": list_semantic_edge_candidates(
+                db,
+                status=status,
+                limit=limit,
+            ),
+        }
+
+    @app.post("/api/review/semantic-edge-candidate")
+    def review_semantic_edge(request: ReviewSemanticEdgeCandidateRequest) -> dict[str, Any]:
+        return review_semantic_edge_candidate(
+            db,
+            candidate_id=request.candidate_id,
+            action=request.action,
+            reviewer=request.reviewer,
+            note=request.note,
+            weight=request.weight,
+            confidence=request.confidence,
         )
 
     @app.post("/api/sessions")
