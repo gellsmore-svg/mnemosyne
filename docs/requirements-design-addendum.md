@@ -334,6 +334,7 @@ As of 2026-05-22:
   - retrieval mode: `direct`.
 - Current automated suite at last full run: `229 passed`.
 - Forward-looking governed cognitive architecture requirements are captured in `docs/nimmsign-cognitive-architecture-draft.md`; the product spelling remains a placeholder until confirmed.
+- Candidate identity, governance policy, process-object, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; these are not yet runtime collections or filters.
 
 ## Recommended Next Work
 
@@ -350,5 +351,5 @@ Next implementation candidates:
 2. Broaden near-match vocabulary carefully, next with active documents.
 3. Broaden source-document fallback beyond active-document reference prompts.
 4. Add active document registry skeleton.
-5. Add identity/trust/process schema planning based on the Nimmsign cognitive architecture draft before granting agents write autonomy.
+5. Add read-only schema/index scaffolds for identity, trust, and process collections from `docs/governance-schema-plan.md`.
 6. Add embedding interface and a brute-force baseline evaluation harness.

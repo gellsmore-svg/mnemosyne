@@ -112,3 +112,4 @@ Moderator agents should validate process adherence, detect contradictions and pr
 - Identity visibility, access restrictions, process objects, and temporal decay should be added as schema-bearing concepts before broad autonomous edge writing.
 - The memory-agent should remain read-only until identity, trust, and process enforcement rules can constrain write actions.
 - Retrieval diagnostics should explain when structural, ingestion-derived, and reviewed semantic edges affect graph traversal.
+- `docs/governance-schema-plan.md` translates these concepts into candidate collections, fields, and implementation order.
