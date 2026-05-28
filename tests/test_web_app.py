@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 from bson import ObjectId
 from fastapi.testclient import TestClient
@@ -641,3 +642,38 @@ def test_jobs_endpoint_filters_seeded_rows() -> None:
     data = response.json()
     assert data["ok"] is True
     assert [row["reason"] for row in data["jobs"]] == ["source_missing"]
+
+
+def test_upload_source_stages_supported_file() -> None:
+    client = TestClient(app)
+    config = load_config()
+    filename = f"web-upload-{ObjectId()}.md"
+    path = config.paths.ingest / filename
+    path.unlink(missing_ok=True)
+
+    try:
+        response = client.post(
+            "/api/upload-source",
+            json={"filename": f"../{filename}", "content": "# Uploaded\n\nSource text."},
+        )
+        data = response.json()
+    finally:
+        path.unlink(missing_ok=True)
+
+    assert response.status_code == 200
+    assert data["ok"] is True
+    assert data["status"] == "staged"
+    assert data["filename"] == filename
+    assert Path(data["path"]).name == filename
+
+
+def test_upload_source_rejects_unsupported_suffix() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/upload-source",
+        json={"filename": "source.pdf", "content": "%PDF"},
+    )
+
+    assert response.status_code == 400
+    assert "Unsupported source type" in response.json()["detail"]

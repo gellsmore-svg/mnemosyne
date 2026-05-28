@@ -288,6 +288,29 @@ async function processInbox() {
   await Promise.all([loadQueue(), loadJobs(), loadDocuments(), searchNodes()]);
 }
 
+async function uploadSourceFiles() {
+  const files = Array.from($("sourceUpload").files || []);
+  if (!files.length) {
+    $("processResult").textContent = "Select .md/.txt files to stage.";
+    return;
+  }
+  $("processResult").textContent = "Staging files...";
+  const staged = [];
+  for (const file of files) {
+    const content = await file.text();
+    staged.push(
+      await api("/api/upload-source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, content }),
+      })
+    );
+  }
+  $("sourceUpload").value = "";
+  $("processResult").textContent = JSON.stringify({ ok: true, staged }, null, 2);
+  await loadQueue();
+}
+
 async function refresh() {
   await Promise.all([
     loadHealth(),
@@ -306,6 +329,7 @@ $("ask").addEventListener("click", ask);
 $("createSession").addEventListener("click", createSession);
 $("search").addEventListener("click", searchNodes);
 $("refresh").addEventListener("click", refresh);
+$("uploadSource").addEventListener("click", uploadSourceFiles);
 $("processInbox").addEventListener("click", processInbox);
 $("loadHistory").addEventListener("click", loadHistory);
 $("loadJobs").addEventListener("click", loadJobs);

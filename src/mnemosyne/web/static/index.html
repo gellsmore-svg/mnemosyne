@@ -55,10 +55,12 @@
         <section class="operator">
           <h2>Ingestion</h2>
           <div class="operator-grid">
+            <input id="sourceUpload" type="file" accept=".md,.markdown,.txt" multiple />
+            <button id="uploadSource">Stage Files</button>
             <button id="processInbox">Process Inbox</button>
             <div id="queueStatus" class="status">Queue: unknown</div>
           </div>
-          <pre id="processResult">Drop .md/.txt files into data/ingest, then process the inbox.</pre>
+          <pre id="processResult">Stage .md/.txt files or drop them into data/ingest, then process the inbox.</pre>
         </section>
 
         <section class="operator">

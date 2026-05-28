@@ -43,6 +43,7 @@ The current implementation has added several scaffold features and operational d
 - Semantic-edge candidate queue commands can enqueue pending review rows from semantic-candidate diagnostics and list them for batched operator review.
 - Semantic-edge candidate review can accept a queued candidate into a reviewed graph edge or reject it with reviewer/note metadata.
 - FastAPI and the web operator panel expose semantic-edge candidate listing and accept/reject review actions.
+- FastAPI and the web operator panel can stage supported text/Markdown files into the normal ingest inbox; this preserves the existing queue/worker ingestion path instead of creating a separate upload-only memory path.
 - Reviewed semantic-edge promotion is operator controlled: a CLI command can create a typed directed edge between two known nodes with reviewer/note provenance, shared-label evidence, duplicate protection, and bounded weight/confidence. Memory-agent tool calls remain read-only.
 - Proximity and graph-path summaries expose reviewed-edge provenance diagnostics so traces can show when semantic review, rather than document structure alone, influenced traversal.
 - Label definitions are stored in MongoDB.
@@ -332,7 +333,7 @@ As of 2026-05-22:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `286 passed`.
+- Current automated suite at last full run: `288 passed`.
 - Forward-looking governed cognitive architecture requirements are captured in `docs/mnemosyne-cognitive-architecture-draft.md`; current docs use `Mnemosyne`, with a future product rename likely because of a GitHub name collision.
 - Candidate identity, governance policy, process-object, process-run, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; first read-only CLI/API listing and exact lookup commands, default seed records, memory-agent identity prompt summaries, agentic search exclusion filtering for labels/documents/trees with sampled exclusion diagnostics, answer-process run persistence with blocked-state cleanup for retrieval/planning/adapter/save failures and soft continuation on process-run persistence failures, and read-only trust/temporal diagnostics in retrieval traces with batched search-result annotation exist, but trust/temporal ranking effects and automatic process enforcement are not implemented yet.
 

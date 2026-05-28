@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -32,6 +33,7 @@ from mnemosyne.db.repositories import (
 )
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
 from mnemosyne.ingestion.files import move_request_file, sha256_file
+from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES
 from mnemosyne.ingestion.worker import discover_sources, process_next
 from mnemosyne.retrieval.queries import list_documents, search_nodes
 from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
@@ -93,6 +95,11 @@ class UpdateProcessRunRequest(BaseModel):
     completed_step_id: str | None = None
     exchange_id: str | None = None
     exception: dict[str, Any] | None = None
+
+
+class UploadSourceRequest(BaseModel):
+    filename: str
+    content: str
 
 
 def create_app() -> FastAPI:
@@ -397,6 +404,28 @@ def create_app() -> FastAPI:
             processed.append(result)
         return {"ok": True, "enqueued": enqueued, "processed": processed}
 
+    @app.post("/api/upload-source")
+    def upload_source(request: UploadSourceRequest) -> dict[str, Any]:
+        filename = safe_upload_filename(request.filename)
+        suffix = Path(filename).suffix.lower()
+        if suffix not in SUPPORTED_SUFFIXES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported source type: {suffix or '<none>'}",
+            )
+        config.paths.ingest.mkdir(parents=True, exist_ok=True)
+        content_hash = hashlib.sha256(request.content.encode("utf-8")).hexdigest()
+        destination = unique_upload_path(config.paths.ingest, filename, content_hash)
+        destination.write_text(request.content, encoding="utf-8", newline="")
+        return {
+            "ok": True,
+            "status": "staged",
+            "path": str(destination),
+            "filename": destination.name,
+            "checksum_sha256": content_hash,
+            "bytes": destination.stat().st_size,
+        }
+
     @app.post("/api/ask")
     def ask(request: AskRequest) -> dict[str, Any]:
         return answer_query(
@@ -431,6 +460,22 @@ def create_app() -> FastAPI:
         }
 
     return app
+
+
+def safe_upload_filename(filename: str) -> str:
+    name = Path(filename or "").name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="filename is required")
+    return name
+
+
+def unique_upload_path(directory: Path, filename: str, content_hash: str) -> Path:
+    path = directory / filename
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    return directory / f"{stem}-{content_hash[:12]}{suffix}"
 
 
 app = create_app()
