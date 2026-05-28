@@ -124,6 +124,7 @@ Supported read-only tools are:
 - `get_graph_edges`
 - `expand_proximity`
 - `expand_graph_paths`
+- `semantic_candidates`
 - `list_active_documents`
 - `list_documents`
 
@@ -134,6 +135,8 @@ Supported read-only tools are:
 `expand_proximity` ranks one-hop adjacent nodes from graph edges using a deterministic edge score derived from weight and confidence. Python then compiles graph context for the top two adjacent nodes so proximity-expanded evidence can reach the final answer model as source records, not only as a ranked ID list. It is a candidate expansion helper, not the final path-scoring algorithm.
 
 `expand_graph_paths` performs bounded multi-hop graph traversal from a known node ID. Each hop uses the same edge score as proximity expansion, path scores multiply hop scores, cycles back through already visited nodes are skipped, and depth, branch, and result limits cap traversal. Python compiles context for the top two path targets before final answer assembly.
+
+`semantic_candidates` inspects read-only label-overlap candidates for a known node. It excludes structural labels and source-root containers, can optionally include same-document candidates, and compiles context for the top two candidates. It does not write inferred graph edges.
 
 Structural `contains` edges can be backfilled from existing parent/child node links. These edges provide source-faithful document-tree movement for graph traversal before semantic relation extraction exists. Equal-score structural paths use natural node-key/title ordering so siblings follow document order where possible.
 
@@ -238,6 +241,16 @@ For `expand_graph_paths`, the summary includes:
 - path depth;
 - compact path edge relation type, weight, and confidence.
 
+For `semantic_candidates`, the summary includes:
+
+- match count;
+- candidate node IDs;
+- titles;
+- labels;
+- text previews;
+- shared labels;
+- shared label count.
+
 This gives the memory-agent enough information to decide whether another read-only tool call is useful without injecting the full final answer context into the planner history. Query assembly appears both in the static prompt guidance and, when tool results are summarized, in the per-result history so later iterations can distinguish the original query guidance from diagnostics produced by a planner-issued sub-query.
 
 ## Final Answer Packaging
@@ -253,7 +266,7 @@ That function:
 5. Computes token and character budget estimates.
 6. Computes context metadata and included node IDs.
 
-For `search_nodes`, `expand_proximity`, and `expand_graph_paths`, `prepare_tool_results_for_answer()` reduces the raw tool output to:
+For `search_nodes`, `expand_proximity`, `expand_graph_paths`, and `semantic_candidates`, `prepare_tool_results_for_answer()` reduces the raw tool output to:
 
 - top match;
 - up to two assembled contexts;

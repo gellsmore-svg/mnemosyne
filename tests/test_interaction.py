@@ -862,7 +862,8 @@ def test_parse_memory_agent_decision_accepts_graph_edge_tool() -> None:
     decision = parse_memory_agent_decision(
         '{"status":"continue","tool_calls":['
         '{"tool":"expand_proximity","arguments":{"node_id":"node1","direction":"outgoing"}},'
-        '{"tool":"expand_graph_paths","arguments":{"node_id":"node1","max_depth":2}}'
+        '{"tool":"expand_graph_paths","arguments":{"node_id":"node1","max_depth":2}},'
+        '{"tool":"semantic_candidates","arguments":{"node_id":"node1"}}'
         "]}"
     )
 
@@ -874,6 +875,10 @@ def test_parse_memory_agent_decision_accepts_graph_edge_tool() -> None:
         {
             "tool": "expand_graph_paths",
             "arguments": {"node_id": "node1", "max_depth": 2},
+        },
+        {
+            "tool": "semantic_candidates",
+            "arguments": {"node_id": "node1"},
         },
     ]
 
@@ -1054,6 +1059,43 @@ def test_memory_agent_tool_summary_includes_graph_path_matches() -> None:
                 {"relation_type": "supports", "weight": 0.9, "confidence": 0.9},
                 {"relation_type": "extends", "weight": 0.8, "confidence": 0.8},
             ],
+        }
+    ]
+
+
+def test_memory_agent_tool_summary_includes_semantic_candidates() -> None:
+    summary = summarize_tool_results_for_memory_agent(
+        [
+            {
+                "tool": "semantic_candidates",
+                "arguments": {"node_id": "node1"},
+                "ok": True,
+                "output": {
+                    "matches": [
+                        {
+                            "node_id": "near3",
+                            "title": "Label Match",
+                            "labels": ["source_section", "taj_mahal"],
+                            "text_preview": "A label-overlap candidate.",
+                            "shared_labels": ["taj_mahal"],
+                            "shared_label_count": 1,
+                        }
+                    ],
+                    "compiled_contexts": [{"focus_node_id": "near3", "records": []}],
+                },
+            }
+        ]
+    )
+
+    assert summary[0]["match_count"] == 1
+    assert summary[0]["top_matches"] == [
+        {
+            "node_id": "near3",
+            "title": "Label Match",
+            "labels": ["source_section", "taj_mahal"],
+            "text_preview": "A label-overlap candidate.",
+            "shared_labels": ["taj_mahal"],
+            "shared_label_count": 1,
         }
     ]
 
@@ -1239,6 +1281,20 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
     monkeypatch.setattr(interaction, "expand_graph_paths", fake_expand_graph_paths)
     monkeypatch.setattr(
         interaction,
+        "semantic_candidate_nodes",
+        lambda _db, node_id, include_same_document=False, limit=5: [
+            {
+                "node_id": "node4",
+                "title": "Semantic Adjacent",
+                "shared_labels": ["topic"],
+                "shared_label_count": 1,
+                "include_same_document": include_same_document,
+                "limit": limit,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        interaction,
         "compile_context",
         lambda _db, node_id: {"focus_node_id": node_id, "records": []},
     )
@@ -1276,10 +1332,18 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
                     "limit": 99,
                 },
             },
+            {
+                "tool": "semantic_candidates",
+                "arguments": {
+                    "node_id": "node1",
+                    "include_same_document": True,
+                    "limit": 99,
+                },
+            },
         ],
     )
 
-    assert [result["ok"] for result in results] == [True, True, True, True, True, True]
+    assert [result["ok"] for result in results] == [True, True, True, True, True, True, True]
     assert results[0]["output"]["title"] == "Design"
     assert results[1]["output"] == [{"document_id": "doc1", "node_id": "node1"}]
     assert results[2]["output"]["child_limit"] == 10
@@ -1317,6 +1381,19 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
             }
         ],
         "compiled_contexts": [{"focus_node_id": "node3", "records": []}],
+    }
+    assert results[6]["output"] == {
+        "matches": [
+            {
+                "node_id": "node4",
+                "title": "Semantic Adjacent",
+                "shared_labels": ["topic"],
+                "shared_label_count": 1,
+                "include_same_document": True,
+                "limit": 10,
+            }
+        ],
+        "compiled_contexts": [{"focus_node_id": "node4", "records": []}],
     }
 
 
@@ -2199,6 +2276,52 @@ def test_render_tool_results_renders_graph_path_context_as_markdown() -> None:
     assert "- Path score: 0.5184" in rendered
     assert "- Path depth: 2" in rendered
     assert "Two-hop context text." in rendered
+
+
+def test_render_tool_results_renders_semantic_candidate_context_as_markdown() -> None:
+    rendered = render_tool_results(
+        [
+            {
+                "tool": "semantic_candidates",
+                "ok": True,
+                "arguments": {"node_id": "node1", "include_same_document": True},
+                "output": {
+                    "match_count": 1,
+                    "top_match": {
+                        "node_id": "near3",
+                        "title": "Label Match",
+                        "shared_labels": ["topic", "project"],
+                        "shared_label_count": 2,
+                    },
+                    "top_contexts": [
+                        {
+                            "document": {"title": "Doc", "document_id": "doc1"},
+                            "focus_node_id": "near3",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Label Match",
+                                    "node_id": "near3",
+                                    "labels": ["source_section", "topic"],
+                                    "endorsement_label": "unreviewed",
+                                    "provenance": {},
+                                    "text": "Semantic candidate context text.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert "### semantic_candidates" in rendered
+    assert "- Source node ID: node1" in rendered
+    assert "- Include same document: True" in rendered
+    assert "- Shared label count: 2" in rendered
+    assert "- Shared labels: topic, project" in rendered
+    assert "Semantic candidate context text." in rendered
 
 
 def test_agentic_answer_envelope_includes_structured_context_document() -> None:
