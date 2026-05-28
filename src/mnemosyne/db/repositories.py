@@ -390,6 +390,115 @@ def structural_edge_doc(parent: dict[str, Any], child: dict[str, Any]) -> dict[s
     }
 
 
+def create_reviewed_semantic_edge(
+    db: Database,
+    source_node_id: str,
+    target_node_id: str,
+    relation_type: str = "related_to",
+    weight: Any = 0.7,
+    confidence: Any = 0.6,
+    reviewer: str = "user",
+    note: str | None = None,
+) -> dict[str, Any]:
+    if not hasattr(db, "graph_edges"):
+        return {"ok": False, "reason": "graph_edges_unavailable"}
+    source_id = parse_object_id(source_node_id)
+    target_id = parse_object_id(target_node_id)
+    if source_id is None:
+        return {"ok": False, "reason": "invalid_source_node_id", "source_node_id": source_node_id}
+    if target_id is None:
+        return {"ok": False, "reason": "invalid_target_node_id", "target_node_id": target_node_id}
+    if source_id == target_id:
+        return {"ok": False, "reason": "self_edge_not_allowed", "source_node_id": source_node_id}
+    relation = normalized_relation_type(relation_type)
+    if not relation:
+        return {"ok": False, "reason": "invalid_relation_type", "relation_type": relation_type}
+
+    source = db.nodes.find_one({"_id": source_id})
+    if not source:
+        return {"ok": False, "reason": "source_node_not_found", "source_node_id": source_node_id}
+    target = db.nodes.find_one({"_id": target_id})
+    if not target:
+        return {"ok": False, "reason": "target_node_not_found", "target_node_id": target_node_id}
+
+    duplicate = db.graph_edges.find_one(
+        {
+            "source_node_id": source_id,
+            "target_node_id": target_id,
+            "relation_type": relation,
+        }
+    )
+    if duplicate:
+        return {
+            "ok": False,
+            "reason": "duplicate_edge",
+            "edge_id": str(duplicate.get("_id")) if duplicate.get("_id") else None,
+        }
+
+    now = datetime.now(timezone.utc)
+    shared_labels = sorted(set(source.get("labels") or []) & set(target.get("labels") or []))
+    edge_doc = {
+        "schema_version": SCHEMA_VERSION,
+        "document_id": source.get("document_id"),
+        "tree_id": source.get("tree_id"),
+        "source_document_id": source.get("document_id"),
+        "target_document_id": target.get("document_id"),
+        "source_tree_id": source.get("tree_id"),
+        "target_tree_id": target.get("tree_id"),
+        "source_node_id": source_id,
+        "target_node_id": target_id,
+        "source_node_key": source.get("node_key"),
+        "target_node_key": target.get("node_key"),
+        "relation_type": relation,
+        "weight": bounded_edge_score(weight, default=0.7),
+        "confidence": bounded_edge_score(confidence, default=0.6),
+        "direction": "directed",
+        "provenance": {
+            "adapter": "user_review",
+            "source": "semantic_candidate_review",
+            "reviewer": reviewer,
+            "note": note,
+            "shared_labels": shared_labels,
+            "shared_label_count": len(shared_labels),
+        },
+        "created_at": now,
+        "updated_at": now,
+    }
+    inserted_id = db.graph_edges.insert_one(edge_doc).inserted_id
+    edge_doc["_id"] = inserted_id
+    return {
+        "ok": True,
+        "edge": {
+            "edge_id": str(inserted_id),
+            "source_node_id": str(source_id),
+            "target_node_id": str(target_id),
+            "relation_type": relation,
+            "weight": edge_doc["weight"],
+            "confidence": edge_doc["confidence"],
+            "provenance": edge_doc["provenance"],
+        },
+    }
+
+
+def parse_object_id(value: str) -> ObjectId | None:
+    try:
+        return ObjectId(str(value))
+    except Exception:
+        return None
+
+
+def normalized_relation_type(value: Any) -> str:
+    return "_".join(str(value or "").strip().lower().split())
+
+
+def bounded_edge_score(value: Any, default: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(0.0, min(parsed, 1.0))
+
+
 def summarize_node_text(text: str, limit: int = 500) -> str:
     return " ".join(text.split())[:limit]
 

@@ -6,6 +6,7 @@ from mnemosyne.db.repositories import (
     backfill_structural_graph_edges,
     bounded_graph_group_limit,
     commit_ingestion,
+    create_reviewed_semantic_edge,
     graph_edge_status,
     rebuild_document,
 )
@@ -204,6 +205,67 @@ def test_backfill_structural_graph_edges_creates_parent_child_edges() -> None:
 
     assert second["edge_count"] == 0
     assert second["skipped_existing_count"] == 1
+
+
+def test_create_reviewed_semantic_edge_persists_user_reviewed_edge() -> None:
+    db = FakeDb()
+    source_id = ObjectId()
+    target_id = ObjectId()
+    source_document_id = ObjectId()
+    target_document_id = ObjectId()
+    db.nodes.rows.extend(
+        [
+            {
+                "_id": source_id,
+                "document_id": source_document_id,
+                "tree_id": ObjectId(),
+                "node_key": "source",
+                "labels": ["taj_mahal", "online_test"],
+            },
+            {
+                "_id": target_id,
+                "document_id": target_document_id,
+                "tree_id": ObjectId(),
+                "node_key": "target",
+                "labels": ["taj_mahal", "memory_reference"],
+            },
+        ]
+    )
+
+    result = create_reviewed_semantic_edge(
+        db,
+        source_node_id=str(source_id),
+        target_node_id=str(target_id),
+        relation_type="Related To",
+        weight=2,
+        confidence="bad",
+        reviewer="cello",
+        note="Shared Taj Mahal label.",
+    )
+
+    assert result["ok"] is True
+    assert len(db.graph_edges.rows) == 1
+    edge = db.graph_edges.rows[0]
+    assert edge["source_node_id"] == source_id
+    assert edge["target_node_id"] == target_id
+    assert edge["source_document_id"] == source_document_id
+    assert edge["target_document_id"] == target_document_id
+    assert edge["relation_type"] == "related_to"
+    assert edge["weight"] == 1.0
+    assert edge["confidence"] == 0.6
+    assert edge["provenance"]["source"] == "semantic_candidate_review"
+    assert edge["provenance"]["reviewer"] == "cello"
+    assert edge["provenance"]["shared_labels"] == ["taj_mahal"]
+
+    duplicate = create_reviewed_semantic_edge(
+        db,
+        source_node_id=str(source_id),
+        target_node_id=str(target_id),
+        relation_type="related_to",
+    )
+
+    assert duplicate["ok"] is False
+    assert duplicate["reason"] == "duplicate_edge"
 
 
 def test_graph_edge_status_counts_relations_and_provenance_sources() -> None:

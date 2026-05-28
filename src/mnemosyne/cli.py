@@ -15,6 +15,7 @@ from mnemosyne.db.repositories import (
     backfill_schema_metadata,
     backfill_structural_graph_edges,
     commit_ingestion,
+    create_reviewed_semantic_edge,
     find_duplicate_by_checksum,
     document_tree,
     graph_edge_status,
@@ -274,6 +275,15 @@ def main() -> None:
     semantic_candidates.add_argument("node_id")
     semantic_candidates.add_argument("--include-same-document", action="store_true")
     semantic_candidates.add_argument("--limit", type=int, default=10)
+
+    semantic_edge = subcommands.add_parser("create-semantic-edge")
+    semantic_edge.add_argument("source_node_id")
+    semantic_edge.add_argument("target_node_id")
+    semantic_edge.add_argument("--relation-type", default="related_to")
+    semantic_edge.add_argument("--weight", type=float, default=0.7)
+    semantic_edge.add_argument("--confidence", type=float, default=0.6)
+    semantic_edge.add_argument("--reviewer", default="user")
+    semantic_edge.add_argument("--note", default=None)
 
     compile_ctx = subcommands.add_parser("compile-context")
     compile_ctx.add_argument("node_id")
@@ -718,6 +728,25 @@ def main() -> None:
                         limit=args.limit,
                     ),
                 },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "create-semantic-edge":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                create_reviewed_semantic_edge(
+                    db,
+                    source_node_id=args.source_node_id,
+                    target_node_id=args.target_node_id,
+                    relation_type=args.relation_type,
+                    weight=args.weight,
+                    confidence=args.confidence,
+                    reviewer=args.reviewer,
+                    note=args.note,
+                ),
                 indent=2,
             )
         )

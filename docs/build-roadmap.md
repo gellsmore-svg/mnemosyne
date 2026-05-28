@@ -117,6 +117,7 @@ Current early read surface:
 - CLI graph inspection commands for single-hop edges, one-hop proximity expansion, and bounded multi-hop path expansion.
 - CLI graph status command reporting total edge count plus relation/provenance breakdowns.
 - CLI and memory-agent semantic-candidate diagnostics for read-only label-overlap candidate inspection before writing inferred semantic edges.
+- CLI reviewed semantic-edge promotion can turn two known nodes into a typed directed graph edge with reviewer/note provenance, bounded weight/confidence, duplicate protection, and shared-label evidence.
 - render compiled context to Markdown with include/skip metadata under a character budget.
 - build a prompt envelope with system instruction, user query, rendered context, and estimated token budget metadata.
 - ask/chat commands using the retrieval pipeline and local Ollama CLI answer adapter by default;
@@ -148,7 +149,7 @@ Current early read surface:
 Known gaps after reconciliation:
 
 - current ingestion chunking is deterministic scaffold, not Gemma-driven chunking;
-- graph edge writes, single-hop edge lookup, one-hop proximity expansion, bounded multi-hop path expansion, structural parent/child edge backfill, and read-only semantic-candidate diagnostics are first scaffolds; relation extraction, richer path scoring, and semantic-map traversal are not implemented;
+- graph edge writes, single-hop edge lookup, one-hop proximity expansion, bounded multi-hop path expansion, structural parent/child edge backfill, read-only semantic-candidate diagnostics, and reviewed semantic-edge promotion are first scaffolds; automated relation extraction, richer path scoring, and semantic-map traversal are not implemented;
 - destructive rebuild commands are maintenance-only and require `--force-replace`; versioned replacement remains unimplemented;
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
 - the compiled context corpus has only a first structured scaffold and does not yet match the full technical design schema;
