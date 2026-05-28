@@ -22,6 +22,7 @@ from mnemosyne.sessions.interaction import (
     prepare_tool_results_for_answer,
     ranked_focus_matches,
     render_tool_results,
+    run_memory_agent_loop,
     included_nodes_from_tool_results,
     score_node_match,
     select_active_document_focus_node,
@@ -1187,6 +1188,46 @@ def test_memory_agent_runtime_can_differ_from_answer_runtime() -> None:
     assert runtime.answer_adapter == "ollama_cli"
     assert runtime.ollama_model == "final"
     assert runtime.ollama_format is None
+
+
+def test_memory_agent_trace_records_runtime_json_controls(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            return {
+                "adapter": "fake",
+                "answer": '{"status":"done","tool_calls":[]}',
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    process_trace = []
+    runtime = RuntimeConfig(
+        answer_adapter="fake",
+        memory_agent_adapter="fake",
+        memory_agent_model="planner",
+        memory_agent_ollama_format="json",
+        ollama_think=False,
+        ollama_hide_thinking=True,
+    )
+
+    run_memory_agent_loop(
+        FakeDb(),
+        runtime,
+        query="find memory",
+        focus_node_id=None,
+        session_id="s1",
+        max_iterations=1,
+        process_trace=process_trace,
+    )
+
+    step_input = process_trace[0]["input"]
+    assert step_input["adapter"] == "fake"
+    assert step_input["model"] == "planner"
+    assert step_input["format"] == "json"
+    assert step_input["think"] is False
+    assert step_input["hide_thinking"] is True
 
 
 def test_build_memory_agent_prompt_includes_query_assembly_guidance() -> None:

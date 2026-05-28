@@ -101,6 +101,8 @@ For each iteration, Python:
 7. Summarizes the tool results for the next memory-agent iteration.
 8. Stops or continues, depending on the planner decision and configured iteration limit.
 
+The trace input records the planner adapter, model, requested response format, thinking controls, prompt text, and allowed tool specs. This is diagnostic metadata only; Python still validates the returned JSON and executes tools itself.
+
 If the planner does not return parseable JSON, Python creates a conservative fallback decision:
 
 ```json
