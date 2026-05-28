@@ -9,6 +9,12 @@ from bson import ObjectId
 from mnemosyne.adapters.mock import MockIngestionAdapter
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
+from mnemosyne.db.governance import (
+    list_agent_identities,
+    list_governance_policies,
+    list_process_objects,
+    list_trust_weighting_profiles,
+)
 from mnemosyne.db.indexes import ensure_indexes
 from mnemosyne.db.repositories import (
     DuplicateSourceError,
@@ -210,6 +216,18 @@ def main() -> None:
     subcommands.add_parser("queue-status")
     subcommands.add_parser("labels")
     subcommands.add_parser("sessions")
+
+    agent_identities = subcommands.add_parser("agent-identities")
+    agent_identities.add_argument("--limit", type=int, default=20)
+
+    trust_profiles = subcommands.add_parser("trust-weighting-profiles")
+    trust_profiles.add_argument("--limit", type=int, default=20)
+
+    governance_policies = subcommands.add_parser("governance-policies")
+    governance_policies.add_argument("--limit", type=int, default=20)
+
+    process_objects = subcommands.add_parser("process-objects")
+    process_objects.add_argument("--limit", type=int, default=20)
 
     active_documents = subcommands.add_parser("active-documents")
     active_documents.add_argument("--session-id", default="default")
@@ -531,6 +549,46 @@ def main() -> None:
     if args.command == "labels":
         ensure_indexes(db)
         print(json.dumps({"ok": True, "labels": label_definitions(db)}, indent=2))
+        return
+
+    if args.command == "agent-identities":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {"ok": True, "identities": list_agent_identities(db, limit=args.limit)},
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "trust-weighting-profiles":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {"ok": True, "profiles": list_trust_weighting_profiles(db, limit=args.limit)},
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "governance-policies":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {"ok": True, "policies": list_governance_policies(db, limit=args.limit)},
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "process-objects":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {"ok": True, "processes": list_process_objects(db, limit=args.limit)},
+                indent=2,
+            )
+        )
         return
 
     if args.command == "sessions":

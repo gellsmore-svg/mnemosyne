@@ -1,12 +1,12 @@
-# Nimmsign Cognitive Architecture Requirements Draft
+# Mnemosyne Cognitive Architecture Requirements Draft
 
 Status: forward-looking requirements note, draft v0.1.
 
-Naming note: the product name in the supplied draft was called out as misspelled. Keep `Nimmsign` as a placeholder until the intended spelling is confirmed; do not rename the current Mnemosyne package, database, routes, or repository from this note alone.
+Naming note: use `Mnemosyne` for the current repo and implementation. A later product rename is likely because another AI memory project already uses the same name on GitHub; do not rename packages, routes, database names, or repository metadata until a replacement name is chosen.
 
 ## Overview
 
-Nimmsign points beyond semantic storage and retrieval toward a governed cognitive architecture for long-running agentic reasoning, identity-aware cognition, process enforcement, and semantically structured collaboration.
+Mnemosyne points beyond semantic storage and retrieval toward a governed cognitive architecture for long-running agentic reasoning, identity-aware cognition, process enforcement, and semantically structured collaboration.
 
 Memory should not be treated as a passive repository queried by cognition. Memory should become an active part of cognition through semantic weighting, contextual interpretation, procedural enforcement, agent identity, trust evaluation, continuity, collaboration, governance, and moderation.
 

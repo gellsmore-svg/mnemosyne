@@ -332,9 +332,9 @@ As of 2026-05-22:
   - memory-agent adapter: `ollama_cli`;
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
-- Current automated suite at last full run: `229 passed`.
-- Forward-looking governed cognitive architecture requirements are captured in `docs/nimmsign-cognitive-architecture-draft.md`; the product spelling remains a placeholder until confirmed.
-- Candidate identity, governance policy, process-object, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; these are not yet runtime collections or filters.
+- Current automated suite at last full run: `235 passed`.
+- Forward-looking governed cognitive architecture requirements are captured in `docs/mnemosyne-cognitive-architecture-draft.md`; current docs use `Mnemosyne`, with a future product rename likely because of a GitHub name collision.
+- Candidate identity, governance policy, process-object, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; first read-only indexes/listing commands and default seed records exist, but these are not yet retrieval filters or enforcement behavior.
 
 ## Recommended Next Work
 
@@ -351,5 +351,5 @@ Next implementation candidates:
 2. Broaden near-match vocabulary carefully, next with active documents.
 3. Broaden source-document fallback beyond active-document reference prompts.
 4. Add active document registry skeleton.
-5. Add read-only schema/index scaffolds for identity, trust, and process collections from `docs/governance-schema-plan.md`.
+5. Inject active identity summaries into memory-agent prompts without changing retrieval filtering yet.
 6. Add embedding interface and a brute-force baseline evaluation harness.

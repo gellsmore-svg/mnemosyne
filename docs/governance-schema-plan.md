@@ -2,7 +2,7 @@
 
 Status: planning contract. Do not treat this as implemented runtime behavior until the relevant collections, migrations, APIs, and tests exist.
 
-This document translates the Nimmsign cognitive architecture draft into concrete schema surfaces for Mnemosyne. The immediate purpose is to keep identity, trust, temporal weighting, and process enforcement explicit before granting memory agents any write autonomy.
+This document translates the Mnemosyne cognitive architecture draft into concrete schema surfaces for Mnemosyne. The immediate purpose is to keep identity, trust, temporal weighting, and process enforcement explicit before granting memory agents any write autonomy.
 
 ## Design Constraints
 
@@ -10,7 +10,7 @@ This document translates the Nimmsign cognitive architecture draft into concrete
 - Reviewed semantic edges remain operator-governed; automated relationship extraction should produce candidates, not trusted graph writes.
 - Schema additions must preserve source provenance and endorsement labels at node/edge granularity.
 - Governance fields should be queryable and auditable, not hidden only inside unstructured prompt text.
-- Names below are candidate schema names; the product spelling remains unresolved in `docs/nimmsign-cognitive-architecture-draft.md`.
+- Names below are candidate schema names; a future product rename is expected but not yet chosen.
 
 ## Candidate Collections
 
@@ -176,9 +176,9 @@ The current system only implements pieces of steps 3, 6, and 7. Reviewed semanti
 
 ## Implementation Sequence
 
-1. Add schema constants and index planning for identity, policy, process, and weighting profile collections.
-2. Add read-only CLI/API listing and exact lookup for those collections.
-3. Seed one shared identity and one default trust weighting profile.
+1. Add schema constants and index planning for identity, policy, process, and weighting profile collections. Implemented for indexes and default seeds.
+2. Add read-only CLI/API listing and exact lookup for those collections. CLI listing is implemented; API listing and exact lookup remain open.
+3. Seed one shared identity and one default trust weighting profile. Implemented.
 4. Include active identity summaries in memory-agent prompts.
 5. Add retrieval filters for identity exclusions before any weighting changes.
 6. Add process-run persistence for restart/continuity state.
@@ -186,7 +186,7 @@ The current system only implements pieces of steps 3, 6, and 7. Reviewed semanti
 
 ## Open Questions
 
-- Confirm final product spelling before naming user-facing identity/governance surfaces.
+- Decide on a future product name before renaming user-facing identity/governance surfaces.
 - Decide whether visibility rules live directly on nodes/edges, as separate ACL documents, or both.
 - Decide whether trust score should be manually reviewed only, model-assisted, or computed from provenance and usage signals.
 - Decide how moderator agents are represented: identity only, process role, or separate policy evaluator.

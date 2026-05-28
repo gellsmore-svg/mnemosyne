@@ -479,6 +479,54 @@ def test_cli_review_semantic_edge_candidate_command(monkeypatch, capsys) -> None
     }
 
 
+def test_cli_agent_identities_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["mnemosyne", "agent-identities", "--limit", "3"])
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.list_agent_identities",
+        lambda _db, limit=20: [{"identity_id": "mnemosyne_shared", "limit": limit}],
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "identities": [{"identity_id": "mnemosyne_shared", "limit": 3}],
+    }
+
+
+def test_cli_trust_weighting_profiles_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "trust-weighting-profiles", "--limit", "2"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.list_trust_weighting_profiles",
+        lambda _db, limit=20: [{"weighting_profile_id": "default_balanced", "limit": limit}],
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "profiles": [{"weighting_profile_id": "default_balanced", "limit": 2}],
+    }
+
+
 class FakeCollection:
     def __init__(self, rows: list[dict]) -> None:
         self.rows = rows

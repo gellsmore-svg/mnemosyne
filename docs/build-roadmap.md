@@ -159,7 +159,7 @@ Known gaps after reconciliation:
 - the compiled context corpus has only a first structured scaffold and does not yet match the full technical design schema;
 - active document registry is only a first skeleton populated from used nodes, visible to the memory-agent, and used for narrow direct reference resolution/source fallback; it does not yet drive broad retrieval, endorsement, or restart state.
 - output ingestion is implemented only as conservative graph insertion plus explicit review labels; natural-language endorsement detection, relation extraction, restart state node, full traversal path scoring, unused-path decay, and REM consolidation are not started.
-- identity, governance policy, process-object, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md` but not implemented.
+- identity, governance policy, process-object, and trust/temporal weighting schemas are planned in `docs/governance-schema-plan.md`; first read-only indexes/listing commands and default seed records exist, but no retrieval filters or enforcement behavior use them yet.
 
 Minimum build:
 
@@ -232,5 +232,5 @@ Minimum build:
 Design note:
 
 - see `docs/practical-applications.md` for the current application lanes and integration criteria.
-- see `docs/nimmsign-cognitive-architecture-draft.md` for the forward-looking governed cognitive architecture requirements and naming caveat.
+- see `docs/mnemosyne-cognitive-architecture-draft.md` for the forward-looking governed cognitive architecture requirements and future product-name caveat.
 - see `docs/governance-schema-plan.md` for the candidate identity/trust/process schema contract before agent write autonomy.
