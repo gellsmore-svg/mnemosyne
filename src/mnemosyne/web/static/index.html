@@ -57,9 +57,11 @@
           <div class="operator-grid">
             <input id="sourceUpload" type="file" accept=".md,.markdown,.txt" multiple />
             <button id="uploadSource">Stage Files</button>
+            <button id="browseIngest">Browse Inbox</button>
             <button id="processInbox">Process Inbox</button>
             <div id="queueStatus" class="status">Queue: unknown</div>
           </div>
+          <div id="ingestFiles" class="list"></div>
           <pre id="processResult">Stage .md/.txt files or drop them into data/ingest, then process the inbox.</pre>
         </section>
 

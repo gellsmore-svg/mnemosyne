@@ -374,6 +374,27 @@ def create_app() -> FastAPI:
             rows.append(job)
         return {"ok": True, "jobs": rows}
 
+    @app.get("/api/ingest-folder")
+    def ingest_folder() -> dict[str, Any]:
+        files = []
+        for path in discover_sources(config.paths.ingest):
+            stat = path.stat()
+            files.append(
+                {
+                    "name": path.name,
+                    "path": str(path),
+                    "suffix": path.suffix.lower(),
+                    "bytes": stat.st_size,
+                    "modified_at": stat.st_mtime,
+                }
+            )
+        return {
+            "ok": True,
+            "path": str(config.paths.ingest),
+            "files": files,
+            "count": len(files),
+        }
+
     @app.post("/api/process-inbox")
     def process_inbox() -> dict[str, Any]:
         enqueued = []

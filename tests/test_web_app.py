@@ -677,3 +677,27 @@ def test_upload_source_rejects_unsupported_suffix() -> None:
 
     assert response.status_code == 400
     assert "Unsupported source type" in response.json()["detail"]
+
+
+def test_ingest_folder_lists_supported_files() -> None:
+    client = TestClient(app)
+    config = load_config()
+    filename = f"web-folder-{ObjectId()}.txt"
+    supported_path = config.paths.ingest / filename
+    unsupported_path = config.paths.ingest / f"{filename}.pdf"
+    config.paths.ingest.mkdir(parents=True, exist_ok=True)
+    supported_path.write_text("folder source", encoding="utf-8")
+    unsupported_path.write_text("ignored", encoding="utf-8")
+
+    try:
+        response = client.get("/api/ingest-folder")
+        data = response.json()
+    finally:
+        supported_path.unlink(missing_ok=True)
+        unsupported_path.unlink(missing_ok=True)
+
+    assert response.status_code == 200
+    assert data["ok"] is True
+    names = [row["name"] for row in data["files"]]
+    assert filename in names
+    assert f"{filename}.pdf" not in names

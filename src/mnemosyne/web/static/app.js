@@ -311,6 +311,20 @@ async function uploadSourceFiles() {
   await loadQueue();
 }
 
+async function browseIngestFolder() {
+  const data = await api("/api/ingest-folder");
+  $("ingestFiles").innerHTML = data.files.length
+    ? data.files
+        .map(
+          (file) =>
+            `<div class="item"><strong>${escapeHtml(file.name)}</strong><br><small>${escapeHtml(
+              file.path
+            )} · ${file.bytes} bytes</small></div>`
+        )
+        .join("")
+    : `<div class="item">No supported files in ${escapeHtml(data.path)}.</div>`;
+}
+
 async function refresh() {
   await Promise.all([
     loadHealth(),
@@ -330,6 +344,7 @@ $("createSession").addEventListener("click", createSession);
 $("search").addEventListener("click", searchNodes);
 $("refresh").addEventListener("click", refresh);
 $("uploadSource").addEventListener("click", uploadSourceFiles);
+$("browseIngest").addEventListener("click", browseIngestFolder);
 $("processInbox").addEventListener("click", processInbox);
 $("loadHistory").addEventListener("click", loadHistory);
 $("loadJobs").addEventListener("click", loadJobs);

@@ -121,6 +121,7 @@ Current early read surface:
 - CLI semantic-edge candidate review can accept queued candidates into reviewed graph edges or reject them with reviewer/note metadata.
 - FastAPI and the web operator panel can list pending semantic-edge candidates and accept/reject them through reviewed API calls.
 - FastAPI and the web operator panel can stage supported text/Markdown files into `data/ingest/` through `/api/upload-source`, then process them through the existing queue/worker path.
+- FastAPI and the web operator panel can list supported files currently waiting in the configured ingest inbox through `/api/ingest-folder`.
 - CLI reviewed semantic-edge promotion can turn two known nodes into a typed directed graph edge with reviewer/note provenance, bounded weight/confidence, duplicate protection, and shared-label evidence.
 - proximity and graph-path summaries expose reviewed-edge provenance diagnostics so operator/planner traces can distinguish reviewed semantic edges from structural traversal.
 - render compiled context to Markdown with include/skip metadata under a character budget.
