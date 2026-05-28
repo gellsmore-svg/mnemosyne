@@ -140,70 +140,52 @@ def answer_query(
             process_run_id=process_run_id,
         )
 
-    selected_node_id = focus_node_id
-    selected_node_source = "provided" if focus_node_id else None
-    active_documents: list[dict[str, Any]] = []
-    is_active_document_reference = active_document_reference_query(query)
-    if not selected_node_id and is_active_document_reference:
-        active_documents = list_active_documents(db, session_id=session_id, limit=5)
-        selected_node_id = select_active_document_focus_node(
+    try:
+        direct_preparation = prepare_direct_answer_prompt(
             db,
-            query,
-            session_id,
-            active_documents=active_documents,
+            config=config,
+            query=query,
+            focus_node_id=focus_node_id,
+            session_id=session_id,
         )
-        if selected_node_id:
-            selected_node_source = "active_document"
-    if not selected_node_id:
-        selected_node_id = select_focus_node(db, query)
-        if selected_node_id:
-            selected_node_source = "corpus"
-    retrieval_status = "matched_context"
-    if selected_node_id:
-        context = compile_context(db, selected_node_id)
-        if context:
-            prompt = build_prompt_envelope(
-                context,
-                query=query,
-                token_budget=config.retrieval.prompt_token_budget,
-                reserved_response_tokens=config.retrieval.reserved_response_tokens,
-            )
-        else:
-            retrieval_status = "missing_context"
-            prompt = build_prompt_envelope_without_context(
-                query=query,
-                token_budget=config.retrieval.prompt_token_budget,
-                reserved_response_tokens=config.retrieval.reserved_response_tokens,
-            )
-            prompt["context_metadata"]["retrieval_status"] = retrieval_status
-    else:
-        prompt = None
-        if is_active_document_reference:
-            prompt = build_active_document_source_fallback_envelope(
-                active_documents=active_documents,
-                query=query,
-                token_budget=config.retrieval.prompt_token_budget,
-                reserved_response_tokens=config.retrieval.reserved_response_tokens,
-            )
-        if prompt:
-            retrieval_status = "active_document_source_fallback"
-        else:
-            retrieval_status = "no_focus_node"
-            prompt = build_prompt_envelope_without_context(
-                query=query,
-                token_budget=config.retrieval.prompt_token_budget,
-                reserved_response_tokens=config.retrieval.reserved_response_tokens,
-            )
-    retrieval_output = {
-        "retrieval_status": retrieval_status,
-        "focus_node_id": selected_node_id,
-        "context_text": prompt["context_text"],
-        "context_metadata": prompt["context_metadata"],
-        "budget": prompt["budget"],
-    }
-    trust_diagnostic = compact_trust_diagnostic_for_node(db, selected_node_id)
-    if trust_diagnostic:
-        retrieval_output["trust_diagnostic"] = trust_diagnostic
+    except Exception as error:
+        finish_answer_process_run(
+            db,
+            process_run_id,
+            status="blocked",
+            current_step_id="retrieval_failed",
+            exception={
+                "reason": "retrieval_failed",
+                "proposal": "Inspect retrieval preparation and retry.",
+                "note": str(error),
+            },
+        )
+        process_trace.append(
+            {
+                "step": "retrieval_context",
+                "input": {
+                    "query": query,
+                    "provided_focus_node_id": focus_node_id,
+                    "mode": runtime_config.retrieval_mode,
+                },
+                "output": {"ok": False, "error": str(error)},
+            }
+        )
+        return {
+            "ok": False,
+            "reason": "retrieval_failed",
+            "message": str(error),
+            "adapter": runtime_config.answer_adapter,
+            "model": runtime_config.ollama_model,
+            "focus_node_id": focus_node_id,
+            "process_run_id": process_run_id,
+            "process_trace": process_trace,
+        }
+    selected_node_id = direct_preparation["selected_node_id"]
+    selected_node_source = direct_preparation["selected_node_source"]
+    retrieval_status = direct_preparation["retrieval_status"]
+    prompt = direct_preparation["prompt"]
+    retrieval_output = direct_preparation["retrieval_output"]
     process_trace.append(
         {
             "step": "retrieval_context",
@@ -310,22 +292,55 @@ def answer_query_agentic(
     process_trace: list[dict[str, Any]],
     process_run_id: str | None = None,
 ) -> dict[str, Any]:
-    tool_results = run_memory_agent_loop(
-        db=db,
-        runtime_config=runtime_config,
-        query=query,
-        focus_node_id=focus_node_id,
-        session_id=session_id,
-        max_iterations=config.retrieval.memory_agent_max_iterations,
-        process_trace=process_trace,
-    )
-
-    prompt = build_agentic_answer_envelope(
-        query=query,
-        tool_results=tool_results,
-        token_budget=config.retrieval.prompt_token_budget,
-        reserved_response_tokens=config.retrieval.reserved_response_tokens,
-    )
+    try:
+        tool_results = run_memory_agent_loop(
+            db=db,
+            runtime_config=runtime_config,
+            query=query,
+            focus_node_id=focus_node_id,
+            session_id=session_id,
+            max_iterations=config.retrieval.memory_agent_max_iterations,
+            process_trace=process_trace,
+        )
+        prompt = build_agentic_answer_envelope(
+            query=query,
+            tool_results=tool_results,
+            token_budget=config.retrieval.prompt_token_budget,
+            reserved_response_tokens=config.retrieval.reserved_response_tokens,
+        )
+    except Exception as error:
+        finish_answer_process_run(
+            db,
+            process_run_id,
+            status="blocked",
+            current_step_id="agentic_retrieval_failed",
+            exception={
+                "reason": "agentic_retrieval_failed",
+                "proposal": "Inspect memory-agent planning/tool execution and retry.",
+                "note": str(error),
+            },
+        )
+        process_trace.append(
+            {
+                "step": "memory_agent_iteration",
+                "input": {
+                    "query": query,
+                    "focus_node_id": focus_node_id,
+                    "session_id": session_id,
+                },
+                "output": {"ok": False, "error": str(error)},
+            }
+        )
+        return {
+            "ok": False,
+            "reason": "agentic_retrieval_failed",
+            "message": str(error),
+            "adapter": runtime_config.answer_adapter,
+            "model": runtime_config.ollama_model,
+            "focus_node_id": selected_node_id,
+            "process_run_id": process_run_id,
+            "process_trace": process_trace,
+        }
     retrieval_status = "agentic_tool_context" if prompt["context_metadata"]["included"] else "agentic_no_tool_context"
     adapter_step = {
         "step": "answer_adapter",
@@ -406,6 +421,87 @@ def answer_query_agentic(
         "retrieval_status": retrieval_status,
         "process_run_id": process_run_id,
         "process_trace": process_trace,
+    }
+
+
+def prepare_direct_answer_prompt(
+    db: Database,
+    *,
+    config: AppConfig,
+    query: str,
+    focus_node_id: str | None,
+    session_id: str,
+) -> dict[str, Any]:
+    selected_node_id = focus_node_id
+    selected_node_source = "provided" if focus_node_id else None
+    active_documents: list[dict[str, Any]] = []
+    is_active_document_reference = active_document_reference_query(query)
+    if not selected_node_id and is_active_document_reference:
+        active_documents = list_active_documents(db, session_id=session_id, limit=5)
+        selected_node_id = select_active_document_focus_node(
+            db,
+            query,
+            session_id,
+            active_documents=active_documents,
+        )
+        if selected_node_id:
+            selected_node_source = "active_document"
+    if not selected_node_id:
+        selected_node_id = select_focus_node(db, query)
+        if selected_node_id:
+            selected_node_source = "corpus"
+    retrieval_status = "matched_context"
+    if selected_node_id:
+        context = compile_context(db, selected_node_id)
+        if context:
+            prompt = build_prompt_envelope(
+                context,
+                query=query,
+                token_budget=config.retrieval.prompt_token_budget,
+                reserved_response_tokens=config.retrieval.reserved_response_tokens,
+            )
+        else:
+            retrieval_status = "missing_context"
+            prompt = build_prompt_envelope_without_context(
+                query=query,
+                token_budget=config.retrieval.prompt_token_budget,
+                reserved_response_tokens=config.retrieval.reserved_response_tokens,
+            )
+            prompt["context_metadata"]["retrieval_status"] = retrieval_status
+    else:
+        prompt = None
+        if is_active_document_reference:
+            prompt = build_active_document_source_fallback_envelope(
+                active_documents=active_documents,
+                query=query,
+                token_budget=config.retrieval.prompt_token_budget,
+                reserved_response_tokens=config.retrieval.reserved_response_tokens,
+            )
+        if prompt:
+            retrieval_status = "active_document_source_fallback"
+        else:
+            retrieval_status = "no_focus_node"
+            prompt = build_prompt_envelope_without_context(
+                query=query,
+                token_budget=config.retrieval.prompt_token_budget,
+                reserved_response_tokens=config.retrieval.reserved_response_tokens,
+            )
+    retrieval_output = {
+        "retrieval_status": retrieval_status,
+        "focus_node_id": selected_node_id,
+        "context_text": prompt["context_text"],
+        "context_metadata": prompt["context_metadata"],
+        "budget": prompt["budget"],
+    }
+    trust_diagnostic = compact_trust_diagnostic_for_node(db, selected_node_id)
+    if trust_diagnostic:
+        retrieval_output["trust_diagnostic"] = trust_diagnostic
+    return {
+        "selected_node_id": selected_node_id,
+        "selected_node_source": selected_node_source,
+        "retrieval_status": retrieval_status,
+        "prompt": prompt,
+        "retrieval_output": retrieval_output,
     }
 
 

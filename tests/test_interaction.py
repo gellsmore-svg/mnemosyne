@@ -409,6 +409,38 @@ def test_answer_query_marks_process_run_blocked_when_adapter_fails(monkeypatch) 
     assert "adapter offline" in updates[0]["exception"]["note"]
 
 
+def test_answer_query_marks_process_run_blocked_when_retrieval_fails(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    updates = []
+
+    monkeypatch.setattr(
+        interaction,
+        "select_focus_node",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("retrieval broke")),
+    )
+    monkeypatch.setattr(
+        interaction,
+        "create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1"},
+    )
+    monkeypatch.setattr(
+        interaction,
+        "update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+
+    result = answer_query(FakeDb(), AppConfig(), "plain prompt", session_id="s1")
+
+    assert result["ok"] is False
+    assert result["reason"] == "retrieval_failed"
+    assert result["process_run_id"] == "run1"
+    assert updates[0]["status"] == "blocked"
+    assert updates[0]["current_step_id"] == "retrieval_failed"
+    assert updates[0]["exception"]["reason"] == "retrieval_failed"
+    assert "retrieval broke" in updates[0]["exception"]["note"]
+
+
 def test_answer_query_uses_active_document_source_fallback(monkeypatch, tmp_path) -> None:
     import mnemosyne.sessions.interaction as interaction
 
@@ -679,6 +711,39 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
     assert result["process_trace"][1]["output"]["tool_results"][0]["tool"] == "search_nodes"
     assert result["process_trace"][2]["output"]["stopped"] is True
     assert "Mnemosyne Tool Results" in prompts[2]
+
+
+def test_agentic_answer_query_marks_process_run_blocked_when_planning_fails(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    updates = []
+
+    monkeypatch.setattr(
+        interaction,
+        "run_memory_agent_loop",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("planner broke")),
+    )
+    monkeypatch.setattr(
+        interaction,
+        "create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1"},
+    )
+    monkeypatch.setattr(
+        interaction,
+        "update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+    config = AppConfig(runtime=RuntimeConfig(retrieval_mode="agentic", answer_adapter="fake"))
+
+    result = answer_query(FakeDb(), config, "find memory", session_id="s1")
+
+    assert result["ok"] is False
+    assert result["reason"] == "agentic_retrieval_failed"
+    assert result["process_run_id"] == "run1"
+    assert updates[0]["status"] == "blocked"
+    assert updates[0]["current_step_id"] == "agentic_retrieval_failed"
+    assert updates[0]["exception"]["reason"] == "agentic_retrieval_failed"
+    assert "planner broke" in updates[0]["exception"]["note"]
 
 
 def test_agentic_answer_query_falls_back_when_planner_stops_without_tools(monkeypatch) -> None:
