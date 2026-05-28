@@ -44,6 +44,7 @@ The current implementation has added several scaffold features and operational d
 - Semantic-edge candidate review can accept a queued candidate into a reviewed graph edge or reject it with reviewer/note metadata.
 - FastAPI and the web operator panel expose semantic-edge candidate listing and accept/reject review actions.
 - Reviewed semantic-edge promotion is operator controlled: a CLI command can create a typed directed edge between two known nodes with reviewer/note provenance, shared-label evidence, duplicate protection, and bounded weight/confidence. Memory-agent tool calls remain read-only.
+- Proximity and graph-path summaries expose reviewed-edge provenance diagnostics so traces can show when semantic review, rather than document structure alone, influenced traversal.
 - Label definitions are stored in MongoDB.
 
 ### Corpus Imports
@@ -332,6 +333,7 @@ As of 2026-05-22:
   - memory-agent model: `gemma3:1b`;
   - retrieval mode: `direct`.
 - Current automated suite at last full run: `229 passed`.
+- Forward-looking governed cognitive architecture requirements are captured in `docs/nimmsign-cognitive-architecture-draft.md`; the product spelling remains a placeholder until confirmed.
 
 ## Recommended Next Work
 
@@ -348,5 +350,5 @@ Next implementation candidates:
 2. Broaden near-match vocabulary carefully, next with active documents.
 3. Broaden source-document fallback beyond active-document reference prompts.
 4. Add active document registry skeleton.
-5. Add retrieval-path diagnostics that show when reviewed semantic edges affect proximity/path expansion.
+5. Add identity/trust/process schema planning based on the Nimmsign cognitive architecture draft before granting agents write autonomy.
 6. Add embedding interface and a brute-force baseline evaluation harness.

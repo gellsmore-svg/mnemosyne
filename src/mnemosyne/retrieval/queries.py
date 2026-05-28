@@ -475,6 +475,7 @@ def adjacent_node_for_edge(edge: dict[str, Any], node_id: str) -> dict[str, Any]
 
 
 def edge_summary(edge: dict[str, Any]) -> dict[str, Any]:
+    provenance = edge.get("provenance") or {}
     return {
         "edge_id": edge.get("edge_id"),
         "source_node_id": edge.get("source_node_id"),
@@ -483,6 +484,9 @@ def edge_summary(edge: dict[str, Any]) -> dict[str, Any]:
         "weight": edge.get("weight"),
         "confidence": edge.get("confidence"),
         "direction": edge.get("direction"),
+        "provenance_source": provenance.get("source"),
+        "reviewer": provenance.get("reviewer"),
+        "shared_label_count": provenance.get("shared_label_count"),
     }
 
 

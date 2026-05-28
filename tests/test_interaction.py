@@ -992,6 +992,9 @@ def test_memory_agent_tool_summary_includes_proximity_matches() -> None:
                                 "confidence": 0.8,
                                 "source_node_id": "node1",
                                 "target_node_id": "near1",
+                                "provenance_source": "semantic_candidate_review",
+                                "reviewer": "tester",
+                                "shared_label_count": 2,
                             },
                         }
                     ],
@@ -1013,6 +1016,9 @@ def test_memory_agent_tool_summary_includes_proximity_matches() -> None:
                 "relation_type": "supports",
                 "weight": 0.9,
                 "confidence": 0.8,
+                "provenance_source": "semantic_candidate_review",
+                "reviewer": "tester",
+                "shared_label_count": 2,
             },
         }
     ]
@@ -1035,7 +1041,14 @@ def test_memory_agent_tool_summary_includes_graph_path_matches() -> None:
                             "path_score": 0.5184,
                             "path_depth": 2,
                             "path_edges": [
-                                {"relation_type": "supports", "weight": 0.9, "confidence": 0.9},
+                                {
+                                    "relation_type": "supports",
+                                    "weight": 0.9,
+                                    "confidence": 0.9,
+                                    "provenance_source": "semantic_candidate_review",
+                                    "reviewer": "tester",
+                                    "shared_label_count": 1,
+                                },
                                 {"relation_type": "extends", "weight": 0.8, "confidence": 0.8},
                             ],
                         }
@@ -1056,7 +1069,14 @@ def test_memory_agent_tool_summary_includes_graph_path_matches() -> None:
             "path_score": 0.5184,
             "path_depth": 2,
             "path_edges": [
-                {"relation_type": "supports", "weight": 0.9, "confidence": 0.9},
+                {
+                    "relation_type": "supports",
+                    "weight": 0.9,
+                    "confidence": 0.9,
+                    "provenance_source": "semantic_candidate_review",
+                    "reviewer": "tester",
+                    "shared_label_count": 1,
+                },
                 {"relation_type": "extends", "weight": 0.8, "confidence": 0.8},
             ],
         }

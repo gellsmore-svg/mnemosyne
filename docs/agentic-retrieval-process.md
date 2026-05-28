@@ -230,7 +230,7 @@ For `expand_proximity`, the summary includes:
 - labels;
 - text previews;
 - proximity scores;
-- compact edge relation type, weight, and confidence.
+- compact edge relation type, weight, confidence, and reviewed-edge provenance when present.
 
 For `expand_graph_paths`, the summary includes:
 
@@ -241,7 +241,7 @@ For `expand_graph_paths`, the summary includes:
 - text previews;
 - path score;
 - path depth;
-- compact path edge relation type, weight, and confidence.
+- compact path edge relation type, weight, confidence, and reviewed-edge provenance when present.
 
 For `semantic_candidates`, the summary includes:
 

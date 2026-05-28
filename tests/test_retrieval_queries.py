@@ -498,6 +498,11 @@ def test_expand_proximity_scores_adjacent_nodes() -> None:
                 "relation_type": "supports",
                 "weight": 0.9,
                 "confidence": 0.8,
+                "provenance": {
+                    "source": "semantic_candidate_review",
+                    "reviewer": "tester",
+                    "shared_label_count": 2,
+                },
             },
         ],
     )
@@ -507,6 +512,9 @@ def test_expand_proximity_scores_adjacent_nodes() -> None:
     assert [node["title"] for node in nodes] == ["Strong", "Weak"]
     assert [node["proximity_score"] for node in nodes] == [0.72, 0.25]
     assert nodes[0]["edge"]["source_node_id"] == str(strong_id)
+    assert nodes[0]["edge"]["provenance_source"] == "semantic_candidate_review"
+    assert nodes[0]["edge"]["reviewer"] == "tester"
+    assert nodes[0]["edge"]["shared_label_count"] == 2
 
 
 def test_expand_proximity_returns_empty_for_bad_node_id() -> None:
@@ -575,6 +583,11 @@ def test_expand_graph_paths_scores_bounded_multi_hop_paths() -> None:
                 "relation_type": "supports",
                 "weight": 0.8,
                 "confidence": 0.8,
+                "provenance": {
+                    "source": "semantic_candidate_review",
+                    "reviewer": "tester",
+                    "shared_label_count": 1,
+                },
             },
             {
                 "_id": ObjectId(),
@@ -602,6 +615,9 @@ def test_expand_graph_paths_scores_bounded_multi_hop_paths() -> None:
     assert paths[1]["path_score"] == 0.5184
     assert paths[1]["path_depth"] == 2
     assert [edge["relation_type"] for edge in paths[1]["path_edges"]] == ["supports", "supports"]
+    assert paths[1]["path_edges"][1]["provenance_source"] == "semantic_candidate_review"
+    assert paths[1]["path_edges"][1]["reviewer"] == "tester"
+    assert paths[1]["path_edges"][1]["shared_label_count"] == 1
     assert str(focus_id) not in [path["node_id"] for path in paths]
 
 

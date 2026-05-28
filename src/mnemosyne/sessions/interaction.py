@@ -919,20 +919,12 @@ def compact_node_matches(
             item["proximity_score"] = match.get("proximity_score")
             edge = match.get("edge")
             if isinstance(edge, dict):
-                item["edge"] = {
-                    "relation_type": edge.get("relation_type"),
-                    "weight": edge.get("weight"),
-                    "confidence": edge.get("confidence"),
-                }
+                item["edge"] = compact_edge_summary(edge)
         if include_graph_path:
             item["path_score"] = match.get("path_score")
             item["path_depth"] = match.get("path_depth")
             item["path_edges"] = [
-                {
-                    "relation_type": edge.get("relation_type"),
-                    "weight": edge.get("weight"),
-                    "confidence": edge.get("confidence"),
-                }
+                compact_edge_summary(edge)
                 for edge in match.get("path_edges") or []
                 if isinstance(edge, dict)
             ]
@@ -941,6 +933,18 @@ def compact_node_matches(
             item["shared_label_count"] = match.get("shared_label_count", 0)
         compact.append(item)
     return compact
+
+
+def compact_edge_summary(edge: dict[str, Any]) -> dict[str, Any]:
+    item = {
+        "relation_type": edge.get("relation_type"),
+        "weight": edge.get("weight"),
+        "confidence": edge.get("confidence"),
+    }
+    for key in ("provenance_source", "reviewer", "shared_label_count"):
+        if edge.get(key) is not None:
+            item[key] = edge.get(key)
+    return item
 
 
 def query_assembly_has_values(assembly: dict[str, Any]) -> bool:
