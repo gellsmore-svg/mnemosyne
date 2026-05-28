@@ -31,6 +31,7 @@ from mnemosyne.retrieval.queries import (
     search_nodes,
     semantic_candidate_nodes,
 )
+from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
 from mnemosyne.sessions.active_documents import list_active_documents
 from mnemosyne.sessions.exchanges import save_exchange
 
@@ -185,6 +186,16 @@ def answer_query(
                 token_budget=config.retrieval.prompt_token_budget,
                 reserved_response_tokens=config.retrieval.reserved_response_tokens,
             )
+    retrieval_output = {
+        "retrieval_status": retrieval_status,
+        "focus_node_id": selected_node_id,
+        "context_text": prompt["context_text"],
+        "context_metadata": prompt["context_metadata"],
+        "budget": prompt["budget"],
+    }
+    trust_diagnostic = compact_trust_diagnostic_for_node(db, selected_node_id)
+    if trust_diagnostic:
+        retrieval_output["trust_diagnostic"] = trust_diagnostic
     process_trace.append(
         {
             "step": "retrieval_context",
@@ -195,13 +206,7 @@ def answer_query(
                 "selected_node_source": selected_node_source,
                 "mode": config.runtime.retrieval_mode,
             },
-            "output": {
-                "retrieval_status": retrieval_status,
-                "focus_node_id": selected_node_id,
-                "context_text": prompt["context_text"],
-                "context_metadata": prompt["context_metadata"],
-                "budget": prompt["budget"],
-            },
+            "output": retrieval_output,
         }
     )
     adapter_step = {
@@ -965,6 +970,8 @@ def compact_node_matches(
         if include_semantic:
             item["shared_labels"] = match.get("shared_labels") or []
             item["shared_label_count"] = match.get("shared_label_count", 0)
+        if match.get("trust_diagnostic"):
+            item["trust_diagnostic"] = match.get("trust_diagnostic")
         compact.append(item)
     return compact
 
@@ -1363,7 +1370,8 @@ def execute_search_nodes_tool(
                     seen.add(row["node_id"])
                     matches.append(row)
     matches.sort(key=lambda row: score_node_match(row, query_assembly), reverse=True)
-    top_matches = matches[:limit]
+    top_matches = annotate_matches_with_trust_diagnostics(db, matches[:limit], identity)
+    details["trust_diagnostics"] = trust_diagnostics_from_matches(top_matches)
     compiled_contexts = []
     for match in top_matches[:2]:
         context = compile_context(db, match["node_id"])
@@ -1387,6 +1395,72 @@ def search_nodes_with_optional_identity(
     if identity:
         return search_nodes(db, query=query, label=label, limit=limit, identity=identity)
     return search_nodes(db, query=query, label=label, limit=limit)
+
+
+def annotate_matches_with_trust_diagnostics(
+    db: Database,
+    matches: list[dict[str, Any]],
+    identity: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    profile_id = identity.get("weighting_profile_id") if identity else None
+    annotated = []
+    for match in matches:
+        row = dict(match)
+        diagnostic = compact_trust_diagnostic_for_node(
+            db,
+            match.get("node_id"),
+            weighting_profile_id=profile_id,
+        )
+        if diagnostic:
+            row["trust_diagnostic"] = diagnostic
+        annotated.append(row)
+    return annotated
+
+
+def compact_trust_diagnostic_for_node(
+    db: Database,
+    node_id: Any,
+    weighting_profile_id: str | None = None,
+) -> dict[str, Any] | None:
+    if not node_id:
+        return None
+    result = trust_temporal_diagnostic_for_node(
+        db,
+        str(node_id),
+        weighting_profile_id=weighting_profile_id,
+    )
+    if not result:
+        return None
+    diagnostic = result.get("diagnostic") or {}
+    profile = result.get("weighting_profile") or {}
+    signals = diagnostic.get("signals") or {}
+    return {
+        "score": diagnostic.get("score"),
+        "components": diagnostic.get("components") or {},
+        "weighting_profile_id": profile.get("weighting_profile_id"),
+        "signals": {
+            "endorsement_label": signals.get("endorsement_label"),
+            "explicit_trust_score": signals.get("explicit_trust_score"),
+            "usage_score": signals.get("usage_score"),
+            "verification_required": signals.get("verification_required"),
+            "last_verified_at": signals.get("last_verified_at"),
+        },
+    }
+
+
+def trust_diagnostics_from_matches(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    diagnostics = []
+    for match in matches:
+        diagnostic = match.get("trust_diagnostic")
+        if diagnostic:
+            diagnostics.append(
+                {
+                    "node_id": match.get("node_id"),
+                    "title": match.get("title"),
+                    **diagnostic,
+                }
+            )
+    return diagnostics
 
 
 def execute_expand_proximity_tool(
@@ -2140,6 +2214,19 @@ def render_search_details_lines(details: dict[str, Any]) -> list[str]:
                 probes.append(f"{query} ({item.get('result_count', 0)})")
         if probes:
             lines.append(f"- Fallback searches: {format_list_for_prompt(probes)}")
+    trust_diagnostics = details.get("trust_diagnostics") or []
+    if trust_diagnostics:
+        rendered = []
+        for item in trust_diagnostics[:5]:
+            node_id = item.get("node_id")
+            score = item.get("score")
+            components = item.get("components") or {}
+            rendered.append(
+                f"{node_id}: score={score}, trust={components.get('trust')}, "
+                f"temporal={components.get('temporal')}, frequency={components.get('frequency')}, "
+                f"verification={components.get('verification')}"
+            )
+        lines.append(f"- Trust/temporal diagnostics: {format_list_for_prompt(rendered)}")
     return lines
 
 

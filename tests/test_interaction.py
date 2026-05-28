@@ -1003,6 +1003,39 @@ def test_memory_agent_tool_summary_includes_search_diagnostics() -> None:
     ]
 
 
+def test_memory_agent_tool_summary_includes_trust_diagnostic() -> None:
+    diagnostic = {
+        "score": 0.68,
+        "components": {"trust": 0.55, "temporal": 1.0},
+        "weighting_profile_id": "default_balanced",
+        "signals": {"endorsement_label": "unreviewed"},
+    }
+
+    summary = summarize_tool_results_for_memory_agent(
+        [
+            {
+                "tool": "search_nodes",
+                "arguments": {"query": "memory"},
+                "ok": True,
+                "output": {
+                    "matches": [
+                        {
+                            "node_id": "node1",
+                            "title": "System Name",
+                            "labels": ["source_section"],
+                            "text_preview": "Mnemosyne is a memory layer.",
+                            "trust_diagnostic": diagnostic,
+                        }
+                    ]
+                },
+                "details": {},
+            }
+        ]
+    )
+
+    assert summary[0]["top_matches"][0]["trust_diagnostic"] == diagnostic
+
+
 def test_memory_agent_tool_summary_includes_proximity_matches() -> None:
     summary = summarize_tool_results_for_memory_agent(
         [
@@ -1258,6 +1291,34 @@ def test_execute_search_nodes_tool_passes_active_identity(monkeypatch) -> None:
     assert identities[1]["identity_id"] == "restricted_agent"
     assert details["active_identity_id"] == "restricted_agent"
     assert details["identity_excluded_count"] == 1
+
+
+def test_execute_search_nodes_tool_adds_trust_diagnostics(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5, identity=None):
+        return [{"node_id": "node1", "title": "Memory", "labels": ["source_chunk"]}]
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "compile_context", lambda _db, _node_id: None)
+    monkeypatch.setattr(
+        interaction,
+        "trust_temporal_diagnostic_for_node",
+        lambda _db, node_id, weighting_profile_id=None: {
+            "weighting_profile": {"weighting_profile_id": weighting_profile_id},
+            "diagnostic": {
+                "score": 0.68,
+                "components": {"trust": 0.55, "temporal": 1.0},
+                "signals": {"endorsement_label": "unreviewed", "usage_score": 2},
+            },
+        },
+    )
+
+    output, details = execute_search_nodes_tool(FakeDb(), query="memory")
+
+    assert output["matches"][0]["trust_diagnostic"]["score"] == 0.68
+    assert details["trust_diagnostics"][0]["node_id"] == "node1"
+    assert details["trust_diagnostics"][0]["components"]["trust"] == 0.55
 
 
 def test_execute_tool_calls_can_list_active_documents(monkeypatch) -> None:
