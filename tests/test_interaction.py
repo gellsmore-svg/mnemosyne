@@ -3347,6 +3347,17 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
     assert context_document["controller_decision"]["mode"] == "agentic"
     assert context_document["controller_decision"]["current_owner"] == "memory_agent_controller"
     assert envelope["context_metadata"]["controller_decision"] == context_document["controller_decision"]
+    assert context_document["evidence_summary"] == {
+        "tool_result_count": 3,
+        "successful_tool_count": 3,
+        "failed_tool_count": 0,
+        "match_count": 26,
+        "context_count": 1,
+        "record_count": 1,
+        "included_node_count": 1,
+        "included_node_ids": ["node1"],
+        "source_documents": [{"document_id": "doc1", "title": "Doc"}],
+    }
     search_output = context_document["tool_results"][0]["output"]
     assert search_output["top_match"] == {"node_id": "node1", "title": "System Name"}
     assert search_output["top_contexts"][0]["records"][0] == {

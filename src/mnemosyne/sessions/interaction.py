@@ -2619,7 +2619,54 @@ def build_agentic_context_document(
         "query": query,
         "controller_decision": controller_decision,
         "context_proposal": context_proposal,
+        "evidence_summary": agentic_evidence_summary(tool_results),
         "tool_results": [context_document_tool_result(result) for result in tool_results],
+    }
+
+
+def agentic_evidence_summary(tool_results: list[dict[str, Any]]) -> dict[str, Any]:
+    source_documents: dict[str, dict[str, Any]] = {}
+    node_ids = set()
+    record_count = 0
+    context_count = 0
+    match_count = 0
+    successful_tools = 0
+    failed_tools = 0
+    for result in tool_results:
+        if result.get("ok") is False:
+            failed_tools += 1
+        else:
+            successful_tools += 1
+        output = result.get("output")
+        if not isinstance(output, dict):
+            continue
+        match_count += int(output.get("match_count") or 0)
+        for context in output.get("top_contexts") or []:
+            context_count += 1
+            document = context.get("document") or {}
+            document_id = document.get("document_id")
+            if document_id and document_id not in source_documents:
+                source_documents[str(document_id)] = {
+                    "document_id": str(document_id),
+                    "title": document.get("title"),
+                }
+            for record in context.get("records") or []:
+                record_count += 1
+                if record.get("node_id"):
+                    node_ids.add(str(record["node_id"]))
+    return {
+        "tool_result_count": len(tool_results),
+        "successful_tool_count": successful_tools,
+        "failed_tool_count": failed_tools,
+        "match_count": match_count,
+        "context_count": context_count,
+        "record_count": record_count,
+        "included_node_count": len(node_ids),
+        "included_node_ids": sorted(node_ids),
+        "source_documents": sorted(
+            source_documents.values(),
+            key=lambda item: (item.get("title") or "", item.get("document_id") or ""),
+        ),
     }
 
 

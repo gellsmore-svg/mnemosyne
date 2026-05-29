@@ -306,7 +306,9 @@ The structured `context_document` is stored in prompt `context_metadata` with:
 
 - schema version and context kind;
 - original user query;
+- controller decision;
 - validated memory-agent context proposal, when present;
+- evidence summary with tool counts, match/context/record counts, included node IDs, and source documents;
 - per-tool result records;
 - normalized search/query-assembly diagnostics where available;
 - top search/proximity match, match count, and assembled context records;

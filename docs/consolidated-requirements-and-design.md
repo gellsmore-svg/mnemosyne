@@ -181,6 +181,7 @@ Current context package includes:
 
 - rendered Markdown context for current local models;
 - structured `context_document` metadata;
+- structured evidence summary with tool counts, match/context/record counts, included node IDs, and source documents;
 - included/skipped records;
 - used node IDs;
 - query diagnostics;
