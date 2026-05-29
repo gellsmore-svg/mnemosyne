@@ -728,7 +728,7 @@ def direct_context_controller_decision(
         action = "use_active_document_source_excerpt"
     elif retrieval_decision.get("should_search_corpus"):
         action = "skip_weak_or_missing_repository_context"
-    return {
+    decision = {
         "schema_version": 1,
         "mode": "direct_scaffold",
         "current_owner": "deterministic_guardrail",
@@ -744,6 +744,8 @@ def direct_context_controller_decision(
             "owns context strategy end to end."
         ),
     }
+    decision["validation_issues"] = validate_controller_decision(decision)
+    return decision
 
 
 def start_answer_process_run(
@@ -2597,6 +2599,11 @@ def render_controller_decision_for_prompt(decision: dict[str, Any] | None) -> st
         )
         if correction.get("reason"):
             lines.append(f"- Correction reason: {correction.get('reason')}")
+    issues = decision.get("validation_issues") or []
+    if issues:
+        lines.append(f"- Validation issues: {len(issues)}")
+        for issue in issues[:3]:
+            lines.append(f"  - {issue.get('field')}: {issue.get('message')}")
     return "\n".join(lines)
 
 
@@ -2651,7 +2658,7 @@ def agentic_context_controller_decision(
             "reason": "The memory-agent proposed repository context, but no context records were included.",
         }
         action = correction["corrected_action"]
-    return {
+    decision = {
         "schema_version": 1,
         "mode": "agentic",
         "current_owner": "memory_agent_controller",
@@ -2668,6 +2675,51 @@ def agentic_context_controller_decision(
         "included_node_count": len(included),
         "context_proposal_present": bool(context_proposal),
     }
+    decision["validation_issues"] = validate_controller_decision(decision)
+    return decision
+
+
+def validate_controller_decision(decision: dict[str, Any]) -> list[dict[str, str]]:
+    issues = []
+    valid_actions = {
+        "use_repository_context",
+        "use_active_document_source_excerpt",
+        "answer_without_repository_context",
+        "answer_after_memory_tools_without_context",
+        "skip_weak_or_missing_repository_context",
+    }
+    if decision.get("action") not in valid_actions:
+        issues.append(
+            {
+                "field": "action",
+                "message": "Controller decision action is not recognized.",
+            }
+        )
+    if not decision.get("reason"):
+        issues.append(
+            {
+                "field": "reason",
+                "message": "Controller decision should include a reason.",
+            }
+        )
+    if decision.get("action") == "use_repository_context" and not decision.get("included_node_count", 0):
+        selected_node_id = decision.get("selected_node_id")
+        if not selected_node_id:
+            issues.append(
+                {
+                    "field": "action",
+                    "message": "Repository context action requires included nodes or a selected node.",
+                }
+            )
+    confidence = decision.get("confidence")
+    if confidence is not None and not 0.0 <= confidence <= 1.0:
+        issues.append(
+            {
+                "field": "confidence",
+                "message": "Controller decision confidence must be between 0.0 and 1.0.",
+            }
+        )
+    return issues
 
 
 def context_document_tool_result(result: dict[str, Any]) -> dict[str, Any]:

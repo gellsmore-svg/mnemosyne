@@ -30,6 +30,7 @@ from mnemosyne.sessions.interaction import (
     select_active_document_focus_node,
     select_focus_node,
     summarize_tool_results_for_memory_agent,
+    validate_controller_decision,
     vocabulary_terms,
 )
 
@@ -170,6 +171,19 @@ def test_direct_context_controller_decision_marks_scaffold_owner() -> None:
     assert decision["current_owner"] == "deterministic_guardrail"
     assert decision["target_owner"] == "memory_agent_controller"
     assert decision["action"] == "use_repository_context"
+    assert decision["validation_issues"] == []
+
+
+def test_validate_controller_decision_reports_schema_issues() -> None:
+    issues = validate_controller_decision(
+        {
+            "action": "invented_action",
+            "reason": "",
+            "confidence": 1.5,
+        }
+    )
+
+    assert {issue["field"] for issue in issues} == {"action", "reason", "confidence"}
 
 
 def test_select_focus_node_rejects_weak_best_match(monkeypatch) -> None:
@@ -3454,6 +3468,7 @@ def test_agentic_controller_decision_corrects_impossible_context_action() -> Non
     decision = envelope["context_metadata"]["controller_decision"]
     assert decision["action"] == "answer_after_memory_tools_without_context"
     assert decision["correction"]["original_action"] == "use_repository_context"
+    assert decision["validation_issues"] == []
     assert "- Correction: use_repository_context -> answer_after_memory_tools_without_context" in (
         envelope["prompt_text"]
     )
