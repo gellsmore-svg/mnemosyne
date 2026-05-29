@@ -39,6 +39,13 @@ body {
   margin-bottom: 20px;
 }
 
+.topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .tabs {
   display: flex;
   gap: 8px;
@@ -354,4 +361,169 @@ pre {
   .browse-mode .sidebar {
     grid-template-columns: 1fr;
   }
+}
+
+body.epaper {
+  background: #fff;
+  color: #000;
+  font-size: 19px;
+}
+
+body.epaper .shell,
+body.epaper .workspace,
+body.epaper .sidebar {
+  background: #fff;
+}
+
+body.epaper .workspace,
+body.epaper .sidebar {
+  padding: 18px;
+}
+
+body.epaper .topbar {
+  align-items: flex-start;
+  border-bottom: 2px solid #000;
+  padding-bottom: 14px;
+}
+
+body.epaper h1 {
+  font-size: 34px;
+}
+
+body.epaper h2,
+body.epaper h3,
+body.epaper .answer-panel h3 {
+  color: #000;
+  font-size: 18px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+body.epaper button {
+  background: #fff;
+  border: 2px solid #000;
+  color: #000;
+  padding: 11px 14px;
+}
+
+body.epaper button.active,
+body.epaper .tab-button.active {
+  background: #000;
+  color: #fff;
+}
+
+body.epaper button.secondary {
+  background: #fff;
+  color: #000;
+}
+
+body.epaper input,
+body.epaper select,
+body.epaper textarea,
+body.epaper pre,
+body.epaper .answer-text,
+body.epaper .technical-report,
+body.epaper .status,
+body.epaper .item {
+  background: #fff;
+  border: 2px solid #000;
+  border-radius: 0;
+  color: #000;
+}
+
+body.epaper input,
+body.epaper select,
+body.epaper textarea {
+  padding: 12px;
+}
+
+body.epaper .tabs {
+  border-bottom: 2px solid #000;
+  padding-bottom: 10px;
+}
+
+body.epaper .tab-button {
+  min-width: 130px;
+}
+
+body.epaper .answer-grid {
+  grid-template-columns: 1fr;
+  gap: 18px;
+  max-width: 1120px;
+}
+
+body.epaper .response-panel {
+  order: 1;
+}
+
+body.epaper .prompt-panel {
+  order: 2;
+}
+
+body.epaper .activity-panel {
+  order: 3;
+}
+
+body.epaper .trace-panel {
+  order: 4;
+}
+
+body.epaper .answer-text,
+body.epaper .activity-log,
+body.epaper .console-log,
+body.epaper .prompt-panel textarea,
+body.epaper pre {
+  max-height: none;
+  min-height: 0;
+  overflow: visible;
+  line-height: 1.6;
+}
+
+body.epaper .answer-text,
+body.epaper .activity-log {
+  font-size: 20px;
+}
+
+body.epaper .console-log {
+  background: #fff;
+  border: 2px solid #000;
+  color: #000;
+  font-size: 15px;
+  margin-top: 0;
+}
+
+body.epaper .console-log details {
+  border-top: 2px solid #000;
+}
+
+body.epaper .console-log details:first-child {
+  border-top: 0;
+}
+
+body.epaper .console-log summary {
+  color: #000;
+}
+
+body.epaper .console-log pre {
+  background: #fff;
+  border: 1px solid #000;
+  color: #000;
+}
+
+body.epaper .technical-report {
+  padding: 12px;
+}
+
+body.epaper .technical-report summary {
+  color: #000;
+  font-size: 17px;
+}
+
+body.epaper .muted {
+  color: #333;
+  font-size: 15px;
+}
+
+body.epaper .browse-mode .sidebar {
+  grid-template-columns: 1fr;
 }

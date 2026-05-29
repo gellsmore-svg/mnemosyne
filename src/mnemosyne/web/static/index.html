@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mnemosyne</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260529-workspaces" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260529-epaper" />
   </head>
   <body>
     <main id="appShell" class="shell ask-mode">
@@ -14,7 +14,10 @@
             <h1>Mnemosyne</h1>
             <p id="health">Connecting...</p>
           </div>
-          <button id="refresh">Refresh</button>
+          <div class="topbar-actions">
+            <button id="displayMode" class="secondary" type="button">E-paper</button>
+            <button id="refresh" type="button">Refresh</button>
+          </div>
         </header>
 
         <nav class="tabs" aria-label="Workspace sections">
@@ -55,11 +58,11 @@
                   <button id="ask">Ask</button>
                 </div>
               </section>
-              <section class="answer-panel">
+              <section class="answer-panel response-panel">
                 <h3>Response</h3>
                 <div id="answerText" class="answer-text">No answer yet.</div>
               </section>
-              <section class="answer-panel">
+              <section class="answer-panel activity-panel">
                 <h3>Activity Log</h3>
                 <pre id="activityLog" class="activity-log">No activity log yet.</pre>
                 <details class="technical-report">
@@ -67,7 +70,7 @@
                   <pre id="activityReport">No activity report yet.</pre>
                 </details>
               </section>
-              <section class="answer-panel">
+              <section class="answer-panel trace-panel">
                 <h3>Prompt / Trace</h3>
                 <div id="runLog" class="console-log">No run yet.</div>
               </section>
@@ -155,6 +158,6 @@
       </aside>
     </main>
 
-    <script src="/static/app.js?v=20260529-workspaces"></script>
+    <script src="/static/app.js?v=20260529-epaper"></script>
   </body>
 </html>

@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+const DISPLAY_MODE_KEY = "mnemosyne.displayMode";
 
 async function api(path, options = {}) {
   const res = await fetch(path, options);
@@ -75,6 +76,25 @@ function switchTab(tabId) {
   $("appShell").classList.toggle("ask-mode", tabId === "askTab");
   $("appShell").classList.toggle("browse-mode", tabId === "browseTab");
   $("appShell").classList.toggle("ingestion-mode", tabId === "ingestionTab");
+}
+
+function requestedDisplayMode() {
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get("display");
+  if (fromUrl === "epaper" || fromUrl === "standard") return fromUrl;
+  return localStorage.getItem(DISPLAY_MODE_KEY) || "standard";
+}
+
+function setDisplayMode(mode) {
+  const epaper = mode === "epaper";
+  document.body.classList.toggle("epaper", epaper);
+  localStorage.setItem(DISPLAY_MODE_KEY, epaper ? "epaper" : "standard");
+  $("displayMode").textContent = epaper ? "Standard" : "E-paper";
+  $("displayMode").setAttribute("aria-pressed", epaper ? "true" : "false");
+}
+
+function toggleDisplayMode() {
+  setDisplayMode(document.body.classList.contains("epaper") ? "standard" : "epaper");
 }
 
 async function loadHealth() {
@@ -369,6 +389,7 @@ $("ask").addEventListener("click", ask);
 $("createSession").addEventListener("click", createSession);
 $("search").addEventListener("click", searchNodes);
 $("refresh").addEventListener("click", refresh);
+$("displayMode").addEventListener("click", toggleDisplayMode);
 $("uploadSource").addEventListener("click", uploadSourceFiles);
 $("browseIngest").addEventListener("click", browseIngestFolder);
 $("processInbox").addEventListener("click", processInbox);
@@ -408,6 +429,8 @@ $("jobStatus").addEventListener("change", loadJobs);
 $("query").addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") ask();
 });
+
+setDisplayMode(requestedDisplayMode());
 
 refresh().catch((error) => {
   $("health").textContent = error.message;

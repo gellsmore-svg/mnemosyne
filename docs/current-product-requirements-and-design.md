@@ -16,6 +16,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
 
 - The default screen must support real experimentation with prompt, response, activity log, and process trace visible together.
 - The Ask workspace must place Prompt, Response, Activity Log, and Prompt / Trace side by side on desktop.
+- The UI must support an e-paper display mode for Dasung-style monitors, optimized for low refresh, high contrast, larger text, fewer nested scroll panes, and one task per reading flow.
 - Operational controls must not compete with the question-answering workflow.
 - The UI must separate:
   - Ask: prompt, answer, activity log, trace.
@@ -134,6 +135,8 @@ The system is not intended to be a single closed chatbot. It should become a mem
   - Response panel.
   - Activity Log panel with plain-English log and collapsed JSON.
   - Prompt / Trace panel with detailed process trace.
+  - Standard display mode uses a desktop workbench layout.
+  - E-paper display mode uses a single-column reading layout ordered as Response, Prompt, Activity Log, then Prompt / Trace, with no dark trace panel and no internal scroll panes.
 - `Browse` tab:
   - node search;
   - recent documents;
@@ -161,6 +164,7 @@ This is only the first guardrail. A better next step is an intent classifier or 
 ## Open Design Risks
 
 - The UI may still need a more disciplined information hierarchy after users exercise real workflows.
+- E-paper mode is a first hardware-specific reading layout; it still needs direct testing on the Dasung screen for font size, browser zoom, and refresh behavior.
 - Direct retrieval can still over-match generic substantive prompts because there is no strict relevance threshold yet.
 - Agentic retrieval is read-only and scaffolded; it does not yet perform full semantic graph traversal or governed process enforcement.
 - Ingestion is deterministic chunking, not the desired LLM-assisted semantic ingestion pipeline.
@@ -171,7 +175,8 @@ This is only the first guardrail. A better next step is an intent classifier or 
 
 1. Treat the Ask tab as the primary human experimentation surface.
 2. Keep ingestion and review in a separate operational workspace.
-3. Prefer no-context answers over weak accidental retrieval for low-intent prompts.
-4. Add explicit relevance thresholds before direct retrieval can select a context node for generic prompts.
-5. Build ingestion logs as human-readable application logs first, with JSON only as a technical substrate.
-6. Continue using deterministic tests for retrieval behavior before introducing heavier semantic ranking.
+3. Support both Standard and E-paper display modes instead of treating side-by-side desktop layout as universally correct.
+4. Prefer no-context answers over weak accidental retrieval for low-intent prompts.
+5. Add explicit relevance thresholds before direct retrieval can select a context node for generic prompts.
+6. Build ingestion logs as human-readable application logs first, with JSON only as a technical substrate.
+7. Continue using deterministic tests for retrieval behavior before introducing heavier semantic ranking.
