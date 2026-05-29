@@ -331,6 +331,85 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert "plain prompt" in result["process_trace"][1]["output"]["context_text"]
 
 
+def test_answer_query_does_not_retrieve_corpus_for_greeting(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    calls = []
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            return {
+                "adapter": "fake",
+                "answer": "Hello.",
+                "used_node_ids": [],
+            }
+
+    def fake_select_focus_node(_db, query):
+        calls.append(query)
+        return "should-not-run"
+
+    monkeypatch.setattr(interaction, "select_focus_node", fake_select_focus_node)
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+
+    result = answer_query(FakeDb(), AppConfig(), "hello")
+
+    assert calls == []
+    assert result["ok"] is True
+    assert result["focus_node_id"] is None
+    assert result["retrieval_status"] == "no_focus_node"
+    assert result["used_node_ids"] == []
+
+
+def test_answer_query_handles_empty_prompt_without_retrieval_crash(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            return {
+                "adapter": "fake",
+                "answer": "No prompt was supplied.",
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *args, **kwargs: None)
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+
+    result = answer_query(FakeDb(), AppConfig(), "   ")
+
+    assert result["ok"] is True
+    assert result["retrieval_status"] == "no_focus_node"
+    assert result["focus_node_id"] is None
+
+
+def test_answer_query_forces_no_context_direct_path_for_agentic_greeting(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            return {
+                "adapter": "fake",
+                "answer": "Hello.",
+                "used_node_ids": [],
+            }
+
+    def fail_agentic(**_kwargs):
+        raise AssertionError("agentic retrieval should not run for low-intent greetings")
+
+    monkeypatch.setattr(interaction, "answer_query_agentic", fail_agentic)
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *args, **kwargs: "should-not-run")
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *args, **kwargs: "exchange1")
+
+    result = answer_query(FakeDb(), AppConfig(), "hello", retrieval_mode="agentic")
+
+    assert result["ok"] is True
+    assert result["retrieval_status"] == "no_focus_node"
+    assert result["focus_node_id"] is None
+    assert result["process_trace"][0]["output"]["retrieval_mode_override"] == "direct_no_context_low_intent"
+
+
 def test_answer_query_records_process_run(monkeypatch) -> None:
     import mnemosyne.sessions.interaction as interaction
 

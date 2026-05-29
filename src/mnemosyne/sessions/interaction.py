@@ -91,6 +91,18 @@ QUERY_STOPWORDS = {
     "your",
     "will",
 }
+LOW_INTENT_QUERIES = {
+    "hello",
+    "hi",
+    "hey",
+    "thanks",
+    "thank you",
+    "ok",
+    "okay",
+    "good morning",
+    "good afternoon",
+    "good evening",
+}
 ANSWER_PROCESS_ID = "answer_query"
 
 
@@ -127,6 +139,9 @@ def answer_query(
         runtime_config.ollama_model = ollama_model
     if retrieval_mode:
         runtime_config.retrieval_mode = retrieval_mode
+    if runtime_config.retrieval_mode == "agentic" and not focus_node_id and is_low_intent_query(query):
+        runtime_config.retrieval_mode = "direct"
+        process_trace[0]["output"]["retrieval_mode_override"] = "direct_no_context_low_intent"
     process_run_id = start_answer_process_run(
         db,
         session_id=session_id,
@@ -525,7 +540,8 @@ def prepare_direct_answer_prompt(
     selected_node_source = "provided" if focus_node_id else None
     active_documents: list[dict[str, Any]] = []
     is_active_document_reference = active_document_reference_query(query)
-    if not selected_node_id and is_active_document_reference:
+    low_intent_query = is_low_intent_query(query)
+    if not selected_node_id and is_active_document_reference and not low_intent_query:
         active_documents = list_active_documents(db, session_id=session_id, limit=5)
         selected_node_id = select_active_document_focus_node(
             db,
@@ -535,7 +551,7 @@ def prepare_direct_answer_prompt(
         )
         if selected_node_id:
             selected_node_source = "active_document"
-    if not selected_node_id:
+    if not selected_node_id and not low_intent_query:
         selected_node_id = select_focus_node(db, query)
         if selected_node_id:
             selected_node_source = "corpus"
@@ -559,7 +575,7 @@ def prepare_direct_answer_prompt(
             prompt["context_metadata"]["retrieval_status"] = retrieval_status
     else:
         prompt = None
-        if not active_documents:
+        if not active_documents and not low_intent_query:
             active_documents = list_active_documents(db, session_id=session_id, limit=5)
         if active_documents:
             prompt = build_active_document_source_fallback_envelope(
@@ -594,6 +610,11 @@ def prepare_direct_answer_prompt(
         "prompt": prompt,
         "retrieval_output": retrieval_output,
     }
+
+
+def is_low_intent_query(query: str) -> bool:
+    normalized = (normalize_query_text(query) or "").lower().strip(" .!?")
+    return normalized in LOW_INTENT_QUERIES
 
 
 def start_answer_process_run(
