@@ -366,7 +366,7 @@ pre {
 body.epaper {
   background: #fff;
   color: #000;
-  font-size: 19px;
+  font-size: 16px;
 }
 
 body.epaper .shell,
@@ -387,14 +387,14 @@ body.epaper .topbar {
 }
 
 body.epaper h1 {
-  font-size: 34px;
+  font-size: 30px;
 }
 
 body.epaper h2,
 body.epaper h3,
 body.epaper .answer-panel h3 {
   color: #000;
-  font-size: 18px;
+  font-size: 15px;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -403,7 +403,7 @@ body.epaper button {
   background: #fff;
   border: 2px solid #000;
   color: #000;
-  padding: 11px 14px;
+  padding: 9px 12px;
 }
 
 body.epaper button.active,
@@ -434,7 +434,7 @@ body.epaper .item {
 body.epaper input,
 body.epaper select,
 body.epaper textarea {
-  padding: 12px;
+  padding: 10px;
 }
 
 body.epaper .tabs {
@@ -443,20 +443,20 @@ body.epaper .tabs {
 }
 
 body.epaper .tab-button {
-  min-width: 130px;
+  min-width: 116px;
 }
 
 body.epaper .answer-grid {
-  grid-template-columns: 1fr;
-  gap: 18px;
-  max-width: 1120px;
-}
-
-body.epaper .response-panel {
-  order: 1;
+  grid-template-columns: 22fr 28fr 30fr 20fr;
+  gap: 12px;
+  max-width: none;
 }
 
 body.epaper .prompt-panel {
+  order: 1;
+}
+
+body.epaper .response-panel {
   order: 2;
 }
 
@@ -473,22 +473,22 @@ body.epaper .activity-log,
 body.epaper .console-log,
 body.epaper .prompt-panel textarea,
 body.epaper pre {
-  max-height: none;
-  min-height: 0;
-  overflow: visible;
-  line-height: 1.6;
+  min-height: 220px;
+  max-height: 70vh;
+  overflow: auto;
+  line-height: 1.5;
 }
 
 body.epaper .answer-text,
 body.epaper .activity-log {
-  font-size: 20px;
+  font-size: 17px;
 }
 
 body.epaper .console-log {
   background: #fff;
   border: 2px solid #000;
   color: #000;
-  font-size: 15px;
+  font-size: 13px;
   margin-top: 0;
 }
 
@@ -516,12 +516,12 @@ body.epaper .technical-report {
 
 body.epaper .technical-report summary {
   color: #000;
-  font-size: 17px;
+  font-size: 14px;
 }
 
 body.epaper .muted {
   color: #333;
-  font-size: 15px;
+  font-size: 13px;
 }
 
 body.epaper .browse-mode .sidebar {
