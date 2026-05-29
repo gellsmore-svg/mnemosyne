@@ -1,6 +1,8 @@
 # Build Roadmap
 
-Last updated: 2026-05-17
+Last updated: 2026-05-29
+
+Next-phase note: `docs/lifecycle-next-phase-requirements.md` captures the Lifecycle direction for repository refresh, higher-quality ingestion, LLM transparency, internet-assisted reasoning, chronological corpus processing, multi-corpus interrogation, and product self-awareness. The implementation below remains scaffolded toward those requirements.
 
 ## Stage 0 — Project Scaffold
 
