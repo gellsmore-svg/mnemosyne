@@ -36,6 +36,7 @@ from mnemosyne.retrieval.trust import (
     trust_temporal_diagnostic_for_node,
     trust_temporal_diagnostics_for_nodes,
 )
+from mnemosyne.sessions.activity_reports import answer_activity_report
 from mnemosyne.sessions.active_documents import list_active_documents
 from mnemosyne.sessions.exchanges import save_exchange
 
@@ -175,7 +176,7 @@ def answer_query(
                 "output": {"ok": False, "error": str(error)},
             }
         )
-        return {
+        result = {
             "ok": False,
             "reason": "retrieval_failed",
             "message": str(error),
@@ -185,6 +186,8 @@ def answer_query(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
+        result["activity_report"] = answer_activity_report(result)
+        return result
     selected_node_id = direct_preparation["selected_node_id"]
     selected_node_source = direct_preparation["selected_node_source"]
     retrieval_status = direct_preparation["retrieval_status"]
@@ -234,7 +237,7 @@ def answer_query(
             "ok": False,
             "error": str(error),
         }
-        return {
+        result = {
             "ok": False,
             "reason": "answer_adapter_failed",
             "message": str(error),
@@ -244,6 +247,8 @@ def answer_query(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
+        result["activity_report"] = answer_activity_report(result)
+        return result
     adapter_step["output"] = {
         "ok": True,
         "answer": answer["answer"],
@@ -280,7 +285,7 @@ def answer_query(
                 "output": {"ok": False, "error": str(error), "type": type(error).__name__},
             }
         )
-        return {
+        result = {
             "ok": False,
             "reason": "answer_save_failed",
             "message": str(error),
@@ -290,6 +295,8 @@ def answer_query(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
+        result["activity_report"] = answer_activity_report(result)
+        return result
     finish_answer_process_run(
         db,
         process_run_id,
@@ -298,7 +305,7 @@ def answer_query(
         completed_step_id="answer_adapter",
         exchange_id=exchange_id,
     )
-    return {
+    result = {
         "ok": True,
         "exchange_id": exchange_id,
         "session_id": session_id,
@@ -313,6 +320,8 @@ def answer_query(
         "process_run_id": process_run_id,
         "process_trace": process_trace,
     }
+    result["activity_report"] = answer_activity_report(result)
+    return result
 
 
 def answer_query_agentic(
@@ -365,7 +374,7 @@ def answer_query_agentic(
                 "output": {"ok": False, "error": str(error)},
             }
         )
-        return {
+        result = {
             "ok": False,
             "reason": "agentic_retrieval_failed",
             "message": str(error),
@@ -375,6 +384,8 @@ def answer_query_agentic(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
+        result["activity_report"] = answer_activity_report(result)
+        return result
     retrieval_status = "agentic_tool_context" if prompt["context_metadata"]["included"] else "agentic_no_tool_context"
     adapter_step = {
         "step": "answer_adapter",
@@ -407,7 +418,7 @@ def answer_query_agentic(
             "ok": False,
             "error": str(error),
         }
-        return {
+        result = {
             "ok": False,
             "reason": "answer_adapter_failed",
             "message": str(error),
@@ -417,6 +428,8 @@ def answer_query_agentic(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
+        result["activity_report"] = answer_activity_report(result)
+        return result
     adapter_step["output"] = {
         "ok": True,
         "answer": answer["answer"],
@@ -453,7 +466,7 @@ def answer_query_agentic(
                 "output": {"ok": False, "error": str(error), "type": type(error).__name__},
             }
         )
-        return {
+        result = {
             "ok": False,
             "reason": "answer_save_failed",
             "message": str(error),
@@ -463,6 +476,8 @@ def answer_query_agentic(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
+        result["activity_report"] = answer_activity_report(result)
+        return result
     finish_answer_process_run(
         db,
         process_run_id,
@@ -471,7 +486,7 @@ def answer_query_agentic(
         completed_step_id="answer_adapter",
         exchange_id=exchange_id,
     )
-    return {
+    result = {
         "ok": True,
         "exchange_id": exchange_id,
         "session_id": session_id,
@@ -486,6 +501,8 @@ def answer_query_agentic(
         "process_run_id": process_run_id,
         "process_trace": process_trace,
     }
+    result["activity_report"] = answer_activity_report(result)
+    return result
 
 
 def answer_exception_payload(reason: str, proposal: str, error: Exception) -> dict[str, str]:

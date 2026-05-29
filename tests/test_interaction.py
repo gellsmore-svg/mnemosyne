@@ -317,6 +317,9 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert result["focus_node_id"] is None
     assert result["retrieval_status"] == "no_focus_node"
     assert result["used_node_ids"] == []
+    assert result["activity_report"]["kind"] == "answer_activity_report"
+    assert result["activity_report"]["context_construction"]["status"] == "no_focus_node"
+    assert result["activity_report"]["llm_activity"]["call_count"] == 1
     assert "plain prompt" in captured["prompt"]["context_text"]
     assert [step["step"] for step in result["process_trace"]] == [
         "user_prompt",
@@ -463,6 +466,7 @@ def test_answer_query_marks_process_run_blocked_when_adapter_fails(monkeypatch) 
 
     assert result["ok"] is False
     assert result["process_run_id"] == "run1"
+    assert result["activity_report"]["status"] == "blocked"
     assert updates[0]["status"] == "blocked"
     assert updates[0]["current_step_id"] == "answer_adapter_failed"
     assert updates[0]["exception"]["reason"] == "answer_adapter_failed"

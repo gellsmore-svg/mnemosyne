@@ -53,6 +53,14 @@ function renderConsole(trace) {
   );
 }
 
+function renderActivityReport(report) {
+  if (!report) {
+    $("activityReport").textContent = "No activity report.";
+    return;
+  }
+  $("activityReport").textContent = JSON.stringify(report, null, 2);
+}
+
 async function loadHealth() {
   const data = await api("/api/health");
   $("health").textContent = `Mongo: ${data.database}`;
@@ -234,6 +242,7 @@ async function ask() {
     });
     if (!data.ok) {
       $("answerText").textContent = data.message || JSON.stringify(data, null, 2);
+      renderActivityReport(data.activity_report);
       renderConsole(data.process_trace || [
         {
           step: "request_failed",
@@ -245,6 +254,7 @@ async function ask() {
     }
     $("answerText").textContent = data.answer;
     $("answerMeta").innerHTML = `<div class="muted">exchange ${html(data.exchange_id)} | ${html(data.adapter)} ${html(data.model)}</div>`;
+    renderActivityReport(data.activity_report);
     renderConsole(data.process_trace);
     await Promise.all([loadSessions(), loadHistory()]);
   } catch (error) {
