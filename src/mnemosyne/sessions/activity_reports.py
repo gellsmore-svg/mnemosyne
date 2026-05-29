@@ -13,6 +13,7 @@ def answer_activity_report(result: dict[str, Any]) -> dict[str, Any]:
         "context_construction": context_construction_section(trace),
         "response_generation": response_generation_section(result, trace),
         "llm_activity": llm_activity_section(trace),
+        "tool_repair_guidance": tool_repair_guidance_section(trace),
         "system_functions": system_functions_section(trace),
     }
 
@@ -22,6 +23,7 @@ def answer_activity_log(report: dict[str, Any]) -> str:
     context = report.get("context_construction") or {}
     response = report.get("response_generation") or {}
     llm = report.get("llm_activity") or {}
+    repairs = report.get("tool_repair_guidance") or []
     functions = report.get("system_functions") or []
     lines = [
         "Answer Activity Log",
@@ -39,6 +41,9 @@ def answer_activity_log(report: dict[str, Any]) -> str:
         "",
         "LLM activity:",
         llm_summary(llm),
+        "",
+        "Tool-call repair guidance:",
+        tool_repair_summary(repairs),
         "",
         "System functions used:",
     ]
@@ -104,6 +109,19 @@ def llm_summary(llm: dict[str, Any]) -> str:
             f"  {index}. {call.get('purpose')} "
             f"Adapter/model: {call.get('adapter') or 'unknown'} / {call.get('model') or 'unknown'}."
         )
+    return "\n".join(lines)
+
+
+def tool_repair_summary(repairs: list[dict[str, Any]]) -> str:
+    if not repairs:
+        return "- No memory-tool repair guidance was needed."
+    lines = [f"- Python returned repair guidance for {len(repairs)} failed memory-tool call(s)."]
+    for item in repairs[:5]:
+        lines.append(
+            f"  - {item.get('tool') or 'unknown tool'}: {item.get('error') or 'call failed'}"
+        )
+        if item.get("repair_instruction"):
+            lines.append(f"    Repair: {item.get('repair_instruction')}")
     return "\n".join(lines)
 
 
@@ -181,6 +199,29 @@ def llm_activity_section(trace: list[dict[str, Any]]) -> dict[str, Any]:
             }
         )
     return {"call_count": len(calls), "calls": calls}
+
+
+def tool_repair_guidance_section(trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    repairs = []
+    for step in trace:
+        if step.get("step") != "memory_agent_iteration":
+            continue
+        step_input = step.get("input") or {}
+        step_output = step.get("output") or {}
+        for result in step_output.get("tool_results") or []:
+            if result.get("ok") is not False:
+                continue
+            repairs.append(
+                {
+                    "iteration": step_input.get("iteration"),
+                    "tool": result.get("tool"),
+                    "arguments": result.get("arguments"),
+                    "error": result.get("error"),
+                    "usage": result.get("usage"),
+                    "repair_instruction": result.get("repair_instruction"),
+                }
+            )
+    return repairs
 
 
 def system_functions_section(trace: list[dict[str, Any]]) -> list[dict[str, str]]:

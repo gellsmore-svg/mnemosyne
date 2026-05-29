@@ -2136,6 +2136,80 @@ def test_execute_tool_calls_returns_instructional_tool_errors() -> None:
     assert "search_nodes" in results[1]["usage"]
 
 
+def test_memory_agent_history_keeps_tool_repair_guidance() -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    results = interaction.execute_tool_calls(
+        FakeDb(),
+        [{"tool": "compile_context", "arguments": {}}],
+    )
+
+    summary = summarize_tool_results_for_memory_agent(results)
+    assert summary[0]["error"] == "compile_context requires node_id."
+    assert "node_id" in summary[0]["usage"]
+    assert "Do not repeat" in summary[0]["repair_instruction"]
+
+    prompt = build_memory_agent_prompt(
+        query="find memory",
+        focus_node_id=None,
+        session_id="web",
+        active_documents=[],
+        history=[{"iteration": 1, "tool_results": summary}],
+    )
+
+    assert "Tool repair guidance from prior iterations:" in prompt
+    assert "compile_context requires node_id" in prompt
+    assert "Revise the next tool call" in prompt
+
+
+def test_answer_activity_report_summarizes_tool_repair_guidance() -> None:
+    from mnemosyne.sessions.activity_reports import answer_activity_log, answer_activity_report
+
+    result = {
+        "ok": True,
+        "query": "find memory",
+        "adapter": "mock",
+        "model": "mock",
+        "answer": "answer",
+        "process_trace": [
+            {
+                "step": "user_prompt",
+                "input": {"query": "find memory", "session_id": "web"},
+                "output": {},
+            },
+            {
+                "step": "memory_agent_iteration",
+                "input": {"iteration": 1, "adapter": "mock", "model": "mock"},
+                "output": {
+                    "ok": True,
+                    "tool_results": [
+                        {
+                            "tool": "compile_context",
+                            "arguments": {},
+                            "ok": False,
+                            "error": "compile_context requires node_id.",
+                            "usage": "Call compile_context with node_id.",
+                            "repair_instruction": "Revise the next tool call.",
+                        }
+                    ],
+                },
+            },
+            {
+                "step": "answer_adapter",
+                "input": {"adapter": "mock", "model": "mock"},
+                "output": {"ok": True, "answer": "answer", "used_node_ids": []},
+            },
+        ],
+    }
+
+    report = answer_activity_report(result)
+    assert report["tool_repair_guidance"][0]["tool"] == "compile_context"
+    assert "node_id" in report["tool_repair_guidance"][0]["usage"]
+    log = answer_activity_log(report)
+    assert "Tool-call repair guidance:" in log
+    assert "compile_context requires node_id" in log
+
+
 def test_document_tree_lookup_does_not_mark_tree_nodes_as_used() -> None:
     included = included_nodes_from_tool_results(
         [

@@ -127,7 +127,7 @@ function activitySummary(step) {
     case "retrieval_context":
       return contextSummary(output);
     case "memory_agent_iteration":
-      return `Memory-agent iteration ${text(input.iteration)} used ${text(input.adapter)} / ${text(input.model)} and returned ${text(output.stop_reason || output.status || "a decision")}.`;
+      return memoryAgentSummary(input, output);
     case "answer_adapter":
       return `Final answer call used ${text(input.adapter)} / ${text(input.model)} and ${output.ok === false ? "did not complete" : "returned an answer"}.`;
     case "save_exchange":
@@ -139,6 +139,18 @@ function activitySummary(step) {
     default:
       return "Step completed.";
   }
+}
+
+function memoryAgentSummary(input, output) {
+  const toolResults = output.tool_results || [];
+  const failed = toolResults.filter((result) => result && result.ok === false);
+  const okCount = toolResults.filter((result) => result && result.ok !== false).length;
+  const status = text(output.stop_reason || output.status || "a decision");
+  if (failed.length) {
+    const first = failed[0];
+    return `Memory-agent iteration ${text(input.iteration)} used ${text(input.adapter)} / ${text(input.model)}. Python ran ${toolResults.length} tool call(s): ${okCount} succeeded, ${failed.length} need repair. First issue: ${text(first.tool)} - ${text(first.error)}.`;
+  }
+  return `Memory-agent iteration ${text(input.iteration)} used ${text(input.adapter)} / ${text(input.model)} and returned ${status}.`;
 }
 
 function contextSummary(output) {
@@ -161,6 +173,27 @@ function activityPayload(step) {
     };
   }
   if (step.step === "memory_agent_iteration" && input.prompt_text) {
+    const failed = (output.tool_results || []).filter((result) => result && result.ok === false);
+    if (failed.length) {
+      return {
+        title: "Show LLM prompt and Python repair guidance",
+        text: [
+          "Prompt sent to memory-agent LLM:",
+          "",
+          input.prompt_text,
+          "",
+          "Python repair guidance from failed tool calls:",
+          "",
+          JSON.stringify(failed.map((result) => ({
+            tool: result.tool,
+            arguments: result.arguments,
+            error: result.error,
+            usage: result.usage,
+            repair_instruction: result.repair_instruction,
+          })), null, 2),
+        ].join("\n"),
+      };
+    }
     return {
       title: "Show prompt sent to memory-agent LLM",
       text: input.prompt_text,

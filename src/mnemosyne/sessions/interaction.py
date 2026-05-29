@@ -1030,6 +1030,9 @@ def build_memory_agent_prompt(
             "Prior memory-agent iterations:",
             json.dumps(history, indent=2, default=str),
             "",
+            "Tool repair guidance from prior iterations:",
+            render_tool_repair_guidance(history),
+            "",
             "User prompt:",
             query,
         ]
@@ -1277,8 +1280,42 @@ def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) 
             item["result_count"] = len(output)
         if result.get("error"):
             item["error"] = result.get("error")
+        if result.get("usage"):
+            item["usage"] = result.get("usage")
+        if result.get("repair_instruction"):
+            item["repair_instruction"] = result.get("repair_instruction")
         summary.append(item)
     return summary
+
+
+def render_tool_repair_guidance(history: list[dict[str, Any]]) -> str:
+    failures = []
+    for iteration in history:
+        for result in iteration.get("tool_results") or []:
+            if result.get("ok") is not False:
+                continue
+            failures.append(
+                {
+                    "iteration": iteration.get("iteration"),
+                    "tool": result.get("tool"),
+                    "arguments": result.get("arguments"),
+                    "error": result.get("error"),
+                    "usage": result.get("usage"),
+                    "repair_instruction": result.get("repair_instruction"),
+                }
+            )
+            if len(failures) >= 5:
+                break
+        if len(failures) >= 5:
+            break
+    if not failures:
+        return "No prior tool-call errors."
+    return "\n".join(
+        [
+            "Previous tool calls failed. Use this guidance before issuing another call.",
+            json.dumps(failures, indent=2, default=str),
+        ]
+    )
 
 
 def compact_node_matches(
