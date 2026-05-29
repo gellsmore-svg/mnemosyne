@@ -162,6 +162,52 @@ pre {
   line-height: 1.55;
 }
 
+.answer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 0.95fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.answer-panel {
+  min-width: 0;
+}
+
+.answer-panel h3 {
+  margin: 0 0 8px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.activity-log {
+  min-height: 220px;
+  max-height: 520px;
+  overflow: auto;
+  line-height: 1.45;
+}
+
+.technical-report {
+  margin-top: 8px;
+  background: white;
+  border: 1px solid #d6dce4;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.technical-report summary {
+  cursor: pointer;
+  color: #334155;
+  font-size: 13px;
+}
+
+.technical-report pre {
+  min-height: 0;
+  max-height: 360px;
+  margin-top: 10px;
+  overflow: auto;
+  font-size: 12px;
+}
+
 .console-log {
   min-height: 72px;
   max-height: 520px;
@@ -248,6 +294,10 @@ pre {
   }
 
   .filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .answer-grid {
     grid-template-columns: 1fr;
   }
 }

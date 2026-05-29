@@ -17,6 +17,96 @@ def answer_activity_report(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def answer_activity_log(report: dict[str, Any]) -> str:
+    query = report.get("query_understanding") or {}
+    context = report.get("context_construction") or {}
+    response = report.get("response_generation") or {}
+    llm = report.get("llm_activity") or {}
+    functions = report.get("system_functions") or []
+    lines = [
+        "Answer Activity Log",
+        "",
+        "What happened:",
+        f"- Status: {report.get('status') or 'unknown'}.",
+        f"- Question understood as: {query.get('interpreted_question') or 'not recorded'}.",
+        f"- Session: {query.get('session_id') or 'not recorded'}.",
+        "",
+        "Context construction:",
+        context_summary(context),
+        "",
+        "Response generation:",
+        response_summary(response),
+        "",
+        "LLM activity:",
+        llm_summary(llm),
+        "",
+        "System functions used:",
+    ]
+    if functions:
+        for item in functions:
+            lines.append(f"- {item.get('function')}: {item.get('purpose')}")
+    else:
+        lines.append("- No system functions were recorded.")
+    return "\n".join(lines).strip() + "\n"
+
+
+def context_summary(context: dict[str, Any]) -> str:
+    status = context.get("status") or "unknown"
+    if status == "agentic":
+        return (
+            f"- Agentic retrieval ran {context.get('iterations', 0)} planner iteration(s) "
+            f"and executed {context.get('tool_calls', 0)} tool call(s)."
+        )
+    lines = [f"- Retrieval status: {status}."]
+    focus_node_id = context.get("focus_node_id")
+    if focus_node_id:
+        lines.append(f"- Focus node selected: {focus_node_id}.")
+    included = context.get("included_nodes") or []
+    if included:
+        lines.append(f"- Source nodes included: {len(included)}.")
+        for node in included[:5]:
+            lines.append(
+                f"  - {node.get('title') or 'Untitled node'} ({node.get('role') or 'context'}, "
+                f"distance {node.get('distance')})."
+            )
+    else:
+        lines.append("- No repository nodes were included in the final context.")
+    fallback = context.get("source_fallback")
+    if fallback:
+        title = fallback.get("title") or fallback.get("document_id") or "active document"
+        lines.append(f"- Used a bounded source-file excerpt from {title}.")
+    skipped_count = context.get("skipped_count") or 0
+    if skipped_count:
+        lines.append(f"- Skipped {skipped_count} candidate record(s) because of budget or filtering.")
+    return "\n".join(lines)
+
+
+def response_summary(response: dict[str, Any]) -> str:
+    used = response.get("used_node_ids") or []
+    ok_text = "succeeded" if response.get("ok") else "did not complete"
+    return "\n".join(
+        [
+            f"- Final answer generation {ok_text}.",
+            f"- Adapter/model: {response.get('adapter') or 'unknown'} / {response.get('model') or 'unknown'}.",
+            f"- Repository nodes shown to the answer model: {len(used)}.",
+            f"- Final answer length: {response.get('answer_chars', 0)} characters.",
+        ]
+    )
+
+
+def llm_summary(llm: dict[str, Any]) -> str:
+    calls = llm.get("calls") or []
+    if not calls:
+        return "- No LLM calls were recorded."
+    lines = [f"- LLM calls made: {llm.get('call_count', len(calls))}."]
+    for index, call in enumerate(calls, start=1):
+        lines.append(
+            f"  {index}. {call.get('purpose')} "
+            f"Adapter/model: {call.get('adapter') or 'unknown'} / {call.get('model') or 'unknown'}."
+        )
+    return "\n".join(lines)
+
+
 def query_understanding_section(
     result: dict[str, Any],
     trace: list[dict[str, Any]],

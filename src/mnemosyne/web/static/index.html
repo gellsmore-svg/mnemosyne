@@ -47,10 +47,25 @@
 
         <section class="answer">
           <h2>Answer</h2>
-          <div id="answerText" class="answer-text">No answer yet.</div>
           <div id="answerMeta"></div>
-          <div id="activityReport" class="console-log">No activity report yet.</div>
-          <div id="runLog" class="console-log">No run yet.</div>
+          <div class="answer-grid">
+            <section class="answer-panel">
+              <h3>Response</h3>
+              <div id="answerText" class="answer-text">No answer yet.</div>
+            </section>
+            <section class="answer-panel">
+              <h3>Activity Log</h3>
+              <pre id="activityLog" class="activity-log">No activity log yet.</pre>
+              <details class="technical-report">
+                <summary>Technical JSON report</summary>
+                <pre id="activityReport">No activity report yet.</pre>
+              </details>
+            </section>
+            <section class="answer-panel">
+              <h3>Prompt / Trace</h3>
+              <div id="runLog" class="console-log">No run yet.</div>
+            </section>
+          </div>
         </section>
 
         <section class="operator">

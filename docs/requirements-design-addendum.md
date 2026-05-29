@@ -129,6 +129,8 @@ The current implementation has added several scaffold features and operational d
 - Output ingestion does not yet infer endorsement, semantic relations, proximity, or REM consolidation from generated text.
 - Web and CLI answer calls expose structured process traces.
 - Process traces include prompt intake, memory-agent iterations, tool calls, retrieval/context assembly, and answer adapter execution.
+- Answer calls now expose two report layers: a structured JSON `activity_report` for machine/debug consumers and a plain-English `activity_log` for normal human review. The user-facing log is the default surface; JSON remains available as a technical detail, not the required reading path.
+- The web answer surface places Response, Activity Log, and Prompt / Trace in side-by-side panels on desktop, with the JSON report collapsed inside the Activity Log panel. This preserves transparency while reducing scroll-heavy inspection.
 - `.restart.md` is maintained manually as a working restart note; it is still not the required graph-backed restart state source of truth.
 
 ## Inferred Requirements

@@ -53,12 +53,14 @@ function renderConsole(trace) {
   );
 }
 
-function renderActivityReport(report) {
-  if (!report) {
+function renderActivityReport(report, logText = "") {
+  if (!report && !logText) {
+    $("activityLog").textContent = "No activity log.";
     $("activityReport").textContent = "No activity report.";
     return;
   }
-  $("activityReport").textContent = JSON.stringify(report, null, 2);
+  $("activityLog").textContent = logText || "No human-readable activity log was returned.";
+  $("activityReport").textContent = report ? JSON.stringify(report, null, 2) : "No technical report.";
 }
 
 async function loadHealth() {
@@ -242,7 +244,7 @@ async function ask() {
     });
     if (!data.ok) {
       $("answerText").textContent = data.message || JSON.stringify(data, null, 2);
-      renderActivityReport(data.activity_report);
+      renderActivityReport(data.activity_report, data.activity_log);
       renderConsole(data.process_trace || [
         {
           step: "request_failed",
@@ -254,7 +256,7 @@ async function ask() {
     }
     $("answerText").textContent = data.answer;
     $("answerMeta").innerHTML = `<div class="muted">exchange ${html(data.exchange_id)} | ${html(data.adapter)} ${html(data.model)}</div>`;
-    renderActivityReport(data.activity_report);
+    renderActivityReport(data.activity_report, data.activity_log);
     renderConsole(data.process_trace);
     await Promise.all([loadSessions(), loadHistory()]);
   } catch (error) {

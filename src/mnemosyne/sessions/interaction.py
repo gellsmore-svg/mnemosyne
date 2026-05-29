@@ -36,7 +36,7 @@ from mnemosyne.retrieval.trust import (
     trust_temporal_diagnostic_for_node,
     trust_temporal_diagnostics_for_nodes,
 )
-from mnemosyne.sessions.activity_reports import answer_activity_report
+from mnemosyne.sessions.activity_reports import answer_activity_log, answer_activity_report
 from mnemosyne.sessions.active_documents import list_active_documents
 from mnemosyne.sessions.exchanges import save_exchange
 
@@ -186,8 +186,7 @@ def answer_query(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
-        result["activity_report"] = answer_activity_report(result)
-        return result
+        return attach_answer_activity(result)
     selected_node_id = direct_preparation["selected_node_id"]
     selected_node_source = direct_preparation["selected_node_source"]
     retrieval_status = direct_preparation["retrieval_status"]
@@ -247,8 +246,7 @@ def answer_query(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
-        result["activity_report"] = answer_activity_report(result)
-        return result
+        return attach_answer_activity(result)
     adapter_step["output"] = {
         "ok": True,
         "answer": answer["answer"],
@@ -295,8 +293,7 @@ def answer_query(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
-        result["activity_report"] = answer_activity_report(result)
-        return result
+        return attach_answer_activity(result)
     finish_answer_process_run(
         db,
         process_run_id,
@@ -320,8 +317,7 @@ def answer_query(
         "process_run_id": process_run_id,
         "process_trace": process_trace,
     }
-    result["activity_report"] = answer_activity_report(result)
-    return result
+    return attach_answer_activity(result)
 
 
 def answer_query_agentic(
@@ -384,8 +380,7 @@ def answer_query_agentic(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
-        result["activity_report"] = answer_activity_report(result)
-        return result
+        return attach_answer_activity(result)
     retrieval_status = "agentic_tool_context" if prompt["context_metadata"]["included"] else "agentic_no_tool_context"
     adapter_step = {
         "step": "answer_adapter",
@@ -428,8 +423,7 @@ def answer_query_agentic(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
-        result["activity_report"] = answer_activity_report(result)
-        return result
+        return attach_answer_activity(result)
     adapter_step["output"] = {
         "ok": True,
         "answer": answer["answer"],
@@ -476,8 +470,7 @@ def answer_query_agentic(
             "process_run_id": process_run_id,
             "process_trace": process_trace,
         }
-        result["activity_report"] = answer_activity_report(result)
-        return result
+        return attach_answer_activity(result)
     finish_answer_process_run(
         db,
         process_run_id,
@@ -501,8 +494,7 @@ def answer_query_agentic(
         "process_run_id": process_run_id,
         "process_trace": process_trace,
     }
-    result["activity_report"] = answer_activity_report(result)
-    return result
+    return attach_answer_activity(result)
 
 
 def answer_exception_payload(reason: str, proposal: str, error: Exception) -> dict[str, str]:
@@ -512,6 +504,13 @@ def answer_exception_payload(reason: str, proposal: str, error: Exception) -> di
         "note": str(error),
         "type": type(error).__name__,
     }
+
+
+def attach_answer_activity(result: dict[str, Any]) -> dict[str, Any]:
+    report = answer_activity_report(result)
+    result["activity_report"] = report
+    result["activity_log"] = answer_activity_log(report)
+    return result
 
 
 def prepare_direct_answer_prompt(
