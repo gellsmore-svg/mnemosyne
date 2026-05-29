@@ -54,14 +54,125 @@ function renderConsole(trace) {
   );
 }
 
-function renderActivityReport(report, logText = "") {
+function renderRunningActivity(payload) {
+  $("activityReport").textContent = "Technical report will appear when the run finishes.";
+  $("activityLog").replaceChildren(
+    activityEntry("Prompt received", `Session ${payload.session_id || "web"}. Python is preparing the request.`),
+    activityEntry("Context selection started", "Python is checking whether repository context should be used."),
+    activityEntry("Waiting for model handoff", "If context is found, Python will hand a readable prompt/context package to the selected LLM.")
+  );
+}
+
+function renderActivityReport(report, logText = "", trace = []) {
+  $("activityReport").textContent = report ? JSON.stringify(report, null, 2) : "No technical report.";
+  if (Array.isArray(trace) && trace.length) {
+    $("activityLog").replaceChildren(...trace.map((step, index) => activityEntryForTrace(step, index)));
+    return;
+  }
   if (!report && !logText) {
     $("activityLog").textContent = "No activity log.";
-    $("activityReport").textContent = "No activity report.";
     return;
   }
   $("activityLog").textContent = logText || "No human-readable activity log was returned.";
-  $("activityReport").textContent = report ? JSON.stringify(report, null, 2) : "No technical report.";
+}
+
+function activityEntryForTrace(step, index) {
+  const name = step.step || "step";
+  const output = step.output || {};
+  const entry = activityEntry(`${index + 1}. ${activityTitle(name)}`, activitySummary(step));
+  const payload = activityPayload(step);
+  if (payload) {
+    const details = document.createElement("details");
+    details.className = "activity-details";
+    const summary = document.createElement("summary");
+    summary.textContent = payload.title;
+    const pre = document.createElement("pre");
+    pre.textContent = payload.text;
+    details.append(summary, pre);
+    entry.appendChild(details);
+  }
+  if (output.ok === false) entry.classList.add("blocked");
+  return entry;
+}
+
+function activityEntry(title, body) {
+  const section = document.createElement("section");
+  section.className = "activity-entry";
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const textNode = document.createElement("p");
+  textNode.textContent = body;
+  section.append(heading, textNode);
+  return section;
+}
+
+function activityTitle(stepName) {
+  return {
+    user_prompt: "Prompt captured",
+    retrieval_context: "Python built the context package",
+    memory_agent_iteration: "Python handed retrieval planning to the memory-agent LLM",
+    answer_adapter: "Python handed the final prompt to the answer LLM",
+    save_exchange: "Answer saved for continuity",
+    request_started: "Request started",
+    request_failed: "Request failed",
+  }[stepName] || stepName.replaceAll("_", " ");
+}
+
+function activitySummary(step) {
+  const input = step.input || {};
+  const output = step.output || {};
+  switch (step.step) {
+    case "user_prompt":
+      return `Received "${text(input.query)}" for session ${text(input.session_id)}.`;
+    case "retrieval_context":
+      return contextSummary(output);
+    case "memory_agent_iteration":
+      return `Memory-agent iteration ${text(input.iteration)} used ${text(input.adapter)} / ${text(input.model)} and returned ${text(output.stop_reason || output.status || "a decision")}.`;
+    case "answer_adapter":
+      return `Final answer call used ${text(input.adapter)} / ${text(input.model)} and ${output.ok === false ? "did not complete" : "returned an answer"}.`;
+    case "save_exchange":
+      return `Saved exchange ${text(output.exchange_id)} and updated continuity metadata.`;
+    case "request_started":
+      return `Preparing ${text(input.retrieval_mode || output.retrieval_mode)} retrieval with ${text(input.adapter || output.adapter)}.`;
+    case "request_failed":
+      return text(output.message || output.reason || "The request failed before completion.");
+    default:
+      return "Step completed.";
+  }
+}
+
+function contextSummary(output) {
+  const metadata = output.context_metadata || {};
+  const included = metadata.included || [];
+  const status = output.retrieval_status || metadata.retrieval_status || "unknown";
+  if (included.length) {
+    return `Python selected ${included.length} repository context record(s). Retrieval status: ${status}.`;
+  }
+  return `Python did not include repository nodes. Retrieval status: ${status}.`;
+}
+
+function activityPayload(step) {
+  const input = step.input || {};
+  const output = step.output || {};
+  if (step.step === "retrieval_context" && output.context_text) {
+    return {
+      title: "Show context Python assembled",
+      text: output.context_text,
+    };
+  }
+  if (step.step === "memory_agent_iteration" && input.prompt_text) {
+    return {
+      title: "Show prompt sent to memory-agent LLM",
+      text: input.prompt_text,
+    };
+  }
+  if (step.step === "answer_adapter" && input.prompt_text) {
+    return {
+      title: "Show prompt and context sent to answer LLM",
+      text: input.prompt_text,
+    };
+  }
+  return null;
 }
 
 function switchTab(tabId) {
@@ -255,6 +366,7 @@ async function ask() {
   };
   $("answerText").textContent = "Thinking...";
   $("answerMeta").innerHTML = "";
+  renderRunningActivity(payload);
   const timeout = window.mnemosyneRuntime?.ollama_timeout_seconds;
   renderConsole([
     {
@@ -278,7 +390,7 @@ async function ask() {
     });
     if (!data.ok) {
       $("answerText").textContent = data.message || JSON.stringify(data, null, 2);
-      renderActivityReport(data.activity_report, data.activity_log);
+      renderActivityReport(data.activity_report, data.activity_log, data.process_trace);
       renderConsole(data.process_trace || [
         {
           step: "request_failed",
@@ -290,11 +402,22 @@ async function ask() {
     }
     $("answerText").textContent = data.answer;
     $("answerMeta").innerHTML = `<div class="muted">exchange ${html(data.exchange_id)} | ${html(data.adapter)} ${html(data.model)}</div>`;
-    renderActivityReport(data.activity_report, data.activity_log);
+    renderActivityReport(data.activity_report, data.activity_log, data.process_trace);
     renderConsole(data.process_trace);
     await Promise.all([loadSessions(), loadHistory()]);
   } catch (error) {
     $("answerText").textContent = error.message;
+    renderActivityReport(null, "", [
+      {
+        step: "request_failed",
+        input: payload,
+        output: {
+          ok: false,
+          reason: "request_failed",
+          message: error.message,
+        },
+      },
+    ]);
     renderConsole([
       {
         step: "request_failed",

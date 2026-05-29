@@ -236,6 +236,11 @@ pre {
   margin-top: 8px;
 }
 
+.prompt-submit-row {
+  display: grid;
+  margin-top: 8px;
+}
+
 .trace-panel {
   grid-column: 1 / -1;
   margin-top: 16px;
@@ -246,10 +251,50 @@ pre {
 }
 
 .activity-log {
+  background: white;
+  border: 1px solid #d6dce4;
+  border-radius: 6px;
   min-height: 220px;
   max-height: 520px;
   overflow: auto;
+  padding: 12px;
   line-height: 1.45;
+}
+
+.activity-entry {
+  border-top: 1px solid #d6dce4;
+  padding: 10px 0;
+}
+
+.activity-entry:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.activity-entry p {
+  margin-top: 4px;
+}
+
+.activity-entry.blocked strong {
+  color: #8a1f17;
+}
+
+.activity-details {
+  margin-top: 8px;
+}
+
+.activity-details summary {
+  cursor: pointer;
+  color: #334155;
+  font-size: 13px;
+}
+
+.activity-details pre {
+  min-height: 0;
+  max-height: 360px;
+  margin-top: 8px;
+  overflow: auto;
+  font-size: 12px;
 }
 
 .technical-report {
@@ -430,6 +475,7 @@ body.epaper input,
 body.epaper select,
 body.epaper textarea,
 body.epaper pre,
+body.epaper .activity-log,
 body.epaper .answer-text,
 body.epaper .technical-report,
 body.epaper .status,
@@ -493,6 +539,19 @@ body.epaper pre {
 body.epaper .answer-text,
 body.epaper .activity-log {
   font-size: 17px;
+}
+
+body.epaper .activity-entry {
+  border-top: 2px solid #000;
+}
+
+body.epaper .activity-entry:first-child {
+  border-top: 0;
+}
+
+body.epaper .activity-details summary {
+  color: #000;
+  font-size: 14px;
 }
 
 body.epaper .console-log {

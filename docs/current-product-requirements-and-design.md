@@ -23,6 +23,8 @@ The system is not intended to be a single closed chatbot. It should become a mem
   - Browse: node search, recent documents, exchange history.
   - Ingestion: source staging, inbox processing, semantic-edge review, ingest jobs.
 - The user-facing activity view must be plain English. JSON may exist as an expandable technical detail, but it must not be the normal way to understand what happened.
+- The activity log should read as an operator timeline, not a forensic report. It should update as soon as a request starts, then show each Python step and LLM handoff in order when the run completes.
+- LLM handoff entries should expand to show a human-readable copy of the prompt/context payload sent to the model.
 - Browser caching must not leave the user unknowingly on an old static layout after UI changes.
 
 ### Answer Behavior
@@ -77,6 +79,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
   - prompt/trace details;
   - success or blocked state.
 - JSON traces may remain available for debugging, but the default report must be readable like a good application log.
+- Current web behavior provides immediate client-side running milestones and then renders the returned process trace as a step log. True server-pushed per-step streaming remains a later pipeline/API change.
 
 ### Governance, Identity, And Process
 

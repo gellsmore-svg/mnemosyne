@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mnemosyne</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260529-epaper" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260529-activity" />
   </head>
   <body>
     <main id="appShell" class="shell ask-mode">
@@ -40,6 +40,9 @@
                   <button id="createSession">New</button>
                 </div>
                 <textarea id="query" rows="8" placeholder="Ask Mnemosyne..."></textarea>
+                <div class="prompt-submit-row">
+                  <button id="ask" type="button">Ask</button>
+                </div>
                 <div class="controls">
                   <input id="nodeId" placeholder="Focus node ID (optional)" />
                   <select id="adapter">
@@ -55,7 +58,6 @@
                     <option value="direct">direct</option>
                     <option value="agentic">agentic</option>
                   </select>
-                  <button id="ask">Ask</button>
                 </div>
               </section>
               <section class="answer-panel response-panel">
@@ -64,7 +66,7 @@
               </section>
               <section class="answer-panel activity-panel">
                 <h3>Activity Log</h3>
-                <pre id="activityLog" class="activity-log">No activity log yet.</pre>
+                <div id="activityLog" class="activity-log">No activity log yet.</div>
                 <details class="technical-report">
                   <summary>Technical JSON report</summary>
                   <pre id="activityReport">No activity report yet.</pre>
@@ -158,6 +160,6 @@
       </aside>
     </main>
 
-    <script src="/static/app.js?v=20260529-epaper"></script>
+    <script src="/static/app.js?v=20260529-activity"></script>
   </body>
 </html>
