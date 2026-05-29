@@ -129,7 +129,7 @@ function activitySummary(step) {
     case "memory_agent_iteration":
       return memoryAgentSummary(input, output);
     case "answer_adapter":
-      return `Final answer call used ${text(input.adapter)} / ${text(input.model)} and ${output.ok === false ? "did not complete" : "returned an answer"}.`;
+      return answerAdapterSummary(input, output);
     case "save_exchange":
       return `Saved exchange ${text(output.exchange_id)} and updated continuity metadata.`;
     case "request_started":
@@ -139,6 +139,12 @@ function activitySummary(step) {
     default:
       return "Step completed.";
   }
+}
+
+function answerAdapterSummary(input, output) {
+  const decision = input.controller_decision;
+  const decisionText = decision && decision.reason ? ` Controller: ${decision.reason}` : "";
+  return `Final answer call used ${text(input.adapter)} / ${text(input.model)} and ${output.ok === false ? "did not complete" : "returned an answer"}.${decisionText}`;
 }
 
 function memoryAgentSummary(input, output) {
@@ -219,8 +225,17 @@ function activityPayload(step) {
   }
   if (step.step === "answer_adapter" && input.prompt_text) {
     return {
-      title: "Show prompt and context sent to answer LLM",
-      text: input.prompt_text,
+      title: input.controller_decision
+        ? "Show controller decision, prompt, and context sent to answer LLM"
+        : "Show prompt and context sent to answer LLM",
+      text: [
+        input.controller_decision
+          ? ["Controller decision:", "", JSON.stringify(input.controller_decision, null, 2), ""].join("\n")
+          : "",
+        "Prompt and context sent to answer LLM:",
+        "",
+        input.prompt_text,
+      ].filter(Boolean).join("\n"),
     };
   }
   return null;

@@ -408,12 +408,14 @@ def answer_query_agentic(
         }
         return attach_answer_activity(result)
     retrieval_status = "agentic_tool_context" if prompt["context_metadata"]["included"] else "agentic_no_tool_context"
+    controller_decision = prompt["context_metadata"].get("controller_decision")
     adapter_step = {
         "step": "answer_adapter",
         "input": {
             "adapter": runtime_config.answer_adapter,
             "model": runtime_config.ollama_model,
             "prompt_text": prompt["prompt_text"],
+            "controller_decision": controller_decision,
             "timeout_seconds": runtime_config.ollama_timeout_seconds
             if runtime_config.answer_adapter.startswith("ollama")
             else None,
@@ -517,6 +519,7 @@ def answer_query_agentic(
         "used_node_ids": answer["used_node_ids"],
         "budget": prompt["budget"],
         "retrieval_status": retrieval_status,
+        "controller_decision": controller_decision,
         "process_run_id": process_run_id,
         "process_trace": process_trace,
     }
@@ -2441,6 +2444,10 @@ def build_agentic_answer_envelope(
         query=query,
         tool_results=answer_tool_results,
         context_proposal=context_proposal,
+        controller_decision=agentic_context_controller_decision(
+            tool_results=answer_tool_results,
+            context_proposal=context_proposal,
+        ),
     )
     context_text = render_tool_results(answer_tool_results)
     overhead_text = "\n".join(
@@ -2465,6 +2472,7 @@ def build_agentic_answer_envelope(
             context_text,
         ]
     ).rstrip() + "\n"
+    controller_decision = context_document["controller_decision"]
     return {
         "system_instruction": instruction,
         "query": query,
@@ -2486,8 +2494,9 @@ def build_agentic_answer_envelope(
             "skipped": [],
             "used_chars": len(context_text),
             "char_budget": ANSWER_CONTEXT_CHAR_BUDGET,
-            "retrieval_status": "agentic_tool_context",
+            "retrieval_status": controller_decision["retrieval_status"],
             "tool_result_count": len(tool_results),
+            "controller_decision": controller_decision,
             "context_proposal": context_proposal,
             "context_document": context_document,
         },
@@ -2498,13 +2507,49 @@ def build_agentic_context_document(
     query: str,
     tool_results: list[dict[str, Any]],
     context_proposal: dict[str, Any] | None = None,
+    controller_decision: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "kind": "agentic_answer_context",
         "query": query,
+        "controller_decision": controller_decision,
         "context_proposal": context_proposal,
         "tool_results": [context_document_tool_result(result) for result in tool_results],
+    }
+
+
+def agentic_context_controller_decision(
+    *,
+    tool_results: list[dict[str, Any]],
+    context_proposal: dict[str, Any] | None,
+) -> dict[str, Any]:
+    successful_tools = [result for result in tool_results if result.get("ok") is not False]
+    failed_tools = [result for result in tool_results if result.get("ok") is False]
+    included = included_nodes_from_tool_results(tool_results)
+    action = "answer_without_repository_context"
+    if included:
+        action = "use_repository_context"
+    elif successful_tools:
+        action = "answer_after_memory_tools_without_context"
+    reason = "Memory-agent/controller gathered repository context." if included else (
+        "Memory-agent/controller ran memory tools but no repository context was included."
+        if successful_tools
+        else "Memory-agent/controller did not gather usable memory context."
+    )
+    return {
+        "schema_version": 1,
+        "mode": "agentic",
+        "current_owner": "memory_agent_controller",
+        "target_owner": "memory_agent_controller",
+        "action": action,
+        "reason": reason,
+        "retrieval_status": "agentic_tool_context" if included else "agentic_no_tool_context",
+        "tool_result_count": len(tool_results),
+        "successful_tool_count": len(successful_tools),
+        "failed_tool_count": len(failed_tools),
+        "included_node_count": len(included),
+        "context_proposal_present": bool(context_proposal),
     }
 
 

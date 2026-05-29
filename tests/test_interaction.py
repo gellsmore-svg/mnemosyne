@@ -1010,6 +1010,10 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
     ]
     assert result["process_trace"][1]["output"]["tool_results"][0]["tool"] == "search_nodes"
     assert result["process_trace"][2]["output"]["stopped"] is True
+    controller_decision = result["process_trace"][3]["input"]["controller_decision"]
+    assert controller_decision["mode"] == "agentic"
+    assert controller_decision["current_owner"] == "memory_agent_controller"
+    assert result["activity_report"]["context_construction"]["controller_decision"] == controller_decision
     assert "Mnemosyne Tool Results" in prompts[2]
 
 
@@ -3308,6 +3312,9 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
     assert context_document["schema_version"] == 1
     assert context_document["kind"] == "agentic_answer_context"
     assert context_document["query"] == "What is Mnemosyne?"
+    assert context_document["controller_decision"]["mode"] == "agentic"
+    assert context_document["controller_decision"]["current_owner"] == "memory_agent_controller"
+    assert envelope["context_metadata"]["controller_decision"] == context_document["controller_decision"]
     search_output = context_document["tool_results"][0]["output"]
     assert search_output["top_match"] == {"node_id": "node1", "title": "System Name"}
     assert search_output["top_contexts"][0]["records"][0] == {

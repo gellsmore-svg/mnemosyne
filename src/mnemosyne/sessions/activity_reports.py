@@ -58,10 +58,14 @@ def answer_activity_log(report: dict[str, Any]) -> str:
 def context_summary(context: dict[str, Any]) -> str:
     status = context.get("status") or "unknown"
     if status == "agentic":
-        return (
+        lines = [
             f"- Agentic retrieval ran {context.get('iterations', 0)} planner iteration(s) "
             f"and executed {context.get('tool_calls', 0)} tool call(s)."
-        )
+        ]
+        decision = context.get("controller_decision") or {}
+        if decision.get("reason"):
+            lines.append(f"- Controller decision: {decision.get('reason')}")
+        return "\n".join(lines)
     lines = [f"- Retrieval status: {status}."]
     focus_node_id = context.get("focus_node_id")
     if focus_node_id:
@@ -160,9 +164,12 @@ def context_construction_section(trace: list[dict[str, Any]]) -> dict[str, Any]:
             "trust_diagnostic": output.get("trust_diagnostic"),
         }
     iterations = [step for step in trace if step.get("step") == "memory_agent_iteration"]
+    adapter_step = first_step(trace, "answer_adapter") or {}
+    adapter_input = adapter_step.get("input") or {}
     return {
         "status": "agentic",
         "iterations": len(iterations),
+        "controller_decision": adapter_input.get("controller_decision"),
         "tool_calls": sum(len(((step.get("output") or {}).get("tool_results") or [])) for step in iterations),
         "stop_reasons": [
             (step.get("output") or {}).get("stop_reason")
