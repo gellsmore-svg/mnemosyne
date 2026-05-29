@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <main class="shell">
+    <main id="appShell" class="shell ask-mode">
       <section class="workspace">
         <header class="topbar">
           <div>
@@ -17,81 +17,109 @@
           <button id="refresh">Refresh</button>
         </header>
 
-        <section class="ask-panel">
-          <div class="session-row">
-            <select id="sessionId">
-              <option value="web">web</option>
-            </select>
-            <input id="newSessionTitle" placeholder="New session title" />
-            <button id="createSession">New</button>
-          </div>
-          <textarea id="query" rows="4" placeholder="Ask Mnemosyne..."></textarea>
-          <div class="controls">
-            <input id="nodeId" placeholder="Focus node ID (optional)" />
-            <select id="adapter">
-              <option value="">default</option>
-              <option value="mock">mock</option>
-              <option value="ollama_cli">ollama_cli</option>
-            </select>
-            <select id="model">
-              <option value="">default model</option>
-            </select>
-            <select id="retrievalMode">
-              <option value="">default retrieval</option>
-              <option value="direct">direct</option>
-              <option value="agentic">agentic</option>
-            </select>
-            <button id="ask">Ask</button>
-          </div>
-        </section>
+        <nav class="tabs" aria-label="Workspace sections">
+          <button class="tab-button active" data-tab="askTab">Ask</button>
+          <button class="tab-button secondary" data-tab="browseTab">Browse</button>
+          <button class="tab-button secondary" data-tab="ingestionTab">Ingestion</button>
+        </nav>
 
-        <section class="answer">
-          <h2>Answer</h2>
-          <div id="answerMeta"></div>
-          <div class="answer-grid">
-            <section class="answer-panel">
+        <div id="askTab" class="tab-panel active">
+          <section class="answer">
+            <div id="answerMeta"></div>
+            <div class="answer-grid">
+              <section class="answer-panel prompt-panel">
+                <h3>Prompt</h3>
+                <div class="session-row">
+                  <select id="sessionId">
+                    <option value="web">web</option>
+                  </select>
+                  <input id="newSessionTitle" placeholder="New session title" />
+                  <button id="createSession">New</button>
+                </div>
+                <textarea id="query" rows="8" placeholder="Ask Mnemosyne..."></textarea>
+                <div class="controls">
+                  <input id="nodeId" placeholder="Focus node ID (optional)" />
+                  <select id="adapter">
+                    <option value="">default</option>
+                    <option value="mock">mock</option>
+                    <option value="ollama_cli">ollama_cli</option>
+                  </select>
+                  <select id="model">
+                    <option value="">default model</option>
+                  </select>
+                  <select id="retrievalMode">
+                    <option value="">default retrieval</option>
+                    <option value="direct">direct</option>
+                    <option value="agentic">agentic</option>
+                  </select>
+                  <button id="ask">Ask</button>
+                </div>
+              </section>
+              <section class="answer-panel">
               <h3>Response</h3>
               <div id="answerText" class="answer-text">No answer yet.</div>
-            </section>
-            <section class="answer-panel">
+              </section>
+              <section class="answer-panel">
               <h3>Activity Log</h3>
               <pre id="activityLog" class="activity-log">No activity log yet.</pre>
               <details class="technical-report">
                 <summary>Technical JSON report</summary>
                 <pre id="activityReport">No activity report yet.</pre>
               </details>
-            </section>
-            <section class="answer-panel">
+              </section>
+              <section class="answer-panel">
               <h3>Prompt / Trace</h3>
               <div id="runLog" class="console-log">No run yet.</div>
-            </section>
-          </div>
-        </section>
+              </section>
+            </div>
+          </section>
+        </div>
 
-        <section class="operator">
-          <h2>Ingestion</h2>
-          <div class="operator-grid">
-            <input id="sourceUpload" type="file" accept=".md,.markdown,.txt" multiple />
-            <button id="uploadSource">Stage Files</button>
-            <button id="browseIngest">Browse Inbox</button>
-            <button id="processInbox">Process Inbox</button>
-            <div id="queueStatus" class="status">Queue: unknown</div>
-          </div>
-          <div id="ingestFiles" class="list"></div>
-          <pre id="processResult">Stage .md/.txt files or drop them into data/ingest, then process the inbox.</pre>
-        </section>
+        <div id="ingestionTab" class="tab-panel">
+          <section class="operator">
+            <h2>Ingestion</h2>
+            <div class="operator-grid">
+              <input id="sourceUpload" type="file" accept=".md,.markdown,.txt" multiple />
+              <button id="uploadSource">Stage Files</button>
+              <button id="browseIngest">Browse Inbox</button>
+              <button id="processInbox">Process Inbox</button>
+              <div id="queueStatus" class="status">Queue: unknown</div>
+            </div>
+            <div id="ingestFiles" class="list"></div>
+            <pre id="processResult">Stage .md/.txt files or drop them into data/ingest, then process the inbox.</pre>
+          </section>
 
-        <section class="operator">
-          <h2>Semantic Edge Review</h2>
-          <div class="operator-grid">
-            <button id="loadSemanticCandidates">Load Pending</button>
-            <div id="semanticCandidateStatus" class="status">Candidates: unknown</div>
-          </div>
-          <div id="semanticCandidates" class="list"></div>
-        </section>
+          <section class="operator">
+            <h2>Semantic Edge Review</h2>
+            <div class="operator-grid">
+              <button id="loadSemanticCandidates">Load Pending</button>
+              <div id="semanticCandidateStatus" class="status">Candidates: unknown</div>
+            </div>
+            <div id="semanticCandidates" class="list"></div>
+          </section>
+
+          <section class="operator">
+            <h2>Recent Jobs</h2>
+            <div class="filter-grid">
+              <select id="jobStatus">
+                <option value="">any status</option>
+                <option value="pending">pending</option>
+                <option value="processing">processing</option>
+                <option value="completed">completed</option>
+                <option value="rejected">rejected</option>
+                <option value="failed">failed</option>
+              </select>
+              <input id="jobQuery" placeholder="Path, reason, checksum" />
+              <input id="jobReason" placeholder="Exact reason" />
+              <input id="jobLimit" type="number" min="1" max="100" value="6" />
+              <button id="loadJobs">Load</button>
+            </div>
+            <div id="jobs" class="list"></div>
+          </section>
+        </div>
       </section>
 
-      <aside class="sidebar">
+      <aside id="browseTab" class="sidebar tab-panel">
         <section>
           <h2>Search Nodes</h2>
           <div class="row">
@@ -124,24 +152,6 @@
           <div id="history" class="list"></div>
         </section>
 
-        <section>
-          <h2>Recent Jobs</h2>
-          <div class="filter-grid">
-            <select id="jobStatus">
-              <option value="">any status</option>
-              <option value="pending">pending</option>
-              <option value="processing">processing</option>
-              <option value="completed">completed</option>
-              <option value="rejected">rejected</option>
-              <option value="failed">failed</option>
-            </select>
-            <input id="jobQuery" placeholder="Path, reason, checksum" />
-            <input id="jobReason" placeholder="Exact reason" />
-            <input id="jobLimit" type="number" min="1" max="100" value="6" />
-            <button id="loadJobs">Load</button>
-          </div>
-          <div id="jobs" class="list"></div>
-        </section>
       </aside>
     </main>
 

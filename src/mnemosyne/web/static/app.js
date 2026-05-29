@@ -63,6 +63,20 @@ function renderActivityReport(report, logText = "") {
   $("activityReport").textContent = report ? JSON.stringify(report, null, 2) : "No technical report.";
 }
 
+function switchTab(tabId) {
+  document.querySelectorAll(".tab-button").forEach((button) => {
+    const active = button.dataset.tab === tabId;
+    button.classList.toggle("active", active);
+    button.classList.toggle("secondary", !active);
+  });
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    panel.classList.toggle("active", panel.id === tabId);
+  });
+  $("appShell").classList.toggle("ask-mode", tabId === "askTab");
+  $("appShell").classList.toggle("browse-mode", tabId === "browseTab");
+  $("appShell").classList.toggle("ingestion-mode", tabId === "ingestionTab");
+}
+
 async function loadHealth() {
   const data = await api("/api/health");
   $("health").textContent = `Mongo: ${data.database}`;
@@ -329,12 +343,12 @@ async function browseIngestFolder() {
     ? data.files
         .map(
           (file) =>
-            `<div class="item"><strong>${escapeHtml(file.name)}</strong><br><small>${escapeHtml(
+            `<div class="item"><strong>${html(file.name)}</strong><br><small>${html(
               file.path
             )} · ${file.bytes} bytes</small></div>`
         )
         .join("")
-    : `<div class="item">No supported files in ${escapeHtml(data.path)}.</div>`;
+    : `<div class="item">No supported files in ${html(data.path)}.</div>`;
 }
 
 async function refresh() {
@@ -361,6 +375,9 @@ $("processInbox").addEventListener("click", processInbox);
 $("loadHistory").addEventListener("click", loadHistory);
 $("loadJobs").addEventListener("click", loadJobs);
 $("loadSemanticCandidates").addEventListener("click", loadSemanticCandidates);
+document.querySelectorAll(".tab-button").forEach((button) => {
+  button.addEventListener("click", () => switchTab(button.dataset.tab));
+});
 $("sessionId").addEventListener("change", () => {
   $("historySession").value = $("sessionId").value;
   loadHistory();

@@ -156,7 +156,7 @@ Current early read surface:
 - near-match fallback runs after empty searches and after weak initial matches below the configured score threshold, so low-quality partial hits do not block typo-tolerant corrected probes.
 - structured process trace for prompt intake, planner call, tool execution, retrieval/context compilation, and answer call.
 - answer flows return both a structured machine-facing activity report and a plain-English activity log for query understanding, context construction, response generation, LLM activity, and system functions; the web UI defaults to the plain log and keeps raw JSON behind an expandable technical detail.
-- the web answer area presents Response, Activity Log, and Prompt / Trace in side-by-side panels on desktop to reduce vertical scanning during experiments.
+- the web UI separates Ask, Browse, and Ingestion into top-level tabs. The Ask tab presents Prompt, Response, Activity Log, and Prompt / Trace in side-by-side panels on desktop; the Ingestion tab owns staging, inbox processing, semantic-edge review, and ingest job inspection.
 - memory-agent iteration traces include planner response format and thinking controls, so JSON-mode planner behavior is diagnosable from saved traces.
 - agentic answer prompts persist a first structured `context_document` alongside the rendered Markdown context; this is a scaffold toward the full context schema.
 - memory-agent search fallback and lexical ranking, with full console tool output but top-ranked context packaged for the answer model.
