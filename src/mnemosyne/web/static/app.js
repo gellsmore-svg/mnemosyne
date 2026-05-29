@@ -57,9 +57,9 @@ function renderConsole(trace) {
 function renderRunningActivity(payload) {
   $("activityReport").textContent = "Technical report will appear when the run finishes.";
   $("activityLog").replaceChildren(
-    activityEntry("Prompt received", `Session ${payload.session_id || "web"}. Python is preparing the request.`),
-    activityEntry("Context selection started", "Python is checking whether repository context should be used."),
-    activityEntry("Waiting for model handoff", "If context is found, Python will hand a readable prompt/context package to the selected LLM.")
+    activityEntry("Prompt received", `Session ${payload.session_id || "web"}. Mnemosyne is preparing the request.`),
+    activityEntry("Context selection started", "The retrieval controller is checking whether memory context should be used."),
+    activityEntry("Waiting for model handoff", "If context is found, Mnemosyne will hand a readable prompt/context package to the selected LLM.")
   );
 }
 
@@ -109,9 +109,9 @@ function activityEntry(title, body) {
 function activityTitle(stepName) {
   return {
     user_prompt: "Prompt captured",
-    retrieval_context: "Python built the context package",
-    memory_agent_iteration: "Python handed retrieval planning to the memory-agent LLM",
-    answer_adapter: "Python handed the final prompt to the answer LLM",
+    retrieval_context: "Mnemosyne built the context package",
+    memory_agent_iteration: "Mnemosyne handed retrieval planning to the memory-agent LLM",
+    answer_adapter: "Mnemosyne handed the final prompt to the answer LLM",
     save_exchange: "Answer saved for continuity",
     request_started: "Request started",
     request_failed: "Request failed",
@@ -148,7 +148,7 @@ function memoryAgentSummary(input, output) {
   const status = text(output.stop_reason || output.status || "a decision");
   if (failed.length) {
     const first = failed[0];
-    return `Memory-agent iteration ${text(input.iteration)} used ${text(input.adapter)} / ${text(input.model)}. Python ran ${toolResults.length} tool call(s): ${okCount} succeeded, ${failed.length} need repair. First issue: ${text(first.tool)} - ${text(first.error)}.`;
+    return `Memory-agent iteration ${text(input.iteration)} used ${text(input.adapter)} / ${text(input.model)}. Mnemosyne ran ${toolResults.length} memory-tool call(s): ${okCount} succeeded, ${failed.length} need repair. First issue: ${text(first.tool)} - ${text(first.error)}.`;
   }
   return `Memory-agent iteration ${text(input.iteration)} used ${text(input.adapter)} / ${text(input.model)} and returned ${status}.`;
 }
@@ -160,9 +160,9 @@ function contextSummary(output) {
   const decision = output.retrieval_decision || metadata.retrieval_decision || {};
   const reason = decision.reason ? ` Decision: ${decision.reason}` : "";
   if (included.length) {
-    return `Python selected ${included.length} repository context record(s). Retrieval status: ${status}.${reason}`;
+    return `Mnemosyne selected ${included.length} repository context record(s). Retrieval status: ${status}.${reason}`;
   }
-  return `Python did not include repository nodes. Retrieval status: ${status}.${reason}`;
+  return `Mnemosyne did not include repository nodes. Retrieval status: ${status}.${reason}`;
 }
 
 function activityPayload(step) {
@@ -171,13 +171,13 @@ function activityPayload(step) {
   if (step.step === "retrieval_context" && output.context_text) {
     const decision = output.retrieval_decision || (output.context_metadata || {}).retrieval_decision;
     return {
-      title: "Show retrieval decision and context Python assembled",
+      title: "Show retrieval decision and assembled context",
       text: [
         "Retrieval decision:",
         "",
         decision ? JSON.stringify(decision, null, 2) : "No retrieval decision recorded.",
         "",
-        "Context Python assembled:",
+        "Assembled context:",
         "",
         output.context_text,
       ].join("\n"),
@@ -187,13 +187,13 @@ function activityPayload(step) {
     const failed = (output.tool_results || []).filter((result) => result && result.ok === false);
     if (failed.length) {
       return {
-        title: "Show LLM prompt and Python repair guidance",
+        title: "Show LLM prompt and memory-tool repair guidance",
         text: [
           "Prompt sent to memory-agent LLM:",
           "",
           input.prompt_text,
           "",
-          "Python repair guidance from failed tool calls:",
+          "Memory-tool repair guidance from failed calls:",
           "",
           JSON.stringify(failed.map((result) => ({
             tool: result.tool,

@@ -149,11 +149,11 @@ Current allowed memory-agent tools:
 - `list_active_documents`;
 - `list_documents`.
 
-Python validates tool calls, executes them, records observations, and feeds compact summaries back into later planner iterations. If the LLM makes an invalid call, Python returns an instructional error with usage guidance and a repair instruction so the next iteration can recover.
+Mnemosyne validates memory-agent tool calls, executes them through the Python runtime, records observations, and feeds compact summaries back into later planner iterations. If the LLM makes an invalid call, the tool layer returns an instructional error with usage guidance and a repair instruction so the next iteration can recover.
 
 Failed tool-call guidance is preserved in memory-agent history and repeated in a dedicated repair-guidance section of the next planner prompt. The user-facing activity log also summarizes these failures in plain language so recovery is visible without reading the raw JSON trace.
 
-When the memory-agent stops, it may return a bounded `context_proposal` containing selected node IDs, rationale, and organization hints. Python treats this as a proposal, not authority. It validates node IDs, enforces budgets, ignores invented IDs, and uses the proposal only to prioritize matching context records.
+When the memory-agent stops, it may return a bounded `context_proposal` containing selected node IDs, rationale, and organization hints. Mnemosyne treats this as a retrieval-controller proposal, not unchecked authority. The Python runtime validates node IDs, enforces budgets, ignores invented IDs, and uses the proposal only to prioritize matching context records.
 
 ### Query Assembly
 
@@ -434,7 +434,7 @@ Current answer flow:
 ## Near-Term Priorities
 
 1. Improve LLM planner recovery and transparency when tool calls fail.
-2. Add direct-retrieval intent classification and relevance thresholds.
+2. Continue moving context strategy from deterministic direct retrieval toward the memory-agent/controller interface.
 3. Build human-readable ingestion logs.
 4. Add controlled repository refresh/rebuild with ingestion epochs.
 5. Improve chronological source-date extraction and corpus ordering.

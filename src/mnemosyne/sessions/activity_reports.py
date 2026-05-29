@@ -118,7 +118,7 @@ def llm_summary(llm: dict[str, Any]) -> str:
 def tool_repair_summary(repairs: list[dict[str, Any]]) -> str:
     if not repairs:
         return "- No memory-tool repair guidance was needed."
-    lines = [f"- Python returned repair guidance for {len(repairs)} failed memory-tool call(s)."]
+    lines = [f"- Mnemosyne returned repair guidance for {len(repairs)} failed memory-tool call(s)."]
     for item in repairs[:5]:
         lines.append(
             f"  - {item.get('tool') or 'unknown tool'}: {item.get('error') or 'call failed'}"
