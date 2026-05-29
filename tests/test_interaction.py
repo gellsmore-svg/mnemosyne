@@ -12,6 +12,7 @@ from mnemosyne.sessions.interaction import (
     build_query_assembly,
     combined_query_text,
     compact_fallback_query_details,
+    direct_context_controller_decision,
     direct_retrieval_decision,
     execute_search_nodes_tool,
     fallback_queries,
@@ -154,6 +155,21 @@ def test_direct_retrieval_decision_skips_low_intent_and_generic_prompts() -> Non
     assert repository["category"] == "repository_query"
     assert repository["should_search_corpus"] is True
     assert repository["minimum_match_score"] >= 1
+
+
+def test_direct_context_controller_decision_marks_scaffold_owner() -> None:
+    retrieval = direct_retrieval_decision("What does the Mnemosyne technical design say?")
+    decision = direct_context_controller_decision(
+        retrieval_decision=retrieval,
+        selected_node_id="node1",
+        selected_node_source="corpus",
+        retrieval_status="matched_context",
+    )
+
+    assert decision["mode"] == "direct_scaffold"
+    assert decision["current_owner"] == "deterministic_guardrail"
+    assert decision["target_owner"] == "memory_agent_controller"
+    assert decision["action"] == "use_repository_context"
 
 
 def test_select_focus_node_rejects_weak_best_match(monkeypatch) -> None:
@@ -355,6 +371,10 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert result["used_node_ids"] == []
     assert result["activity_report"]["kind"] == "answer_activity_report"
     assert result["activity_report"]["context_construction"]["status"] == "no_focus_node"
+    assert (
+        result["activity_report"]["context_construction"]["controller_decision"]["target_owner"]
+        == "memory_agent_controller"
+    )
     assert result["activity_report"]["llm_activity"]["call_count"] == 1
     assert result["activity_log"].startswith("Answer Activity Log")
     assert "Context construction:" in result["activity_log"]
@@ -365,6 +385,7 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
         "answer_adapter",
     ]
     assert "plain prompt" in result["process_trace"][1]["output"]["context_text"]
+    assert result["process_trace"][1]["output"]["controller_decision"]["mode"] == "direct_scaffold"
 
 
 def test_answer_query_does_not_retrieve_corpus_for_greeting(monkeypatch) -> None:

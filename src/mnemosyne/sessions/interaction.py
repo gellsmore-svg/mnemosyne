@@ -605,9 +605,17 @@ def prepare_direct_answer_prompt(
                 reserved_response_tokens=config.retrieval.reserved_response_tokens,
             )
         prompt["context_metadata"]["retrieval_decision"] = retrieval_decision
+    controller_decision = direct_context_controller_decision(
+        retrieval_decision=retrieval_decision,
+        selected_node_id=selected_node_id,
+        selected_node_source=selected_node_source,
+        retrieval_status=retrieval_status,
+    )
+    prompt["context_metadata"]["controller_decision"] = controller_decision
     retrieval_output = {
         "retrieval_status": retrieval_status,
         "focus_node_id": selected_node_id,
+        "controller_decision": controller_decision,
         "retrieval_decision": retrieval_decision,
         "context_text": prompt["context_text"],
         "context_metadata": prompt["context_metadata"],
@@ -668,6 +676,38 @@ def direct_retrieval_decision(query: str) -> dict[str, Any]:
         "anchor_terms": anchor_terms,
         "exact_phrases": exact_phrases,
         "minimum_match_score": DIRECT_CONTEXT_MIN_SCORE,
+    }
+
+
+def direct_context_controller_decision(
+    *,
+    retrieval_decision: dict[str, Any],
+    selected_node_id: str | None,
+    selected_node_source: str | None,
+    retrieval_status: str,
+) -> dict[str, Any]:
+    action = "answer_without_repository_context"
+    if selected_node_id:
+        action = "use_repository_context"
+    elif retrieval_status == "active_document_source_fallback":
+        action = "use_active_document_source_excerpt"
+    elif retrieval_decision.get("should_search_corpus"):
+        action = "skip_weak_or_missing_repository_context"
+    return {
+        "schema_version": 1,
+        "mode": "direct_scaffold",
+        "current_owner": "deterministic_guardrail",
+        "target_owner": "memory_agent_controller",
+        "action": action,
+        "reason": retrieval_decision.get("reason"),
+        "category": retrieval_decision.get("category"),
+        "retrieval_status": retrieval_status,
+        "selected_node_id": selected_node_id,
+        "selected_node_source": selected_node_source,
+        "note": (
+            "Direct mode uses a deterministic guardrail until the memory-agent/controller "
+            "owns context strategy end to end."
+        ),
     }
 
 

@@ -121,6 +121,7 @@ It currently supports:
 - lexical and near-match search;
 - deterministic intent classification for empty, low-intent, active-document-reference, generic, and repository-query prompts;
 - a minimum direct context match score before broad corpus search can select a node;
+- a `controller_decision` trace object that explicitly marks direct retrieval as a deterministic scaffold and names the target owner as the memory-agent/controller;
 - source-file fallback for active documents;
 - no-context handling for low-intent conversational prompts.
 

@@ -157,8 +157,9 @@ function contextSummary(output) {
   const metadata = output.context_metadata || {};
   const included = metadata.included || [];
   const status = output.retrieval_status || metadata.retrieval_status || "unknown";
-  const decision = output.retrieval_decision || metadata.retrieval_decision || {};
-  const reason = decision.reason ? ` Decision: ${decision.reason}` : "";
+  const decision = output.controller_decision || metadata.controller_decision || output.retrieval_decision || metadata.retrieval_decision || {};
+  const owner = decision.current_owner ? ` (${decision.current_owner})` : "";
+  const reason = decision.reason ? ` Controller${owner}: ${decision.reason}` : "";
   if (included.length) {
     return `Mnemosyne selected ${included.length} repository context record(s). Retrieval status: ${status}.${reason}`;
   }
@@ -169,13 +170,19 @@ function activityPayload(step) {
   const input = step.input || {};
   const output = step.output || {};
   if (step.step === "retrieval_context" && output.context_text) {
-    const decision = output.retrieval_decision || (output.context_metadata || {}).retrieval_decision;
+    const metadata = output.context_metadata || {};
+    const controllerDecision = output.controller_decision || metadata.controller_decision;
+    const retrievalDecision = output.retrieval_decision || metadata.retrieval_decision;
     return {
-      title: "Show retrieval decision and assembled context",
+      title: "Show controller decision and assembled context",
       text: [
-        "Retrieval decision:",
+        "Controller decision:",
         "",
-        decision ? JSON.stringify(decision, null, 2) : "No retrieval decision recorded.",
+        controllerDecision ? JSON.stringify(controllerDecision, null, 2) : "No controller decision recorded.",
+        "",
+        "Retrieval guardrail detail:",
+        "",
+        retrievalDecision ? JSON.stringify(retrievalDecision, null, 2) : "No retrieval guardrail detail recorded.",
         "",
         "Assembled context:",
         "",
