@@ -68,6 +68,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
   - reviewed semantic candidate inspection;
   - context budget enforcement.
 - Retrieval traces should expose enough detail for the user to understand why context was chosen.
+- If an LLM calls the Python tool interface incorrectly, Python should return an instructional error that explains how to repair the call, allowing the LLM to recover in the next iteration.
 
 ### LLM Transparency
 
@@ -121,11 +122,12 @@ The system is not intended to be a single closed chatbot. It should become a mem
    - bypasses retrieval for low-intent greetings;
    - falls back to no-context prompting when no memory context is appropriate.
 5. Agentic mode calls a memory-agent planner that can request read-only retrieval tools.
-6. Python executes allowed retrieval tools and records observations.
-7. Python assembles a bounded context document and final prompt.
-8. The answer adapter generates the final response.
-9. The exchange is saved, used nodes are scored, active documents are updated, and generated output is queued for reviewable ingestion.
-10. The API returns:
+6. Python executes allowed retrieval tools and records observations. Invalid tool calls return usage guidance instead of opaque errors.
+7. When stopping, the memory-agent may propose selected node IDs and context organization. Python validates and budgets that proposal before final assembly.
+8. Python assembles a bounded context document and final prompt.
+9. The answer adapter generates the final response.
+10. The exchange is saved, used nodes are scored, active documents are updated, and generated output is queued for reviewable ingestion.
+11. The API returns:
    - answer;
    - structured process trace;
    - machine-facing `activity_report`;

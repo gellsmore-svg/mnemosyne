@@ -265,11 +265,12 @@ After the memory-agent loop stops, Python calls `build_agentic_answer_envelope()
 That function:
 
 1. Prepares tool results with `prepare_tool_results_for_answer()`.
-2. Builds a structured `context_document` from the same prepared results.
-3. Renders the prepared results with `render_tool_results()`.
-4. Builds the final prompt text.
-5. Computes token and character budget estimates.
-6. Computes context metadata and included node IDs.
+2. Applies any validated memory-agent `context_proposal` from the final planner decision.
+3. Builds a structured `context_document` from the prepared results and proposal.
+4. Renders the prepared results with `render_tool_results()`.
+5. Builds the final prompt text.
+6. Computes token and character budget estimates.
+7. Computes context metadata and included node IDs.
 
 For `search_nodes`, `expand_proximity`, `expand_graph_paths`, and `semantic_candidates`, `prepare_tool_results_for_answer()` reduces the raw tool output to:
 
@@ -279,10 +280,33 @@ For `search_nodes`, `expand_proximity`, `expand_graph_paths`, and `semantic_cand
 
 `assemble_search_contexts()` deduplicates records across contexts and enforces a shared 4,000-character context budget.
 
+When the memory-agent stops, it may include:
+
+```json
+{
+  "context_proposal": {
+    "selected_node_ids": ["..."],
+    "rationale": "why these nodes should shape the final context",
+    "organization": ["how to order the context"]
+  }
+}
+```
+
+Python treats this as a proposal, not authority. It normalizes the proposal, ignores invented or absent node IDs during prioritization, keeps the existing context budget, and moves matching context records earlier in the rendered answer context where possible.
+
+If the memory-agent sends an invalid tool call, Python returns a structured failed tool result instead of only raising a terse error. These failed results include:
+
+- `error`: what was wrong;
+- `usage`: how to call the tool correctly;
+- `repair_instruction`: guidance to revise the next call and not repeat the invalid call.
+
+This is deliberately visible to the next memory-agent iteration so the LLM can recover from tool-interface confusion.
+
 The structured `context_document` is stored in prompt `context_metadata` with:
 
 - schema version and context kind;
 - original user query;
+- validated memory-agent context proposal, when present;
 - per-tool result records;
 - normalized search/query-assembly diagnostics where available;
 - top search/proximity match, match count, and assembled context records;

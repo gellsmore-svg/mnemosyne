@@ -1312,6 +1312,19 @@ def test_parse_memory_agent_decision_accepts_done_status() -> None:
         "status": "done",
         "tool_calls": [],
         "compiled_context_notes": "sufficient",
+        "context_proposal": None,
+    }
+
+
+def test_parse_memory_agent_decision_accepts_context_proposal() -> None:
+    decision = parse_memory_agent_decision(
+        '{"status":"done","tool_calls":[],"context_proposal":{"selected_node_ids":["node2"],"rationale":"best evidence","organization":["definition first"]}}'
+    )
+
+    assert decision["context_proposal"] == {
+        "selected_node_ids": ["node2"],
+        "rationale": "best evidence",
+        "organization": ["definition first"],
     }
 
 
@@ -2101,6 +2114,26 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
         ],
         "compiled_contexts": [{"focus_node_id": "node4", "records": []}],
     }
+
+
+def test_execute_tool_calls_returns_instructional_tool_errors() -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    results = interaction.execute_tool_calls(
+        FakeDb(),
+        [
+            {"tool": "compile_context", "arguments": {}},
+            {"tool": "not_a_tool", "arguments": {}},
+        ],
+    )
+
+    assert results[0]["ok"] is False
+    assert results[0]["error"] == "compile_context requires node_id."
+    assert "node_id" in results[0]["usage"]
+    assert "Do not repeat" in results[0]["repair_instruction"]
+    assert results[1]["ok"] is False
+    assert "Unsupported tool" in results[1]["error"]
+    assert "search_nodes" in results[1]["usage"]
 
 
 def test_document_tree_lookup_does_not_mark_tree_nodes_as_used() -> None:
@@ -3165,6 +3198,67 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
     assert proximity_output["match_count"] == 25
     assert proximity_output["top_contexts"] == []
     assert "context_document" not in envelope["prompt_text"]
+
+
+def test_agentic_answer_envelope_records_and_applies_context_proposal() -> None:
+    envelope = build_agentic_answer_envelope(
+        query="Which node matters?",
+        tool_results=[
+            {
+                "index": 0,
+                "tool": "search_nodes",
+                "arguments": {"query": "node"},
+                "ok": True,
+                "output": {
+                    "matches": [{"node_id": "node1"}, {"node_id": "node2"}],
+                    "compiled_contexts": [
+                        {
+                            "document": {"title": "Doc 1", "document_id": "doc1"},
+                            "focus_node_id": "node1",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Node 1",
+                                    "node_id": "node1",
+                                    "text": "Less relevant.",
+                                }
+                            ],
+                        },
+                        {
+                            "document": {"title": "Doc 2", "document_id": "doc2"},
+                            "focus_node_id": "node2",
+                            "records": [
+                                {
+                                    "role": "focus",
+                                    "distance": 0,
+                                    "title": "Node 2",
+                                    "node_id": "node2",
+                                    "text": "Selected by memory agent.",
+                                }
+                            ],
+                        },
+                    ],
+                },
+            }
+        ],
+        token_budget=2000,
+        reserved_response_tokens=500,
+        context_proposal={
+            "selected_node_ids": ["node2"],
+            "rationale": "Node 2 is the better evidence.",
+            "organization": ["selected evidence first"],
+        },
+    )
+
+    context_document = envelope["context_metadata"]["context_document"]
+    assert context_document["context_proposal"]["selected_node_ids"] == ["node2"]
+    assert envelope["context_metadata"]["context_proposal"]["rationale"] == (
+        "Node 2 is the better evidence."
+    )
+    search_output = context_document["tool_results"][0]["output"]
+    assert search_output["top_contexts"][0]["focus_node_id"] == "node2"
+    assert "Node 2" in envelope["context_text"].split("Compiled context 1:", 1)[1]
 
 
 def test_included_nodes_from_tool_results_collects_multiple_contexts() -> None:

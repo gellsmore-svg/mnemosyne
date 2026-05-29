@@ -106,6 +106,12 @@ LOW_INTENT_QUERIES = {
 ANSWER_PROCESS_ID = "answer_query"
 
 
+class ToolUsageError(ValueError):
+    def __init__(self, message: str, usage: str):
+        super().__init__(message)
+        self.usage = usage
+
+
 def answer_query(
     db: Database,
     config: AppConfig,
@@ -361,6 +367,7 @@ def answer_query_agentic(
             tool_results=tool_results,
             token_budget=config.retrieval.prompt_token_budget,
             reserved_response_tokens=config.retrieval.reserved_response_tokens,
+            context_proposal=final_context_proposal_from_trace(process_trace),
         )
     except Exception as error:
         finish_answer_process_run(
@@ -986,7 +993,7 @@ def build_memory_agent_prompt(
             "Inspect prior tool results, decide whether more Mongo context is needed, and either call tools or stop.",
             "Return only valid JSON in one of these shapes:",
             '{"status":"continue","tool_calls":[{"tool":"search_nodes","arguments":{"query":"...","limit":5}}]}',
-            '{"status":"done","tool_calls":[],"compiled_context_notes":"why the gathered context is sufficient or limited"}',
+            '{"status":"done","tool_calls":[],"compiled_context_notes":"why the gathered context is sufficient or limited","context_proposal":{"selected_node_ids":["..."],"rationale":"why these nodes should shape the final context","organization":["how to order the context"]}}',
             "Allowed tools:",
             json.dumps(allowed_tool_specs(), indent=2),
             "",
@@ -1005,6 +1012,8 @@ def build_memory_agent_prompt(
             "- Use list_documents only when the user asks what documents are available.",
             "- Use at most 3 tool calls per iteration.",
             "- Stop only when context is sufficient, clearly insufficient, or no further read-only tool call is useful.",
+            "- When stopping, include context_proposal.selected_node_ids for the nodes you believe should shape the final answer context.",
+            "- Python will validate and budget your context_proposal; do not invent node IDs.",
             "",
             f"focus_node_id: {focus_node_id or 'none'}",
             f"session_id: {session_id}",
@@ -1193,7 +1202,32 @@ def parse_memory_agent_decision(text: str) -> dict[str, Any]:
         "status": status,
         "tool_calls": [normalize_tool_call(call) for call in calls[:3]],
         "compiled_context_notes": data.get("compiled_context_notes"),
+        "context_proposal": normalize_context_proposal(data.get("context_proposal")),
     }
+
+
+def normalize_context_proposal(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    selected_node_ids = [
+        str(node_id)
+        for node_id in value.get("selected_node_ids") or []
+        if node_id
+    ][:20]
+    organization = [
+        str(item)
+        for item in value.get("organization") or []
+        if item
+    ][:10]
+    rationale = value.get("rationale")
+    proposal = {
+        "selected_node_ids": selected_node_ids,
+        "rationale": str(rationale)[:1000] if rationale else None,
+        "organization": organization,
+    }
+    if not selected_node_ids and not proposal["rationale"] and not organization:
+        return None
+    return proposal
 
 
 def summarize_tool_results_for_memory_agent(tool_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1444,7 +1478,10 @@ def extract_json_object(text: str) -> str:
 
 def normalize_tool_call(call: Any) -> dict[str, Any]:
     if not isinstance(call, dict):
-        raise ValueError("Each tool call must be an object.")
+        raise ToolUsageError(
+            "Each tool call must be an object.",
+            'Return JSON like {"status":"continue","tool_calls":[{"tool":"search_nodes","arguments":{"query":"memory","limit":5}}]}.',
+        )
     tool = call.get("tool")
     allowed_tools = {
         "search_nodes",
@@ -1460,10 +1497,16 @@ def normalize_tool_call(call: Any) -> dict[str, Any]:
         "list_documents",
     }
     if tool not in allowed_tools:
-        raise ValueError(f"Unsupported planner tool: {tool}")
+        raise ToolUsageError(
+            f"Unsupported planner tool: {tool}",
+            f"Use one of these tools only: {', '.join(sorted(allowed_tools))}.",
+        )
     arguments = call.get("arguments") or {}
     if not isinstance(arguments, dict):
-        raise ValueError("Tool call arguments must be an object.")
+        raise ToolUsageError(
+            "Tool call arguments must be an object.",
+            f"For {tool}, send arguments as a JSON object matching the allowed tool spec.",
+        )
     return {"tool": tool, "arguments": arguments}
 
 
@@ -1491,12 +1534,12 @@ def execute_tool_calls(
             elif tool == "compile_context":
                 node_id = arguments.get("node_id")
                 if not node_id:
-                    raise ValueError("compile_context requires node_id.")
+                    raise tool_argument_error("compile_context", "node_id")
                 output = compile_context(db, node_id)
             elif tool == "get_node_context":
                 node_id = arguments.get("node_id")
                 if not node_id:
-                    raise ValueError("get_node_context requires node_id.")
+                    raise tool_argument_error("get_node_context", "node_id")
                 output = node_context(
                     db,
                     node_id,
@@ -1505,17 +1548,17 @@ def execute_tool_calls(
             elif tool == "get_document":
                 document_id = arguments.get("document_id")
                 if not document_id:
-                    raise ValueError("get_document requires document_id.")
+                    raise tool_argument_error("get_document", "document_id")
                 output = get_document(db, document_id)
             elif tool == "get_document_tree":
                 document_id = arguments.get("document_id")
                 if not document_id:
-                    raise ValueError("get_document_tree requires document_id.")
+                    raise tool_argument_error("get_document_tree", "document_id")
                 output = document_tree(db, document_id)
             elif tool == "get_graph_edges":
                 node_id = arguments.get("node_id")
                 if not node_id:
-                    raise ValueError("get_graph_edges requires node_id.")
+                    raise tool_argument_error("get_graph_edges", "node_id")
                 output = graph_edges_for_node(
                     db,
                     node_id=node_id,
@@ -1526,7 +1569,7 @@ def execute_tool_calls(
             elif tool == "expand_proximity":
                 node_id = arguments.get("node_id")
                 if not node_id:
-                    raise ValueError("expand_proximity requires node_id.")
+                    raise tool_argument_error("expand_proximity", "node_id")
                 output = execute_expand_proximity_tool(
                     db,
                     node_id=node_id,
@@ -1537,7 +1580,7 @@ def execute_tool_calls(
             elif tool == "expand_graph_paths":
                 node_id = arguments.get("node_id")
                 if not node_id:
-                    raise ValueError("expand_graph_paths requires node_id.")
+                    raise tool_argument_error("expand_graph_paths", "node_id")
                 output = execute_expand_graph_paths_tool(
                     db,
                     node_id=node_id,
@@ -1550,7 +1593,7 @@ def execute_tool_calls(
             elif tool == "semantic_candidates":
                 node_id = arguments.get("node_id")
                 if not node_id:
-                    raise ValueError("semantic_candidates requires node_id.")
+                    raise tool_argument_error("semantic_candidates", "node_id")
                 output = execute_semantic_candidates_tool(
                     db,
                     node_id=node_id,
@@ -1566,7 +1609,10 @@ def execute_tool_calls(
                     limit=bounded_limit(arguments.get("limit"), default=5),
                 )
             else:
-                raise ValueError(f"Unsupported tool: {tool}")
+                raise ToolUsageError(
+                    f"Unsupported tool: {tool}",
+                    "Use one of the allowed tool names from the memory-agent prompt. For ordinary text retrieval, use search_nodes with arguments {\"query\":\"...\",\"limit\":5}.",
+                )
             results.append(
                 {
                     "index": index,
@@ -1578,16 +1624,37 @@ def execute_tool_calls(
                 }
             )
         except Exception as error:
-            results.append(
-                {
-                    "index": index,
-                    "tool": tool,
-                    "arguments": arguments,
-                    "ok": False,
-                    "error": str(error),
-                }
-            )
+            results.append(tool_error_result(index, tool, arguments, error))
     return results
+
+
+def tool_argument_error(tool: str, field: str) -> ToolUsageError:
+    spec = tool_spec_by_name(tool)
+    return ToolUsageError(
+        f"{tool} requires {field}.",
+        f"Call {tool} with arguments matching this spec: {json.dumps(spec.get('arguments') or {})}",
+    )
+
+
+def tool_error_result(index: int, tool: str, arguments: dict[str, Any], error: Exception) -> dict[str, Any]:
+    result = {
+        "index": index,
+        "tool": tool,
+        "arguments": arguments,
+        "ok": False,
+        "error": str(error),
+    }
+    if isinstance(error, ToolUsageError):
+        result["usage"] = error.usage
+        result["repair_instruction"] = "Revise the next tool call using the usage guidance. Do not repeat the same invalid call."
+    return result
+
+
+def tool_spec_by_name(tool: str) -> dict[str, Any]:
+    for spec in allowed_tool_specs():
+        if spec.get("tool") == tool:
+            return spec
+    return {"tool": tool, "arguments": {}}
 
 
 def bounded_limit(value: Any, default: int = 5, maximum: int = 10) -> int:
@@ -2219,16 +2286,21 @@ def build_agentic_answer_envelope(
     tool_results: list[dict[str, Any]],
     token_budget: int,
     reserved_response_tokens: int,
+    context_proposal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     instruction = (
         "Answer the user using the Mnemosyne tool results. "
         "Prefer retrieved source context over general knowledge. "
         "If the tool results are insufficient, say so plainly."
     )
-    answer_tool_results = prepare_tool_results_for_answer(tool_results)
+    answer_tool_results = apply_context_proposal_to_tool_results(
+        prepare_tool_results_for_answer(tool_results),
+        context_proposal,
+    )
     context_document = build_agentic_context_document(
         query=query,
         tool_results=answer_tool_results,
+        context_proposal=context_proposal,
     )
     context_text = render_tool_results(answer_tool_results)
     overhead_text = "\n".join(
@@ -2276,6 +2348,7 @@ def build_agentic_answer_envelope(
             "char_budget": ANSWER_CONTEXT_CHAR_BUDGET,
             "retrieval_status": "agentic_tool_context",
             "tool_result_count": len(tool_results),
+            "context_proposal": context_proposal,
             "context_document": context_document,
         },
     }
@@ -2284,11 +2357,13 @@ def build_agentic_answer_envelope(
 def build_agentic_context_document(
     query: str,
     tool_results: list[dict[str, Any]],
+    context_proposal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "kind": "agentic_answer_context",
         "query": query,
+        "context_proposal": context_proposal,
         "tool_results": [context_document_tool_result(result) for result in tool_results],
     }
 
@@ -2441,6 +2516,71 @@ def prepare_tool_results_for_answer(tool_results: list[dict[str, Any]]) -> list[
             }
         )
     return prepared
+
+
+def final_context_proposal_from_trace(trace: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for step in reversed(trace):
+        if step.get("step") != "memory_agent_iteration":
+            continue
+        decision = (step.get("output") or {}).get("decision") or {}
+        proposal = normalize_context_proposal(decision.get("context_proposal"))
+        if proposal:
+            return proposal
+    return None
+
+
+def apply_context_proposal_to_tool_results(
+    tool_results: list[dict[str, Any]],
+    context_proposal: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if not context_proposal:
+        return tool_results
+    selected_node_ids = set(context_proposal.get("selected_node_ids") or [])
+    if not selected_node_ids:
+        return tool_results
+    return [prioritize_context_result(result, selected_node_ids) for result in tool_results]
+
+
+def prioritize_context_result(
+    result: dict[str, Any],
+    selected_node_ids: set[str],
+) -> dict[str, Any]:
+    output = result.get("output")
+    if not isinstance(output, dict):
+        return result
+    contexts = output.get("top_contexts")
+    if not isinstance(contexts, list):
+        return result
+    prioritized_contexts = sorted(
+        (prioritize_context_records(context, selected_node_ids) for context in contexts),
+        key=lambda context: context_priority_key(context, selected_node_ids),
+    )
+    return {**result, "output": {**output, "top_contexts": prioritized_contexts}}
+
+
+def prioritize_context_records(
+    context: dict[str, Any],
+    selected_node_ids: set[str],
+) -> dict[str, Any]:
+    records = context.get("records") or []
+    return {
+        **context,
+        "records": sorted(
+            records,
+            key=lambda record: 0 if str(record.get("node_id") or "") in selected_node_ids else 1,
+        ),
+    }
+
+
+def context_priority_key(context: dict[str, Any], selected_node_ids: set[str]) -> tuple[int, int]:
+    if str(context.get("focus_node_id") or "") in selected_node_ids:
+        return (0, 0)
+    records = context.get("records") or []
+    has_selected_record = any(
+        str(record.get("node_id") or "") in selected_node_ids
+        for record in records
+    )
+    return (0 if has_selected_record else 1, 0)
 
 
 def render_tool_results(tool_results: list[dict[str, Any]]) -> str:
