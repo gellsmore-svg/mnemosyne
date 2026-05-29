@@ -972,7 +972,7 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
             if len(prompts) == 2:
                 return {
                     "adapter": "fake",
-                    "answer": '{"status":"done","tool_calls":[],"compiled_context_notes":"enough"}',
+                    "answer": '{"status":"done","tool_calls":[],"compiled_context_notes":"enough","controller_decision":{"action":"use_repository_context","reason":"memory evidence is sufficient","confidence":0.8}}',
                     "used_node_ids": [],
                 }
             return {
@@ -1013,6 +1013,9 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
     controller_decision = result["process_trace"][3]["input"]["controller_decision"]
     assert controller_decision["mode"] == "agentic"
     assert controller_decision["current_owner"] == "memory_agent_controller"
+    assert controller_decision["proposed_by"] == "memory_agent"
+    assert controller_decision["reason"] == "memory evidence is sufficient"
+    assert controller_decision["confidence"] == 0.8
     assert result["activity_report"]["context_construction"]["controller_decision"] == controller_decision
     assert "Mnemosyne Tool Results" in prompts[2]
 
@@ -1373,6 +1376,7 @@ def test_parse_memory_agent_decision_accepts_done_status() -> None:
         "status": "done",
         "tool_calls": [],
         "compiled_context_notes": "sufficient",
+        "controller_decision": None,
         "context_proposal": None,
     }
 
@@ -1386,6 +1390,18 @@ def test_parse_memory_agent_decision_accepts_context_proposal() -> None:
         "selected_node_ids": ["node2"],
         "rationale": "best evidence",
         "organization": ["definition first"],
+    }
+
+
+def test_parse_memory_agent_decision_accepts_controller_decision() -> None:
+    decision = parse_memory_agent_decision(
+        '{"status":"done","tool_calls":[],"controller_decision":{"action":"use_repository_context","reason":"good evidence","confidence":1.7}}'
+    )
+
+    assert decision["controller_decision"] == {
+        "action": "use_repository_context",
+        "reason": "good evidence",
+        "confidence": 1.0,
     }
 
 
@@ -3382,6 +3398,11 @@ def test_agentic_answer_envelope_records_and_applies_context_proposal() -> None:
         ],
         token_budget=2000,
         reserved_response_tokens=500,
+        proposed_controller_decision={
+            "action": "use_repository_context",
+            "reason": "Node 2 should drive the answer.",
+            "confidence": 0.75,
+        },
         context_proposal={
             "selected_node_ids": ["node2"],
             "rationale": "Node 2 is the better evidence.",
@@ -3391,6 +3412,9 @@ def test_agentic_answer_envelope_records_and_applies_context_proposal() -> None:
 
     context_document = envelope["context_metadata"]["context_document"]
     assert context_document["context_proposal"]["selected_node_ids"] == ["node2"]
+    assert context_document["controller_decision"]["proposed_by"] == "memory_agent"
+    assert context_document["controller_decision"]["reason"] == "Node 2 should drive the answer."
+    assert context_document["controller_decision"]["confidence"] == 0.75
     assert envelope["context_metadata"]["context_proposal"]["rationale"] == (
         "Node 2 is the better evidence."
     )

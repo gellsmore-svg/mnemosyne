@@ -371,6 +371,7 @@ def answer_query_agentic(
             tool_results=tool_results,
             token_budget=config.retrieval.prompt_token_budget,
             reserved_response_tokens=config.retrieval.reserved_response_tokens,
+            proposed_controller_decision=final_controller_decision_from_trace(process_trace),
             context_proposal=final_context_proposal_from_trace(process_trace),
         )
     except Exception as error:
@@ -1099,7 +1100,7 @@ def build_memory_agent_prompt(
             "Inspect prior tool results, decide whether more Mongo context is needed, and either call tools or stop.",
             "Return only valid JSON in one of these shapes:",
             '{"status":"continue","tool_calls":[{"tool":"search_nodes","arguments":{"query":"...","limit":5}}]}',
-            '{"status":"done","tool_calls":[],"compiled_context_notes":"why the gathered context is sufficient or limited","context_proposal":{"selected_node_ids":["..."],"rationale":"why these nodes should shape the final context","organization":["how to order the context"]}}',
+            '{"status":"done","tool_calls":[],"compiled_context_notes":"why the gathered context is sufficient or limited","controller_decision":{"action":"use_repository_context|answer_without_repository_context|answer_after_memory_tools_without_context","reason":"why this is the right context strategy","confidence":0.0},"context_proposal":{"selected_node_ids":["..."],"rationale":"why these nodes should shape the final context","organization":["how to order the context"]}}',
             "Allowed tools:",
             json.dumps(allowed_tool_specs(), indent=2),
             "",
@@ -1118,8 +1119,9 @@ def build_memory_agent_prompt(
             "- Use list_documents only when the user asks what documents are available.",
             "- Use at most 3 tool calls per iteration.",
             "- Stop only when context is sufficient, clearly insufficient, or no further read-only tool call is useful.",
+            "- When stopping, include controller_decision.action, controller_decision.reason, and controller_decision.confidence.",
             "- When stopping, include context_proposal.selected_node_ids for the nodes you believe should shape the final answer context.",
-            "- Python will validate and budget your context_proposal; do not invent node IDs.",
+            "- Mnemosyne will validate and budget your controller_decision and context_proposal; do not invent node IDs.",
             "",
             f"focus_node_id: {focus_node_id or 'none'}",
             f"session_id: {session_id}",
@@ -1311,8 +1313,39 @@ def parse_memory_agent_decision(text: str) -> dict[str, Any]:
         "status": status,
         "tool_calls": [normalize_tool_call(call) for call in calls[:3]],
         "compiled_context_notes": data.get("compiled_context_notes"),
+        "controller_decision": normalize_memory_agent_controller_decision(
+            data.get("controller_decision")
+        ),
         "context_proposal": normalize_context_proposal(data.get("context_proposal")),
     }
+
+
+def normalize_memory_agent_controller_decision(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    allowed_actions = {
+        "use_repository_context",
+        "answer_without_repository_context",
+        "answer_after_memory_tools_without_context",
+    }
+    action = str(value.get("action") or "").strip()
+    if action not in allowed_actions:
+        action = None
+    reason = str(value.get("reason") or "").strip()[:1000]
+    try:
+        confidence = float(value.get("confidence"))
+    except (TypeError, ValueError):
+        confidence = None
+    if confidence is not None:
+        confidence = max(0.0, min(1.0, confidence))
+    decision = {
+        "action": action,
+        "reason": reason or None,
+        "confidence": confidence,
+    }
+    if not decision["action"] and not decision["reason"] and confidence is None:
+        return None
+    return decision
 
 
 def normalize_context_proposal(value: Any) -> dict[str, Any] | None:
@@ -2429,6 +2462,7 @@ def build_agentic_answer_envelope(
     tool_results: list[dict[str, Any]],
     token_budget: int,
     reserved_response_tokens: int,
+    proposed_controller_decision: dict[str, Any] | None = None,
     context_proposal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     instruction = (
@@ -2446,6 +2480,7 @@ def build_agentic_answer_envelope(
         context_proposal=context_proposal,
         controller_decision=agentic_context_controller_decision(
             tool_results=answer_tool_results,
+            proposed_controller_decision=proposed_controller_decision,
             context_proposal=context_proposal,
         ),
     )
@@ -2522,6 +2557,7 @@ def build_agentic_context_document(
 def agentic_context_controller_decision(
     *,
     tool_results: list[dict[str, Any]],
+    proposed_controller_decision: dict[str, Any] | None,
     context_proposal: dict[str, Any] | None,
 ) -> dict[str, Any]:
     successful_tools = [result for result in tool_results if result.get("ok") is not False]
@@ -2537,6 +2573,12 @@ def agentic_context_controller_decision(
         if successful_tools
         else "Memory-agent/controller did not gather usable memory context."
     )
+    proposed = normalize_memory_agent_controller_decision(proposed_controller_decision)
+    if proposed:
+        if proposed.get("action"):
+            action = proposed["action"]
+        if proposed.get("reason"):
+            reason = proposed["reason"]
     return {
         "schema_version": 1,
         "mode": "agentic",
@@ -2544,6 +2586,8 @@ def agentic_context_controller_decision(
         "target_owner": "memory_agent_controller",
         "action": action,
         "reason": reason,
+        "confidence": proposed.get("confidence") if proposed else None,
+        "proposed_by": "memory_agent" if proposed else "system_derived",
         "retrieval_status": "agentic_tool_context" if included else "agentic_no_tool_context",
         "tool_result_count": len(tool_results),
         "successful_tool_count": len(successful_tools),
@@ -2711,6 +2755,19 @@ def final_context_proposal_from_trace(trace: list[dict[str, Any]]) -> dict[str, 
         proposal = normalize_context_proposal(decision.get("context_proposal"))
         if proposal:
             return proposal
+    return None
+
+
+def final_controller_decision_from_trace(trace: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for step in reversed(trace):
+        if step.get("step") != "memory_agent_iteration":
+            continue
+        decision = (step.get("output") or {}).get("decision") or {}
+        controller_decision = normalize_memory_agent_controller_decision(
+            decision.get("controller_decision")
+        )
+        if controller_decision:
+            return controller_decision
     return None
 
 
