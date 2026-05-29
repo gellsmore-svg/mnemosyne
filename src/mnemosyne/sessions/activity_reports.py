@@ -76,6 +76,9 @@ def context_summary(context: dict[str, Any]) -> str:
             )
     else:
         lines.append("- No repository nodes were included in the final context.")
+        decision = context.get("retrieval_decision") or {}
+        if decision.get("reason"):
+            lines.append(f"- Retrieval decision: {decision.get('reason')}")
     fallback = context.get("source_fallback")
     if fallback:
         title = fallback.get("title") or fallback.get("document_id") or "active document"
@@ -147,6 +150,7 @@ def context_construction_section(trace: list[dict[str, Any]]) -> dict[str, Any]:
         return {
             "status": output.get("retrieval_status") or metadata.get("retrieval_status"),
             "focus_node_id": output.get("focus_node_id"),
+            "retrieval_decision": output.get("retrieval_decision"),
             "included_nodes": compact_included_nodes(metadata.get("included") or []),
             "skipped_count": len(metadata.get("skipped") or []),
             "source_fallback": metadata.get("source_fallback"),

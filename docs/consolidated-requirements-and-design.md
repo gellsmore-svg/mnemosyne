@@ -119,13 +119,13 @@ It currently supports:
 - exact focus-node use;
 - active-document scoping for references such as `this document`;
 - lexical and near-match search;
+- deterministic intent classification for empty, low-intent, active-document-reference, generic, and repository-query prompts;
+- a minimum direct context match score before broad corpus search can select a node;
 - source-file fallback for active documents;
 - no-context handling for low-intent conversational prompts.
 
 Required next improvements:
 
-- explicit intent classification;
-- relevance thresholds for generic substantive prompts;
 - better explanation when retrieval is skipped;
 - less dependence on lexical regex candidate collection.
 

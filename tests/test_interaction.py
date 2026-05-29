@@ -12,6 +12,7 @@ from mnemosyne.sessions.interaction import (
     build_query_assembly,
     combined_query_text,
     compact_fallback_query_details,
+    direct_retrieval_decision,
     execute_search_nodes_tool,
     fallback_queries,
     memory_agent_runtime_config,
@@ -138,6 +139,41 @@ def test_select_focus_node_falls_back_to_ranked_terms(monkeypatch) -> None:
     monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
 
     assert select_focus_node(FakeDb(), "What does the Mnemosyne technical design say?") == "technical"
+
+
+def test_direct_retrieval_decision_skips_low_intent_and_generic_prompts() -> None:
+    greeting = direct_retrieval_decision("hello")
+    assert greeting["category"] == "low_intent"
+    assert greeting["should_search_corpus"] is False
+
+    generic = direct_retrieval_decision("tell me more")
+    assert generic["category"] == "generic_prompt"
+    assert generic["should_search_corpus"] is False
+
+    repository = direct_retrieval_decision("What does the Mnemosyne technical design say?")
+    assert repository["category"] == "repository_query"
+    assert repository["should_search_corpus"] is True
+    assert repository["minimum_match_score"] >= 1
+
+
+def test_select_focus_node_rejects_weak_best_match(monkeypatch) -> None:
+    import mnemosyne.sessions.interaction as interaction
+
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
+        if label == "source_chunk":
+            return [
+                {
+                    "node_id": "weak",
+                    "title": "Unrelated Header",
+                    "text_preview": "memory",
+                    "labels": ["source_chunk"],
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+
+    assert select_focus_node(FakeDb(), "memory") is None
 
 
 def test_active_document_reference_query_detects_session_references() -> None:

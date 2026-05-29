@@ -64,6 +64,7 @@ TEXT_SOURCE_SUFFIXES = {
 NEAR_MATCH_MIN_SCORE = 0.78
 NEAR_MATCH_MAX_VOCABULARY = 2000
 WEAK_MATCH_FALLBACK_SCORE = 5
+DIRECT_CONTEXT_MIN_SCORE = 24
 QUERY_STOPWORDS = {
     "what",
     "does",
@@ -86,6 +87,9 @@ QUERY_STOPWORDS = {
     "tell",
     "give",
     "help",
+    "me",
+    "more",
+    "please",
     "compare",
     "note",
     "your",
@@ -547,8 +551,8 @@ def prepare_direct_answer_prompt(
     selected_node_source = "provided" if focus_node_id else None
     active_documents: list[dict[str, Any]] = []
     is_active_document_reference = active_document_reference_query(query)
-    low_intent_query = is_low_intent_query(query)
-    if not selected_node_id and is_active_document_reference and not low_intent_query:
+    retrieval_decision = direct_retrieval_decision(query)
+    if not selected_node_id and is_active_document_reference and retrieval_decision["category"] != "low_intent":
         active_documents = list_active_documents(db, session_id=session_id, limit=5)
         selected_node_id = select_active_document_focus_node(
             db,
@@ -558,7 +562,7 @@ def prepare_direct_answer_prompt(
         )
         if selected_node_id:
             selected_node_source = "active_document"
-    if not selected_node_id and not low_intent_query:
+    if not selected_node_id and retrieval_decision["should_search_corpus"]:
         selected_node_id = select_focus_node(db, query)
         if selected_node_id:
             selected_node_source = "corpus"
@@ -582,7 +586,7 @@ def prepare_direct_answer_prompt(
             prompt["context_metadata"]["retrieval_status"] = retrieval_status
     else:
         prompt = None
-        if not active_documents and not low_intent_query:
+        if not active_documents and retrieval_decision["category"] != "low_intent":
             active_documents = list_active_documents(db, session_id=session_id, limit=5)
         if active_documents:
             prompt = build_active_document_source_fallback_envelope(
@@ -600,9 +604,11 @@ def prepare_direct_answer_prompt(
                 token_budget=config.retrieval.prompt_token_budget,
                 reserved_response_tokens=config.retrieval.reserved_response_tokens,
             )
+        prompt["context_metadata"]["retrieval_decision"] = retrieval_decision
     retrieval_output = {
         "retrieval_status": retrieval_status,
         "focus_node_id": selected_node_id,
+        "retrieval_decision": retrieval_decision,
         "context_text": prompt["context_text"],
         "context_metadata": prompt["context_metadata"],
         "budget": prompt["budget"],
@@ -622,6 +628,47 @@ def prepare_direct_answer_prompt(
 def is_low_intent_query(query: str) -> bool:
     normalized = (normalize_query_text(query) or "").lower().strip(" .!?")
     return normalized in LOW_INTENT_QUERIES
+
+
+def direct_retrieval_decision(query: str) -> dict[str, Any]:
+    normalized = normalize_query_text(query)
+    if not normalized:
+        return {
+            "category": "empty_prompt",
+            "should_search_corpus": False,
+            "reason": "The prompt is empty after normalization.",
+        }
+    if is_low_intent_query(normalized):
+        return {
+            "category": "low_intent",
+            "should_search_corpus": False,
+            "reason": "The prompt is conversational and should not trigger corpus retrieval.",
+        }
+    if active_document_reference_query(normalized):
+        return {
+            "category": "active_document_reference",
+            "should_search_corpus": False,
+            "reason": "The prompt refers to active session material; broad corpus search is avoided.",
+        }
+    assembly = build_query_assembly(normalized)
+    lexical_terms = assembly.get("lexical_terms") or []
+    anchor_terms = assembly.get("anchor_terms") or []
+    exact_phrases = assembly.get("exact_phrases") or []
+    should_search = bool(anchor_terms or exact_phrases or lexical_terms)
+    reason = (
+        "The prompt has searchable terms, phrases, or named anchors."
+        if should_search
+        else "The prompt has no substantive searchable repository terms."
+    )
+    return {
+        "category": "repository_query" if should_search else "generic_prompt",
+        "should_search_corpus": should_search,
+        "reason": reason,
+        "lexical_terms": lexical_terms,
+        "anchor_terms": anchor_terms,
+        "exact_phrases": exact_phrases,
+        "minimum_match_score": DIRECT_CONTEXT_MIN_SCORE,
+    }
 
 
 def start_answer_process_run(
@@ -670,12 +717,12 @@ def finish_answer_process_run(
 
 
 def select_focus_node(db: Database, query: str) -> str | None:
-    matches = ranked_focus_matches(db, query, label="source_chunk", limit=5)
-    if not matches:
-        matches = ranked_focus_matches(db, query, label=None, limit=5)
-    if not matches:
-        return None
-    return matches[0]["node_id"]
+    for label in ("source_chunk", None):
+        matches = ranked_focus_matches(db, query, label=label, limit=5)
+        match = first_qualified_focus_match(matches)
+        if match:
+            return match["node_id"]
+    return None
 
 
 def select_active_document_focus_node(
@@ -715,6 +762,15 @@ def select_active_document_focus_node(
                 active_node_ids=active_document.get("node_ids") or [],
             )
     return default_node_id
+
+
+def first_qualified_focus_match(matches: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not matches:
+        return None
+    best = matches[0]
+    if best.get("match_score", 0) < DIRECT_CONTEXT_MIN_SCORE:
+        return None
+    return best
 
 
 def active_document_default_node_id(
@@ -934,8 +990,15 @@ def ranked_focus_matches(
                     if row["node_id"] not in seen:
                         seen.add(row["node_id"])
                         matches.append(row)
-    matches.sort(key=lambda row: score_node_match(row, assembly), reverse=True)
-    return matches[:limit]
+    scored_matches = [
+        {
+            **row,
+            "match_score": score_node_match(row, assembly),
+        }
+        for row in matches
+    ]
+    scored_matches.sort(key=lambda row: row["match_score"], reverse=True)
+    return scored_matches[:limit]
 
 
 def active_document_reference_query(query: str) -> bool:
