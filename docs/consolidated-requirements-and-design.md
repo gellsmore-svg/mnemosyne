@@ -121,7 +121,7 @@ It currently supports:
 - lexical and near-match search;
 - deterministic intent classification for empty, low-intent, active-document-reference, generic, and repository-query prompts;
 - a minimum direct context match score before broad corpus search can select a node;
-- a `controller_decision` trace object that explicitly marks direct retrieval as a deterministic scaffold and names the target owner as the memory-agent/controller;
+- a `controller_decision` trace/prompt object that explicitly marks direct retrieval as a deterministic scaffold and names the target owner as the memory-agent/controller;
 - source-file fallback for active documents;
 - no-context handling for low-intent conversational prompts.
 
@@ -136,7 +136,7 @@ Agentic retrieval separates the memory-agent from the final answer model.
 
 The memory-agent should not answer the user. It should iteratively gather memory by calling read-only Python tools, inspect observations, and stop when context is sufficient, clearly insufficient, or no useful read-only call remains.
 
-Agentic answers emit the same `controller_decision` concept used by direct mode, but with `mode: agentic` and `current_owner: memory_agent_controller`. The memory-agent can propose this decision when it stops, including action, reason, and confidence; the runtime validates and enriches that proposal with actual tool counts, context inclusion counts, and retrieval status. The final answer prompt includes a compact Controller Decision section before tool results so the answer model sees the controller's context strategy. This keeps UI/reporting aligned with the target architecture while the deterministic direct path remains a scaffold.
+Agentic answers emit the same `controller_decision` concept used by direct mode, but with `mode: agentic` and `current_owner: memory_agent_controller`. The memory-agent can propose this decision when it stops, including action, reason, and confidence; the runtime validates and enriches that proposal with actual tool counts, context inclusion counts, and retrieval status. Direct and agentic final answer prompts include a compact Controller Decision section before retrieved context/tool results so the answer model sees the controller context strategy. This keeps UI/reporting aligned with the target architecture while the deterministic direct path remains a scaffold.
 
 Current allowed memory-agent tools:
 

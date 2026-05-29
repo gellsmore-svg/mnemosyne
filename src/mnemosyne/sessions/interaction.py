@@ -616,6 +616,7 @@ def prepare_direct_answer_prompt(
         retrieval_status=retrieval_status,
     )
     prompt["context_metadata"]["controller_decision"] = controller_decision
+    prompt = inject_controller_decision_into_prompt(prompt, controller_decision)
     retrieval_output = {
         "retrieval_status": retrieval_status,
         "focus_node_id": selected_node_id,
@@ -635,6 +636,36 @@ def prepare_direct_answer_prompt(
         "prompt": prompt,
         "retrieval_output": retrieval_output,
     }
+
+
+def inject_controller_decision_into_prompt(
+    prompt: dict[str, Any],
+    controller_decision: dict[str, Any],
+) -> dict[str, Any]:
+    prompt_text = prompt.get("prompt_text") or ""
+    if "## Controller Decision" in prompt_text:
+        return prompt
+    section = "\n".join(
+        [
+            "## Controller Decision",
+            render_controller_decision_for_prompt(controller_decision),
+            "",
+        ]
+    )
+    marker = "\n## Retrieved Context\n"
+    if marker in prompt_text:
+        prompt_text = prompt_text.replace(marker, f"\n{section}## Retrieved Context\n", 1)
+    else:
+        prompt_text = "\n".join([prompt_text.rstrip(), "", section]).rstrip() + "\n"
+    updated = {**prompt, "prompt_text": prompt_text}
+    budget = {**(prompt.get("budget") or {})}
+    reserved = int(budget.get("reserved_response_tokens") or 0)
+    budget["estimated_prompt_tokens"] = estimate_tokens(prompt_text)
+    budget["estimated_total_with_reserved_response_tokens"] = (
+        estimate_tokens(prompt_text) + reserved
+    )
+    updated["budget"] = budget
+    return updated
 
 
 def is_low_intent_query(query: str) -> bool:
