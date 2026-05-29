@@ -2589,6 +2589,14 @@ def render_controller_decision_for_prompt(decision: dict[str, Any] | None) -> st
     ]
     if decision.get("confidence") is not None:
         lines.append(f"- Confidence: {decision.get('confidence')}")
+    correction = decision.get("correction")
+    if isinstance(correction, dict):
+        lines.append(
+            "- Correction: "
+            f"{correction.get('original_action')} -> {correction.get('corrected_action')}"
+        )
+        if correction.get("reason"):
+            lines.append(f"- Correction reason: {correction.get('reason')}")
     return "\n".join(lines)
 
 
@@ -2628,11 +2636,21 @@ def agentic_context_controller_decision(
         else "Memory-agent/controller did not gather usable memory context."
     )
     proposed = normalize_memory_agent_controller_decision(proposed_controller_decision)
+    correction = None
     if proposed:
         if proposed.get("action"):
             action = proposed["action"]
         if proposed.get("reason"):
             reason = proposed["reason"]
+    if action == "use_repository_context" and not included:
+        correction = {
+            "original_action": action,
+            "corrected_action": "answer_after_memory_tools_without_context"
+            if successful_tools
+            else "answer_without_repository_context",
+            "reason": "The memory-agent proposed repository context, but no context records were included.",
+        }
+        action = correction["corrected_action"]
     return {
         "schema_version": 1,
         "mode": "agentic",
@@ -2642,6 +2660,7 @@ def agentic_context_controller_decision(
         "reason": reason,
         "confidence": proposed.get("confidence") if proposed else None,
         "proposed_by": "memory_agent" if proposed else "system_derived",
+        "correction": correction,
         "retrieval_status": "agentic_tool_context" if included else "agentic_no_tool_context",
         "tool_result_count": len(tool_results),
         "successful_tool_count": len(successful_tools),

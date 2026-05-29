@@ -3430,6 +3430,35 @@ def test_agentic_answer_envelope_records_and_applies_context_proposal() -> None:
     assert "Node 2" in envelope["context_text"].split("Compiled context 1:", 1)[1]
 
 
+def test_agentic_controller_decision_corrects_impossible_context_action() -> None:
+    envelope = build_agentic_answer_envelope(
+        query="Can you answer?",
+        tool_results=[
+            {
+                "index": 0,
+                "tool": "search_nodes",
+                "arguments": {"query": "missing"},
+                "ok": True,
+                "output": {"matches": [], "compiled_contexts": []},
+            }
+        ],
+        token_budget=2000,
+        reserved_response_tokens=500,
+        proposed_controller_decision={
+            "action": "use_repository_context",
+            "reason": "I think context is available.",
+            "confidence": 0.9,
+        },
+    )
+
+    decision = envelope["context_metadata"]["controller_decision"]
+    assert decision["action"] == "answer_after_memory_tools_without_context"
+    assert decision["correction"]["original_action"] == "use_repository_context"
+    assert "- Correction: use_repository_context -> answer_after_memory_tools_without_context" in (
+        envelope["prompt_text"]
+    )
+
+
 def test_included_nodes_from_tool_results_collects_multiple_contexts() -> None:
     included = included_nodes_from_tool_results(
         [
