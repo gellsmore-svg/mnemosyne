@@ -2484,6 +2484,8 @@ def build_agentic_answer_envelope(
             context_proposal=context_proposal,
         ),
     )
+    controller_decision = context_document["controller_decision"]
+    controller_decision_text = render_controller_decision_for_prompt(controller_decision)
     context_text = render_tool_results(answer_tool_results)
     overhead_text = "\n".join(
         [
@@ -2491,6 +2493,9 @@ def build_agentic_answer_envelope(
             "",
             "## User Query",
             query,
+            "",
+            "## Controller Decision",
+            controller_decision_text,
             "",
             "## Mnemosyne Tool Results",
             "",
@@ -2503,11 +2508,13 @@ def build_agentic_answer_envelope(
             "## User Query",
             query,
             "",
+            "## Controller Decision",
+            controller_decision_text,
+            "",
             "## Mnemosyne Tool Results",
             context_text,
         ]
     ).rstrip() + "\n"
-    controller_decision = context_document["controller_decision"]
     return {
         "system_instruction": instruction,
         "query": query,
@@ -2536,6 +2543,22 @@ def build_agentic_answer_envelope(
             "context_document": context_document,
         },
     }
+
+
+def render_controller_decision_for_prompt(decision: dict[str, Any] | None) -> str:
+    if not decision:
+        return "- No controller decision was recorded."
+    lines = [
+        f"- Action: {decision.get('action') or 'not recorded'}",
+        f"- Reason: {decision.get('reason') or 'not recorded'}",
+        f"- Mode: {decision.get('mode') or 'not recorded'}",
+        f"- Proposed by: {decision.get('proposed_by') or 'not recorded'}",
+        f"- Included nodes: {decision.get('included_node_count', 0)}",
+        f"- Memory-tool calls: {decision.get('tool_result_count', 0)}",
+    ]
+    if decision.get("confidence") is not None:
+        lines.append(f"- Confidence: {decision.get('confidence')}")
+    return "\n".join(lines)
 
 
 def build_agentic_context_document(

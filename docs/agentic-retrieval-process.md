@@ -390,7 +390,7 @@ The implemented interface is a structured prompt/tool protocol:
 1. LLM proposes read-only tool calls.
 2. Python validates and executes those calls.
 3. The memory-agent can propose a `controller_decision` when stopping; Python validates that proposal and enriches it with actual tool/context counts.
-4. Python assembles source-grounded context.
+4. Python assembles source-grounded context and includes a compact Controller Decision section in the final answer prompt before tool results.
 4. Final LLM answers from that context.
 5. Python records provenance and trace data.
 

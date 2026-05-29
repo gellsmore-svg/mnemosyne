@@ -3352,6 +3352,8 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
     assert proximity_output["match_count"] == 25
     assert proximity_output["top_contexts"] == []
     assert "context_document" not in envelope["prompt_text"]
+    assert "## Controller Decision" in envelope["prompt_text"]
+    assert "- Action: use_repository_context" in envelope["prompt_text"]
 
 
 def test_agentic_answer_envelope_records_and_applies_context_proposal() -> None:
@@ -3415,6 +3417,9 @@ def test_agentic_answer_envelope_records_and_applies_context_proposal() -> None:
     assert context_document["controller_decision"]["proposed_by"] == "memory_agent"
     assert context_document["controller_decision"]["reason"] == "Node 2 should drive the answer."
     assert context_document["controller_decision"]["confidence"] == 0.75
+    assert "## Controller Decision" in envelope["prompt_text"]
+    assert "- Reason: Node 2 should drive the answer." in envelope["prompt_text"]
+    assert "- Confidence: 0.75" in envelope["prompt_text"]
     assert envelope["context_metadata"]["context_proposal"]["rationale"] == (
         "Node 2 is the better evidence."
     )

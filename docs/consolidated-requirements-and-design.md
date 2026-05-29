@@ -136,7 +136,7 @@ Agentic retrieval separates the memory-agent from the final answer model.
 
 The memory-agent should not answer the user. It should iteratively gather memory by calling read-only Python tools, inspect observations, and stop when context is sufficient, clearly insufficient, or no useful read-only call remains.
 
-Agentic answers emit the same `controller_decision` concept used by direct mode, but with `mode: agentic` and `current_owner: memory_agent_controller`. The memory-agent can propose this decision when it stops, including action, reason, and confidence; the runtime validates and enriches that proposal with actual tool counts, context inclusion counts, and retrieval status. This keeps UI/reporting aligned with the target architecture while the deterministic direct path remains a scaffold.
+Agentic answers emit the same `controller_decision` concept used by direct mode, but with `mode: agentic` and `current_owner: memory_agent_controller`. The memory-agent can propose this decision when it stops, including action, reason, and confidence; the runtime validates and enriches that proposal with actual tool counts, context inclusion counts, and retrieval status. The final answer prompt includes a compact Controller Decision section before tool results so the answer model sees the controller's context strategy. This keeps UI/reporting aligned with the target architecture while the deterministic direct path remains a scaffold.
 
 Current allowed memory-agent tools:
 
