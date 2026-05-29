@@ -47,6 +47,7 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     assert "ollama_cli" in data["available_adapters"]
     assert data["default_model"]
     assert data["memory_agent_model"]
+    assert "gemma4:latest" in data["known_models"]
 
 
 def test_session_endpoints() -> None:

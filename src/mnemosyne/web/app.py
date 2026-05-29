@@ -135,6 +135,7 @@ def create_app() -> FastAPI:
                     config.runtime.ollama_model,
                     config.runtime.memory_agent_model or config.runtime.ollama_model,
                     "gemma3:1b",
+                    "gemma4:latest",
                 }
             ),
             "ollama_timeout_seconds": config.runtime.ollama_timeout_seconds,

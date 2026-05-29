@@ -15,7 +15,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
 ### Human Experimentation UI
 
 - The default screen must support real experimentation with prompt, response, activity log, and process trace visible together.
-- The Ask workspace must place Prompt, Response, Activity Log, and Prompt / Trace side by side on desktop.
+- The Ask workspace must place Prompt, Response, and Activity Log side by side on desktop. Prompt / Trace is supporting detail and should sit below the primary row.
 - The UI must support an e-paper display mode for Dasung-style monitors, optimized for low refresh, high contrast, moderate text scale, proportional side-by-side panels, and clear task separation.
 - Operational controls must not compete with the question-answering workflow.
 - The UI must separate:
@@ -134,7 +134,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
   - Prompt panel.
   - Response panel.
   - Activity Log panel with plain-English log and collapsed JSON.
-  - Prompt / Trace panel with detailed process trace.
+  - Prompt / Trace panel with detailed process trace, visually relegated below the main Prompt / Response / Activity row.
   - Standard display mode uses a desktop workbench layout.
   - E-paper display mode keeps the Ask panels side by side with proportional columns, no dark trace panel, and reduced visual texture.
 - `Browse` tab:

@@ -208,7 +208,7 @@ pre {
 
 .answer-grid {
   display: grid;
-  grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.95fr);
+  grid-template-columns: 24fr 36fr 40fr;
   gap: 10px;
   align-items: start;
 }
@@ -234,6 +234,15 @@ pre {
 
 .prompt-panel .controls {
   margin-top: 8px;
+}
+
+.trace-panel {
+  grid-column: 1 / -1;
+  margin-top: 16px;
+}
+
+.trace-panel .console-log {
+  max-height: 300px;
 }
 
 .activity-log {
@@ -447,7 +456,7 @@ body.epaper .tab-button {
 }
 
 body.epaper .answer-grid {
-  grid-template-columns: 22fr 28fr 30fr 20fr;
+  grid-template-columns: 24fr 36fr 40fr;
   gap: 12px;
   max-width: none;
 }
@@ -466,6 +475,8 @@ body.epaper .activity-panel {
 
 body.epaper .trace-panel {
   order: 4;
+  grid-column: 1 / -1;
+  margin-top: 22px;
 }
 
 body.epaper .answer-text,
@@ -490,6 +501,7 @@ body.epaper .console-log {
   color: #000;
   font-size: 13px;
   margin-top: 0;
+  max-height: 260px;
 }
 
 body.epaper .console-log details {
