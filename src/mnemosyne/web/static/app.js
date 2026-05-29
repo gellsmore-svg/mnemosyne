@@ -157,19 +157,30 @@ function contextSummary(output) {
   const metadata = output.context_metadata || {};
   const included = metadata.included || [];
   const status = output.retrieval_status || metadata.retrieval_status || "unknown";
+  const decision = output.retrieval_decision || metadata.retrieval_decision || {};
+  const reason = decision.reason ? ` Decision: ${decision.reason}` : "";
   if (included.length) {
-    return `Python selected ${included.length} repository context record(s). Retrieval status: ${status}.`;
+    return `Python selected ${included.length} repository context record(s). Retrieval status: ${status}.${reason}`;
   }
-  return `Python did not include repository nodes. Retrieval status: ${status}.`;
+  return `Python did not include repository nodes. Retrieval status: ${status}.${reason}`;
 }
 
 function activityPayload(step) {
   const input = step.input || {};
   const output = step.output || {};
   if (step.step === "retrieval_context" && output.context_text) {
+    const decision = output.retrieval_decision || (output.context_metadata || {}).retrieval_decision;
     return {
-      title: "Show context Python assembled",
-      text: output.context_text,
+      title: "Show retrieval decision and context Python assembled",
+      text: [
+        "Retrieval decision:",
+        "",
+        decision ? JSON.stringify(decision, null, 2) : "No retrieval decision recorded.",
+        "",
+        "Context Python assembled:",
+        "",
+        output.context_text,
+      ].join("\n"),
     };
   }
   if (step.step === "memory_agent_iteration" && input.prompt_text) {
