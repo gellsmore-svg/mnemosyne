@@ -65,6 +65,7 @@ def context_summary(context: dict[str, Any]) -> str:
         decision = context.get("controller_decision") or {}
         if decision.get("reason"):
             lines.append(f"- Controller decision: {decision.get('reason')}")
+        lines.extend(evidence_summary_lines(context.get("evidence_summary")))
         return "\n".join(lines)
     lines = [f"- Retrieval status: {status}."]
     focus_node_id = context.get("focus_node_id")
@@ -92,7 +93,37 @@ def context_summary(context: dict[str, Any]) -> str:
     skipped_count = context.get("skipped_count") or 0
     if skipped_count:
         lines.append(f"- Skipped {skipped_count} candidate record(s) because of budget or filtering.")
+    lines.extend(evidence_summary_lines(context.get("evidence_summary")))
     return "\n".join(lines)
+
+
+def evidence_summary_lines(summary: dict[str, Any] | None) -> list[str]:
+    if not isinstance(summary, dict):
+        return []
+    lines = []
+    included_count = summary.get("included_node_count")
+    if included_count is not None:
+        lines.append(f"- Evidence summary: {included_count} repository node(s) included.")
+    if summary.get("source_fallback_used"):
+        lines.append("- Evidence summary: source-file fallback was used.")
+    tool_count = summary.get("tool_result_count")
+    if tool_count is not None:
+        successful = summary.get("successful_tool_count", 0)
+        failed = summary.get("failed_tool_count", 0)
+        lines.append(
+            f"- Evidence summary: {tool_count} memory-tool result(s), "
+            f"{successful} successful and {failed} failed."
+        )
+    documents = summary.get("source_documents") or []
+    if documents:
+        titles = [
+            document.get("title") or document.get("document_id") or "untitled source"
+            for document in documents[:3]
+        ]
+        more = len(documents) - len(titles)
+        suffix = f", plus {more} more" if more > 0 else ""
+        lines.append(f"- Evidence sources: {', '.join(titles)}{suffix}.")
+    return lines
 
 
 def response_summary(response: dict[str, Any]) -> str:
@@ -171,6 +202,7 @@ def context_construction_section(trace: list[dict[str, Any]]) -> dict[str, Any]:
         "status": "agentic",
         "iterations": len(iterations),
         "controller_decision": adapter_input.get("controller_decision"),
+        "evidence_summary": adapter_input.get("evidence_summary"),
         "tool_calls": sum(len(((step.get("output") or {}).get("tool_results") or [])) for step in iterations),
         "stop_reasons": [
             (step.get("output") or {}).get("stop_reason")

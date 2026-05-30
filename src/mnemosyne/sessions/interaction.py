@@ -410,6 +410,7 @@ def answer_query_agentic(
         return attach_answer_activity(result)
     retrieval_status = "agentic_tool_context" if prompt["context_metadata"]["included"] else "agentic_no_tool_context"
     controller_decision = prompt["context_metadata"].get("controller_decision")
+    evidence_summary = prompt["context_metadata"].get("evidence_summary")
     adapter_step = {
         "step": "answer_adapter",
         "input": {
@@ -417,6 +418,7 @@ def answer_query_agentic(
             "model": runtime_config.ollama_model,
             "prompt_text": prompt["prompt_text"],
             "controller_decision": controller_decision,
+            "evidence_summary": evidence_summary,
             "timeout_seconds": runtime_config.ollama_timeout_seconds
             if runtime_config.answer_adapter.startswith("ollama")
             else None,
@@ -2565,6 +2567,7 @@ def build_agentic_answer_envelope(
         ),
     )
     controller_decision = context_document["controller_decision"]
+    evidence_summary = context_document["evidence_summary"]
     controller_decision_text = render_controller_decision_for_prompt(controller_decision)
     context_text = render_tool_results(answer_tool_results)
     overhead_text = "\n".join(
@@ -2619,6 +2622,7 @@ def build_agentic_answer_envelope(
             "retrieval_status": controller_decision["retrieval_status"],
             "tool_result_count": len(tool_results),
             "controller_decision": controller_decision,
+            "evidence_summary": evidence_summary,
             "context_proposal": context_proposal,
             "context_document": context_document,
         },

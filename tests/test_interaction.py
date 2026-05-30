@@ -385,6 +385,17 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert result["used_node_ids"] == []
     assert result["activity_report"]["kind"] == "answer_activity_report"
     assert result["activity_report"]["context_construction"]["status"] == "no_focus_node"
+    assert result["activity_report"]["context_construction"]["evidence_summary"] == {
+        "mode": "direct",
+        "retrieval_status": "no_focus_node",
+        "selected_node_id": None,
+        "selected_node_source": None,
+        "included_node_count": 0,
+        "included_node_ids": [],
+        "skipped_count": 0,
+        "source_fallback_used": False,
+        "source_documents": [],
+    }
     assert (
         result["activity_report"]["context_construction"]["controller_decision"]["target_owner"]
         == "memory_agent_controller"
@@ -392,6 +403,7 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert result["activity_report"]["llm_activity"]["call_count"] == 1
     assert result["activity_log"].startswith("Answer Activity Log")
     assert "Context construction:" in result["activity_log"]
+    assert "Evidence summary: 0 repository node(s) included." in result["activity_log"]
     assert "plain prompt" in captured["prompt"]["context_text"]
     assert "## Controller Decision" in captured["prompt"]["prompt_text"]
     assert "- Action: skip_weak_or_missing_repository_context" in captured["prompt"]["prompt_text"]
@@ -1048,6 +1060,20 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
     assert controller_decision["reason"] == "memory evidence is sufficient"
     assert controller_decision["confidence"] == 0.8
     assert result["activity_report"]["context_construction"]["controller_decision"] == controller_decision
+    evidence_summary = result["process_trace"][3]["input"]["evidence_summary"]
+    assert evidence_summary == {
+        "tool_result_count": 1,
+        "successful_tool_count": 1,
+        "failed_tool_count": 0,
+        "match_count": 1,
+        "context_count": 0,
+        "record_count": 0,
+        "included_node_count": 0,
+        "included_node_ids": [],
+        "source_documents": [],
+    }
+    assert result["activity_report"]["context_construction"]["evidence_summary"] == evidence_summary
+    assert "Evidence summary: 1 memory-tool result(s), 1 successful and 0 failed." in result["activity_log"]
     assert "Mnemosyne Tool Results" in prompts[2]
 
 
@@ -3362,6 +3388,7 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
     assert context_document["controller_decision"]["mode"] == "agentic"
     assert context_document["controller_decision"]["current_owner"] == "memory_agent_controller"
     assert envelope["context_metadata"]["controller_decision"] == context_document["controller_decision"]
+    assert envelope["context_metadata"]["evidence_summary"] == context_document["evidence_summary"]
     assert context_document["evidence_summary"] == {
         "tool_result_count": 3,
         "successful_tool_count": 3,

@@ -144,7 +144,7 @@ function activitySummary(step) {
 function answerAdapterSummary(input, output) {
   const decision = input.controller_decision;
   const decisionText = decision && decision.reason ? ` Controller: ${decision.reason}` : "";
-  return `Final answer call used ${text(input.adapter)} / ${text(input.model)} and ${output.ok === false ? "did not complete" : "returned an answer"}.${decisionText}`;
+  return `Final answer call used ${text(input.adapter)} / ${text(input.model)} and ${output.ok === false ? "did not complete" : "returned an answer"}.${decisionText}${evidenceSummaryText(input.evidence_summary)}`;
 }
 
 function memoryAgentSummary(input, output) {
@@ -166,10 +166,33 @@ function contextSummary(output) {
   const decision = output.controller_decision || metadata.controller_decision || output.retrieval_decision || metadata.retrieval_decision || {};
   const owner = decision.current_owner ? ` (${decision.current_owner})` : "";
   const reason = decision.reason ? ` Controller${owner}: ${decision.reason}` : "";
+  const evidence = evidenceSummaryText(metadata.evidence_summary || output.evidence_summary);
   if (included.length) {
-    return `Mnemosyne selected ${included.length} repository context record(s). Retrieval status: ${status}.${reason}`;
+    return `Mnemosyne selected ${included.length} repository context record(s). Retrieval status: ${status}.${reason}${evidence}`;
   }
-  return `Mnemosyne did not include repository nodes. Retrieval status: ${status}.${reason}`;
+  return `Mnemosyne did not include repository nodes. Retrieval status: ${status}.${reason}${evidence}`;
+}
+
+function evidenceSummaryText(summary) {
+  if (!summary || typeof summary !== "object") return "";
+  const parts = [];
+  if (summary.included_node_count != null) {
+    parts.push(`${summary.included_node_count} repository node(s) included`);
+  }
+  if (summary.tool_result_count != null) {
+    parts.push(`${summary.tool_result_count} memory-tool result(s): ${summary.successful_tool_count || 0} successful, ${summary.failed_tool_count || 0} failed`);
+  }
+  if (summary.source_fallback_used) {
+    parts.push("source-file fallback used");
+  }
+  if (Array.isArray(summary.source_documents) && summary.source_documents.length) {
+    const names = summary.source_documents
+      .slice(0, 2)
+      .map((document) => document.title || document.document_id || "untitled source");
+    const more = summary.source_documents.length > names.length ? `, plus ${summary.source_documents.length - names.length} more` : "";
+    parts.push(`sources: ${names.join(", ")}${more}`);
+  }
+  return parts.length ? ` Evidence: ${parts.join("; ")}.` : "";
 }
 
 function activityPayload(step) {
@@ -189,6 +212,10 @@ function activityPayload(step) {
         "Retrieval guardrail detail:",
         "",
         retrievalDecision ? JSON.stringify(retrievalDecision, null, 2) : "No retrieval guardrail detail recorded.",
+        "",
+        "Evidence summary:",
+        "",
+        metadata.evidence_summary ? JSON.stringify(metadata.evidence_summary, null, 2) : "No evidence summary recorded.",
         "",
         "Assembled context:",
         "",
@@ -231,6 +258,9 @@ function activityPayload(step) {
       text: [
         input.controller_decision
           ? ["Controller decision:", "", JSON.stringify(input.controller_decision, null, 2), ""].join("\n")
+          : "",
+        input.evidence_summary
+          ? ["Evidence summary:", "", JSON.stringify(input.evidence_summary, null, 2), ""].join("\n")
           : "",
         "Prompt and context sent to answer LLM:",
         "",
