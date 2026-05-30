@@ -7,6 +7,7 @@ from mnemosyne.db.repositories import (
     bounded_graph_group_limit,
     commit_ingestion,
     create_reviewed_semantic_edge,
+    document_tree,
     enqueue_semantic_edge_candidates,
     graph_edge_status,
     list_semantic_edge_candidates,
@@ -145,8 +146,10 @@ def test_rebuild_document_restores_previous_records_on_node_failure() -> None:
     ]
 
 
-def test_rebuild_document_stamps_replacement_epoch() -> None:
+def test_rebuild_document_inserts_versioned_tree_and_supersedes_previous_records() -> None:
     document_id = ObjectId()
+    tree_id = ObjectId()
+    node_id = ObjectId()
     db = FakeDb()
     db.documents.rows.append(
         {
@@ -154,6 +157,24 @@ def test_rebuild_document_stamps_replacement_epoch() -> None:
             "title": "Old",
             "summary": "Old summary",
             "source": {"path": "old.md", "kind": "markdown"},
+            "ingestion_epoch": "legacy",
+        }
+    )
+    db.trees.rows.append(
+        {
+            "_id": tree_id,
+            "document_id": document_id,
+            "label": "source",
+            "ingestion_epoch": "legacy",
+        }
+    )
+    db.nodes.rows.append(
+        {
+            "_id": node_id,
+            "document_id": document_id,
+            "tree_id": tree_id,
+            "node_key": "root",
+            "title": "Old root",
             "ingestion_epoch": "legacy",
         }
     )
@@ -169,9 +190,61 @@ def test_rebuild_document_stamps_replacement_epoch() -> None:
     inserted = rebuild_document(db, str(document_id), result)
 
     assert inserted["ingestion_epoch"] == "2026-05-30-rebuild-001"
+    assert inserted["versioned"] is True
+    assert inserted["superseded_tree_count"] == 1
+    assert inserted["superseded_node_count"] == 1
     assert db.documents.rows[0]["ingestion_epoch"] == "2026-05-30-rebuild-001"
-    assert db.trees.rows[0]["ingestion_epoch"] == "2026-05-30-rebuild-001"
-    assert db.nodes.rows[0]["ingestion_epoch"] == "2026-05-30-rebuild-001"
+    assert len(db.trees.rows) == 2
+    assert len(db.nodes.rows) == 2
+    old_tree = next(row for row in db.trees.rows if row["_id"] == tree_id)
+    old_node = next(row for row in db.nodes.rows if row["_id"] == node_id)
+    new_tree = next(row for row in db.trees.rows if row["_id"] != tree_id)
+    new_node = next(row for row in db.nodes.rows if row["_id"] != node_id)
+    assert old_tree["status"] == "superseded"
+    assert old_tree["superseded_by_epoch"] == "2026-05-30-rebuild-001"
+    assert old_node["status"] == "superseded"
+    assert old_node["superseded_by_epoch"] == "2026-05-30-rebuild-001"
+    assert new_tree["ingestion_epoch"] == "2026-05-30-rebuild-001"
+    assert new_tree["status"] == "active"
+    assert new_node["ingestion_epoch"] == "2026-05-30-rebuild-001"
+    assert new_node["status"] == "active"
+
+
+def test_document_tree_returns_only_active_nodes() -> None:
+    document_id = ObjectId()
+    active_id = ObjectId()
+    superseded_id = ObjectId()
+    db = FakeDb()
+    db.nodes.rows.extend(
+        [
+            {
+                "_id": superseded_id,
+                "document_id": document_id,
+                "tree_id": ObjectId(),
+                "node_key": "old",
+                "parent_id": None,
+                "order": 0,
+                "title": "Old root",
+                "labels": ["source_root"],
+                "status": "superseded",
+            },
+            {
+                "_id": active_id,
+                "document_id": document_id,
+                "tree_id": ObjectId(),
+                "node_key": "new",
+                "parent_id": None,
+                "order": 1,
+                "title": "New root",
+                "labels": ["source_root"],
+                "status": "active",
+            },
+        ]
+    )
+
+    tree = document_tree(db, str(document_id))
+
+    assert [node["node_id"] for node in tree] == [str(active_id)]
 
 
 def test_commit_ingestion_persists_relation_edges() -> None:
@@ -669,7 +742,7 @@ class FakeCollection:
         row = next((row for row in self.rows if matches(row, query)), None)
         return dict(row) if row else None
 
-    def find(self, query):
+    def find(self, query, _projection=None):
         return FakeCursor([dict(row) for row in self.rows if matches(row, query)])
 
     def count_documents(self, query):

@@ -47,6 +47,8 @@ Non-goal:
 
 ## Slice 2: Non-Destructive Rebuild
 
+Implementation status: versioned rebuild insertion is implemented; epoch comparison and explicit garbage collection remain open.
+
 Goal:
 
 - Replace destructive tree/node deletion with versioned insertion.
@@ -58,6 +60,13 @@ Required behavior:
 - Rebuild should create a new active tree under a new epoch.
 - Previous trees/nodes should remain queryable for audit unless explicitly garbage-collected.
 - Retrieval should prefer active epoch records by default.
+
+Implemented behavior:
+
+- `rebuild-document` and `rebuild-by-label` no longer require destructive replacement for normal operation.
+- Previous document trees and nodes are marked `superseded`.
+- New trees and nodes are inserted as `active` under the selected ingestion epoch.
+- Normal search and document-tree views exclude superseded nodes by default.
 
 ## Slice 3: Chronological Source-Date Extraction
 

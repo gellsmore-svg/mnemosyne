@@ -255,6 +255,8 @@ The system needs a controlled rebuild workflow that can:
 - tag runs with ingestion epochs;
 - compare or supersede earlier generated content.
 
+Current rebuild behavior now uses ingestion epochs as the versioning surface. Maintenance rebuild commands insert a new active tree/node set and mark earlier tree/node records as `superseded` rather than deleting them. Normal search and document-tree views prefer active records. Explicit epoch comparison, audit browsing of superseded trees, and garbage collection remain open work.
+
 ### Chronological Corpus Processing
 
 Large historical corpora, especially AMS / Relational Substrate / RS5 Clause material, should be ingestible in likely historical order.

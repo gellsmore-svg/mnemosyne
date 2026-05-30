@@ -268,6 +268,36 @@ def test_search_nodes_expands_candidate_window_when_identity_filters() -> None:
     assert [result["title"] for result in results] == ["Allowed later memory"]
 
 
+def test_search_nodes_ignores_superseded_nodes() -> None:
+    document_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": ObjectId(),
+                "document_id": document_id,
+                "tree_id": ObjectId(),
+                "title": "Old memory",
+                "text": "memory",
+                "labels": ["source_chunk"],
+                "status": "superseded",
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": document_id,
+                "tree_id": ObjectId(),
+                "title": "Active memory",
+                "text": "memory",
+                "labels": ["source_chunk"],
+                "status": "active",
+            },
+        ]
+    )
+
+    results = search_nodes(db)
+
+    assert [result["title"] for result in results] == ["Active memory"]
+
+
 class FakeCursor(list):
     def sort(self, *_args):
         return self
@@ -306,7 +336,9 @@ class FakeDb:
 def matches(row, query):
     for key, expected in query.items():
         if key == "$or":
-            return any(matches(row, option) for option in expected)
+            if not any(matches(row, option) for option in expected):
+                return False
+            continue
         if isinstance(expected, dict):
             if "$ne" in expected and row.get(key) == expected["$ne"]:
                 return False

@@ -73,10 +73,13 @@ def rebuild_document(db: Database, document_id: str, result: IngestionResult) ->
     previous_trees = list(db.trees.find({"document_id": object_id}))
     previous_nodes = list(db.nodes.find({"document_id": object_id}))
     previous_edges = list_graph_edges_for_document(db, object_id)
-    delete_graph_edges_for_document(db, object_id)
-    db.nodes.delete_many({"document_id": object_id})
-    db.trees.delete_many({"document_id": object_id})
     try:
+        mark_document_tree_nodes_status(
+            db,
+            document_id=object_id,
+            status="superseded",
+            superseded_by_epoch=ingestion_epoch,
+        )
         db.documents.update_one(
             {"_id": object_id},
             {
@@ -91,20 +94,19 @@ def rebuild_document(db: Database, document_id: str, result: IngestionResult) ->
         )
         inserted = insert_tree_nodes(db, object_id, result, ingestion_epoch=ingestion_epoch)
     except Exception:
-        delete_graph_edges_for_document(db, object_id)
-        db.nodes.delete_many({"document_id": object_id})
-        db.trees.delete_many({"document_id": object_id})
         db.documents.replace_one({"_id": object_id}, existing)
-        if previous_trees:
-            db.trees.insert_many(previous_trees)
-        if previous_nodes:
-            db.nodes.insert_many(previous_nodes)
+        restore_collection_rows(db.trees, object_id, previous_trees)
+        restore_collection_rows(db.nodes, object_id, previous_nodes)
+        delete_graph_edges_for_document(db, object_id)
         if previous_edges and hasattr(db, "graph_edges"):
             db.graph_edges.insert_many(previous_edges)
         raise
     return {
         "document_id": str(object_id),
-        "replaced": True,
+        "replaced": False,
+        "versioned": True,
+        "superseded_tree_count": len(previous_trees),
+        "superseded_node_count": len(previous_nodes),
         **inserted,
     }
 
@@ -114,6 +116,34 @@ def resolved_ingestion_epoch(result: IngestionResult) -> str:
         return result.ingestion_epoch
     created_at = result.created_at
     return f"{created_at:%Y-%m-%d}-{DEFAULT_INGESTION_EPOCH_SUFFIX}"
+
+
+def mark_document_tree_nodes_status(
+    db: Database,
+    *,
+    document_id: object,
+    status: str,
+    superseded_by_epoch: str | None = None,
+) -> None:
+    set_fields: dict[str, Any] = {
+        "status": status,
+        "updated_at": datetime.now(timezone.utc),
+    }
+    if superseded_by_epoch:
+        set_fields["superseded_by_epoch"] = superseded_by_epoch
+    for collection in (db.trees, db.nodes):
+        for row in collection.find({"document_id": document_id}):
+            collection.update_one({"_id": row["_id"]}, {"$set": set_fields})
+
+
+def restore_collection_rows(
+    collection: Any,
+    document_id: object,
+    previous_rows: list[dict[str, Any]],
+) -> None:
+    collection.delete_many({"document_id": document_id})
+    if previous_rows:
+        collection.insert_many(previous_rows)
 
 
 def insert_tree_nodes(
@@ -854,7 +884,7 @@ def document_tree(db: Database, document_id: str) -> list[dict]:
     object_id = ObjectId(document_id)
     nodes = list(
         db.nodes.find(
-            {"document_id": object_id},
+            {"document_id": object_id, "status": {"$ne": "superseded"}},
             {
                 "_id": 1,
                 "parent_id": 1,

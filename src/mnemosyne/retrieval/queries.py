@@ -49,8 +49,12 @@ def get_document(db: Database, document_id: str) -> dict[str, Any] | None:
     if not document:
         return None
     serialized = serialize_document(document)
-    serialized["tree_count"] = db.trees.count_documents({"document_id": document["_id"]})
-    serialized["node_count"] = db.nodes.count_documents({"document_id": document["_id"]})
+    serialized["tree_count"] = db.trees.count_documents(
+        {"document_id": document["_id"], "status": {"$ne": "superseded"}}
+    )
+    serialized["node_count"] = db.nodes.count_documents(
+        {"document_id": document["_id"], "status": {"$ne": "superseded"}}
+    )
     return serialized
 
 
@@ -65,7 +69,7 @@ def search_nodes(
     limit: int = 20,
     identity: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    filters: dict[str, Any] = {}
+    filters: dict[str, Any] = active_node_filter()
     if query:
         filters["$or"] = text_query_filters(query)
     if label:
@@ -101,6 +105,8 @@ def filter_nodes_for_identity(
 
 
 def node_visible_to_identity(node: dict[str, Any], identity: dict[str, Any]) -> bool:
+    if is_superseded_node(node):
+        return False
     excluded_labels = set(identity.get("excluded_labels") or [])
     if excluded_labels and excluded_labels.intersection(node.get("labels") or []):
         return False
@@ -111,6 +117,14 @@ def node_visible_to_identity(node: dict[str, Any], identity: dict[str, Any]) -> 
     if excluded_tree_ids and str(node.get("tree_id")) in excluded_tree_ids:
         return False
     return True
+
+
+def active_node_filter() -> dict[str, Any]:
+    return {"status": {"$ne": "superseded"}}
+
+
+def is_superseded_node(node: dict[str, Any] | None) -> bool:
+    return bool(node and node.get("status") == "superseded")
 
 
 def text_query_filters(query: str) -> list[dict[str, Any]]:
@@ -252,6 +266,7 @@ def semantic_candidate_nodes(
         candidate
         for candidate in db.nodes.find(filters).limit(candidate_limit)
         if "source_root" not in (candidate.get("labels") or [])
+        and not is_superseded_node(candidate)
     ]
     candidates.sort(key=lambda candidate: semantic_candidate_sort_tuple(candidate, labels))
     return [
@@ -329,6 +344,8 @@ def expand_proximity(
         adjacent = adjacent_node_for_edge(edge, node_id)
         if not adjacent:
             continue
+        if is_superseded_node(adjacent):
+            continue
         candidates.append(
             {
                 "node_id": adjacent.get("node_id"),
@@ -386,7 +403,7 @@ def expand_graph_paths(
             ):
                 adjacent = adjacent_node_for_edge(edge, path["node_id"])
                 adjacent_id = str(adjacent.get("node_id") or "") if adjacent else ""
-                if not adjacent_id or adjacent_id in path["visited"]:
+                if not adjacent_id or adjacent_id in path["visited"] or is_superseded_node(adjacent):
                     continue
                 path_edges = [*path["path_edges"], edge_summary(edge)]
                 path_score = round(path["path_score"] * edge_proximity_score(edge), 6)

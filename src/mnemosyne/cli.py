@@ -487,7 +487,7 @@ def main() -> None:
     rebuild_doc.add_argument(
         "--force-replace",
         action="store_true",
-        help="Destructively replace existing trees/nodes. This is a maintenance command, not versioned ingestion.",
+        help="Deprecated compatibility flag. Rebuilds are versioned and non-destructive.",
     )
     rebuild_doc.add_argument(
         "--ingestion-epoch",
@@ -501,7 +501,7 @@ def main() -> None:
     rebuild_by_label.add_argument(
         "--force-replace",
         action="store_true",
-        help="Destructively replace existing trees/nodes for all matching documents.",
+        help="Deprecated compatibility flag. Rebuilds are versioned and non-destructive.",
     )
     rebuild_by_label.add_argument(
         "--ingestion-epoch",
@@ -1292,9 +1292,6 @@ def main() -> None:
 
     if args.command == "rebuild-document":
         ensure_indexes(db)
-        if not args.force_replace:
-            print(json.dumps(destructive_rebuild_refusal("rebuild-document"), indent=2))
-            return
         print(
             json.dumps(
                 rebuild_document_from_existing_source(
@@ -1310,9 +1307,6 @@ def main() -> None:
 
     if args.command == "rebuild-by-label":
         ensure_indexes(db)
-        if not args.force_replace:
-            print(json.dumps(destructive_rebuild_refusal("rebuild-by-label"), indent=2))
-            return
         document_ids = document_ids_for_label(db, args.label)
         if args.limit is not None:
             document_ids = document_ids[: args.limit]
