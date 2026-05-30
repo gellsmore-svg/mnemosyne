@@ -1,6 +1,7 @@
 from bson import ObjectId
 
 from mnemosyne.config import AppConfig, RuntimeConfig
+from mnemosyne.sessions.activity_reports import evidence_summary_lines
 from mnemosyne.sessions.interaction import (
     active_document_default_node_id,
     active_document_reference_query,
@@ -403,7 +404,7 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert result["activity_report"]["llm_activity"]["call_count"] == 1
     assert result["activity_log"].startswith("Answer Activity Log")
     assert "Context construction:" in result["activity_log"]
-    assert "Evidence summary: 0 repository node(s) included." in result["activity_log"]
+    assert "Evidence summary: 0 repository node(s) included." not in result["activity_log"]
     assert "plain prompt" in captured["prompt"]["context_text"]
     assert "## Controller Decision" in captured["prompt"]["prompt_text"]
     assert "- Action: skip_weak_or_missing_repository_context" in captured["prompt"]["prompt_text"]
@@ -2342,6 +2343,46 @@ def test_answer_activity_report_summarizes_tool_repair_guidance() -> None:
     log = answer_activity_log(report)
     assert "Tool-call repair guidance:" in log
     assert "compile_context requires node_id" in log
+
+
+def test_evidence_summary_lines_render_source_documents_concisely() -> None:
+    lines = evidence_summary_lines(
+        {
+            "included_node_count": 2,
+            "source_fallback_used": True,
+            "tool_result_count": 4,
+            "successful_tool_count": 3,
+            "failed_tool_count": 1,
+            "source_documents": [
+                {"title": "Alpha"},
+                {"document_id": "doc-beta"},
+                {},
+                {"title": "Delta"},
+            ],
+        }
+    )
+
+    assert lines == [
+        "- Evidence summary: 2 repository node(s) included.",
+        "- Evidence summary: source-file fallback was used.",
+        "- Evidence summary: 4 memory-tool result(s), 3 successful and 1 failed.",
+        "- Evidence sources: Alpha, doc-beta, untitled source, plus 1 more.",
+    ]
+
+
+def test_evidence_summary_lines_can_suppress_direct_duplicates() -> None:
+    lines = evidence_summary_lines(
+        {
+            "included_node_count": 0,
+            "source_fallback_used": True,
+            "source_documents": [{"title": "Active Source"}],
+        },
+        include_included_nodes=False,
+        include_source_fallback=False,
+        include_source_documents=False,
+    )
+
+    assert lines == []
 
 
 def test_document_tree_lookup_does_not_mark_tree_nodes_as_used() -> None:

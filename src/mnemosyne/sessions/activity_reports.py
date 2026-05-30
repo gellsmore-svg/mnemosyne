@@ -93,18 +93,31 @@ def context_summary(context: dict[str, Any]) -> str:
     skipped_count = context.get("skipped_count") or 0
     if skipped_count:
         lines.append(f"- Skipped {skipped_count} candidate record(s) because of budget or filtering.")
-    lines.extend(evidence_summary_lines(context.get("evidence_summary")))
+    lines.extend(
+        evidence_summary_lines(
+            context.get("evidence_summary"),
+            include_included_nodes=False,
+            include_source_fallback=False,
+            include_source_documents=False,
+        )
+    )
     return "\n".join(lines)
 
 
-def evidence_summary_lines(summary: dict[str, Any] | None) -> list[str]:
+def evidence_summary_lines(
+    summary: dict[str, Any] | None,
+    *,
+    include_included_nodes: bool = True,
+    include_source_fallback: bool = True,
+    include_source_documents: bool = True,
+) -> list[str]:
     if not isinstance(summary, dict):
         return []
     lines = []
     included_count = summary.get("included_node_count")
-    if included_count is not None:
+    if include_included_nodes and included_count is not None:
         lines.append(f"- Evidence summary: {included_count} repository node(s) included.")
-    if summary.get("source_fallback_used"):
+    if include_source_fallback and summary.get("source_fallback_used"):
         lines.append("- Evidence summary: source-file fallback was used.")
     tool_count = summary.get("tool_result_count")
     if tool_count is not None:
@@ -115,7 +128,7 @@ def evidence_summary_lines(summary: dict[str, Any] | None) -> list[str]:
             f"{successful} successful and {failed} failed."
         )
     documents = summary.get("source_documents") or []
-    if documents:
+    if include_source_documents and documents:
         titles = [
             document.get("title") or document.get("document_id") or "untitled source"
             for document in documents[:3]
