@@ -88,7 +88,13 @@ def discover_folder_sources(root: Path) -> list[Path]:
     )
 
 
-def ingest_source_path(db, config, path: Path, labels: list[str]) -> dict:
+def ingest_source_path(
+    db,
+    config,
+    path: Path,
+    labels: list[str],
+    ingestion_epoch: str | None = None,
+) -> dict:
     checksum = sha256_file(path)
     duplicate = find_duplicate_by_checksum(db, checksum)
     if duplicate:
@@ -109,6 +115,7 @@ def ingest_source_path(db, config, path: Path, labels: list[str]) -> dict:
         source_kind,
         extra_labels=labels,
     )
+    result.ingestion_epoch = ingestion_epoch
     archived_path = archive_source(path, config.paths.archive, checksum)
     result.source.checksum_sha256 = checksum
     result.source.archive_path = str(archived_path)
@@ -168,6 +175,7 @@ def rebuild_document_from_existing_source(
     db,
     document_id: str,
     source_override: str | None = None,
+    ingestion_epoch: str | None = None,
 ) -> dict:
     document = get_document(db, document_id)
     if not document:
@@ -201,6 +209,7 @@ def rebuild_document_from_existing_source(
     result.source.path = source.get("path") or str(source_path)
     result.source.checksum_sha256 = source.get("checksum_sha256") or sha256_file(source_path)
     result.source.archive_path = source.get("archive_path") or str(source_path)
+    result.ingestion_epoch = ingestion_epoch
     inserted = rebuild_document(db, document_id, result)
     inserted["ok"] = True
     inserted["source_path"] = str(source_path)
@@ -437,6 +446,11 @@ def main() -> None:
         default=[],
         help="Additional node label to apply to every ingested node. May be repeated.",
     )
+    ingest_one.add_argument(
+        "--ingestion-epoch",
+        default=None,
+        help="Optional epoch identifier to stamp on the document, tree, and nodes.",
+    )
 
     ingest_folder = subcommands.add_parser("ingest-folder")
     ingest_folder.add_argument("path")
@@ -445,6 +459,11 @@ def main() -> None:
         action="append",
         default=[],
         help="Additional node label to apply to every ingested node. May be repeated.",
+    )
+    ingest_folder.add_argument(
+        "--ingestion-epoch",
+        default=None,
+        help="Optional epoch identifier to stamp on every ingested document, tree, and node.",
     )
     ingest_folder.add_argument(
         "--limit",
@@ -470,6 +489,11 @@ def main() -> None:
         action="store_true",
         help="Destructively replace existing trees/nodes. This is a maintenance command, not versioned ingestion.",
     )
+    rebuild_doc.add_argument(
+        "--ingestion-epoch",
+        default=None,
+        help="Optional epoch identifier to stamp on replacement trees/nodes.",
+    )
 
     rebuild_by_label = subcommands.add_parser("rebuild-by-label")
     rebuild_by_label.add_argument("--label", required=True)
@@ -478,6 +502,11 @@ def main() -> None:
         "--force-replace",
         action="store_true",
         help="Destructively replace existing trees/nodes for all matching documents.",
+    )
+    rebuild_by_label.add_argument(
+        "--ingestion-epoch",
+        default=None,
+        help="Optional epoch identifier to stamp on each replacement tree/node set.",
     )
 
     args = parser.parse_args()
@@ -1213,7 +1242,18 @@ def main() -> None:
 
     if args.command == "ingest-one":
         ensure_indexes(db)
-        print(json.dumps(ingest_source_path(db, config, Path(args.path), args.label), indent=2))
+        print(
+            json.dumps(
+                ingest_source_path(
+                    db,
+                    config,
+                    Path(args.path),
+                    args.label,
+                    ingestion_epoch=args.ingestion_epoch,
+                ),
+                indent=2,
+            )
+        )
         return
 
     if args.command == "ingest-folder":
@@ -1224,11 +1264,20 @@ def main() -> None:
         if args.limit is not None:
             sources = sources[: args.limit]
         for path in sources:
-            results.append(ingest_source_path(db, config, path, args.label))
+            results.append(
+                ingest_source_path(
+                    db,
+                    config,
+                    path,
+                    args.label,
+                    ingestion_epoch=args.ingestion_epoch,
+                )
+            )
         rejected = [result for result in results if not result.get("ok")]
         output = {
             "ok": True,
             "root": str(root),
+            "ingestion_epoch": args.ingestion_epoch,
             "file_count": len(sources),
             "inserted": sum(1 for result in results if result.get("ok")),
             "rejected": len(rejected),
@@ -1248,7 +1297,12 @@ def main() -> None:
             return
         print(
             json.dumps(
-                rebuild_document_from_existing_source(db, args.document_id, args.source),
+                rebuild_document_from_existing_source(
+                    db,
+                    args.document_id,
+                    args.source,
+                    ingestion_epoch=args.ingestion_epoch,
+                ),
                 indent=2,
             )
         )
@@ -1263,7 +1317,11 @@ def main() -> None:
         if args.limit is not None:
             document_ids = document_ids[: args.limit]
         results = [
-            rebuild_document_from_existing_source(db, document_id)
+            rebuild_document_from_existing_source(
+                db,
+                document_id,
+                ingestion_epoch=args.ingestion_epoch,
+            )
             for document_id in document_ids
         ]
         failures = [result for result in results if not result.get("ok")]

@@ -12,6 +12,7 @@ from mnemosyne.db.repositories import (
     list_semantic_edge_candidates,
     rebuild_document,
     review_semantic_edge_candidate,
+    resolved_ingestion_epoch,
 )
 from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
@@ -38,6 +39,50 @@ def test_commit_ingestion_rolls_back_partial_insert_on_node_failure() -> None:
     assert db.documents.rows == []
     assert db.trees.rows == []
     assert db.nodes.rows == []
+
+
+def test_resolved_ingestion_epoch_uses_explicit_or_date_default() -> None:
+    timestamp = datetime(2026, 5, 30, 12, tzinfo=timezone.utc)
+    default_result = IngestionResult(
+        source=SourceRef(path="source.md", kind="markdown", checksum_sha256="checksum"),
+        title="Source",
+        summary="Summary",
+        nodes=[IngestedNode(node_key="root", title="Root", text="Root text")],
+        created_at=timestamp,
+    )
+    explicit_result = IngestionResult(
+        source=SourceRef(path="source.md", kind="markdown", checksum_sha256="checksum"),
+        title="Source",
+        summary="Summary",
+        nodes=[IngestedNode(node_key="root", title="Root", text="Root text")],
+        ingestion_epoch="2026-05-30-rs5-rebuild-001",
+        created_at=timestamp,
+    )
+
+    assert resolved_ingestion_epoch(default_result) == "2026-05-30-default"
+    assert resolved_ingestion_epoch(explicit_result) == "2026-05-30-rs5-rebuild-001"
+
+
+def test_commit_ingestion_stamps_epoch_on_document_tree_nodes_and_provenance() -> None:
+    db = FakeDb()
+    result = IngestionResult(
+        source=SourceRef(path="source.md", kind="markdown", checksum_sha256="checksum"),
+        title="Source",
+        summary="Summary",
+        nodes=[IngestedNode(node_key="root", title="Root", text="Root text")],
+        ingestion_epoch="2026-05-30-test-001",
+        created_at=datetime(2026, 5, 30, 12, tzinfo=timezone.utc),
+    )
+
+    inserted = commit_ingestion(db, result)
+
+    assert inserted["ingestion_epoch"] == "2026-05-30-test-001"
+    assert db.documents.rows[0]["ingestion_epoch"] == "2026-05-30-test-001"
+    assert db.trees.rows[0]["ingestion_epoch"] == "2026-05-30-test-001"
+    assert db.trees.rows[0]["status"] == "active"
+    assert db.nodes.rows[0]["ingestion_epoch"] == "2026-05-30-test-001"
+    assert db.nodes.rows[0]["status"] == "active"
+    assert db.nodes.rows[0]["provenance"]["ingestion_epoch"] == "2026-05-30-test-001"
 
 
 def test_rebuild_document_restores_previous_records_on_node_failure() -> None:
@@ -98,6 +143,35 @@ def test_rebuild_document_restores_previous_records_on_node_failure() -> None:
             "title": "Old root",
         }
     ]
+
+
+def test_rebuild_document_stamps_replacement_epoch() -> None:
+    document_id = ObjectId()
+    db = FakeDb()
+    db.documents.rows.append(
+        {
+            "_id": document_id,
+            "title": "Old",
+            "summary": "Old summary",
+            "source": {"path": "old.md", "kind": "markdown"},
+            "ingestion_epoch": "legacy",
+        }
+    )
+    result = IngestionResult(
+        source=SourceRef(path="new.md", kind="markdown", checksum_sha256="new"),
+        title="New",
+        summary="New summary",
+        nodes=[IngestedNode(node_key="root", title="New root", text="New text")],
+        ingestion_epoch="2026-05-30-rebuild-001",
+        created_at=datetime(2026, 5, 30, 12, tzinfo=timezone.utc),
+    )
+
+    inserted = rebuild_document(db, str(document_id), result)
+
+    assert inserted["ingestion_epoch"] == "2026-05-30-rebuild-001"
+    assert db.documents.rows[0]["ingestion_epoch"] == "2026-05-30-rebuild-001"
+    assert db.trees.rows[0]["ingestion_epoch"] == "2026-05-30-rebuild-001"
+    assert db.nodes.rows[0]["ingestion_epoch"] == "2026-05-30-rebuild-001"
 
 
 def test_commit_ingestion_persists_relation_edges() -> None:

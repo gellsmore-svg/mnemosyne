@@ -456,3 +456,4 @@ Current answer flow:
 - `docs/governance-schema-plan.md`: planned identity, governance, process, and trust schemas.
 - `docs/mnemosyne-cognitive-architecture-draft.md`: forward-looking governed cognitive architecture concept.
 - `docs/practical-applications.md`: possible application lanes and FOSS integration criteria.
+- `docs/development-plan.md`: active ingestion-first implementation sequence covering ingestion epochs, non-destructive rebuilds, chronology, ingestion logs, UI test-bench work, semantic substrate, LLM-assisted ingestion, and ranking/trust integration.

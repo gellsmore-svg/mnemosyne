@@ -900,6 +900,7 @@ def serialize_document(document: dict[str, Any]) -> dict[str, Any]:
         "title": document.get("title"),
         "summary": document.get("summary"),
         "source": document.get("source", {}),
+        "ingestion_epoch": document.get("ingestion_epoch"),
         "created_at": iso(document.get("created_at")),
         "updated_at": iso(document.get("updated_at")),
     }
@@ -921,6 +922,8 @@ def serialize_node(node: dict[str, Any]) -> dict[str, Any]:
         "usage_score": parsed_usage_score(node.get("usage_score")),
         "usage_score_bonus": usage_score_bonus(node.get("usage_score")),
         "last_used_at": iso(node.get("last_used_at")),
+        "ingestion_epoch": node.get("ingestion_epoch"),
+        "status": node.get("status"),
         "provenance": node.get("provenance", {}),
         "created_at": iso(node.get("created_at")),
     }

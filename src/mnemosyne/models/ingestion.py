@@ -25,6 +25,7 @@ class Provenance(BaseModel):
     source_path: str
     source_checksum_sha256: str | None = None
     archive_path: str | None = None
+    ingestion_epoch: str | None = None
     endorsement_label: str = DEFAULT_ENDORSEMENT_LABEL
     adapter: str = "mock"
 
@@ -51,6 +52,7 @@ class IngestionResult(BaseModel):
     tree_label: str = "source"
     nodes: list[IngestedNode]
     adapter: str = "mock"
+    ingestion_epoch: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -59,6 +61,7 @@ class DocumentRecord(BaseModel):
     title: str
     summary: str
     source: SourceRef
+    ingestion_epoch: str
     created_at: datetime
     updated_at: datetime
 
@@ -68,6 +71,8 @@ class TreeRecord(BaseModel):
     document_id: Any
     label: str
     kind: str = "source_document"
+    ingestion_epoch: str
+    status: str = "active"
     created_at: datetime
     updated_at: datetime
 
@@ -89,6 +94,8 @@ class NodeRecord(BaseModel):
     proximity: dict[str, Any] = Field(default_factory=dict)
     usage_score: int = 0
     continuity_critical: bool = False
+    ingestion_epoch: str
+    status: str = "active"
     provenance: Provenance
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime

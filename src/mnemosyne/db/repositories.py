@@ -17,6 +17,7 @@ from mnemosyne.models.ingestion import (
 )
 
 STRUCTURAL_LABELS = {"source_root", "source_section", "source_chunk"}
+DEFAULT_INGESTION_EPOCH_SUFFIX = "default"
 
 
 class DuplicateSourceError(Exception):
@@ -36,17 +37,19 @@ def commit_ingestion(db: Database, result: IngestionResult) -> dict[str, Any]:
         if existing:
             raise DuplicateSourceError(result.source.checksum_sha256, existing["_id"])
 
+    ingestion_epoch = resolved_ingestion_epoch(result)
     document = DocumentRecord(
         title=result.title,
         summary=result.summary,
         source=result.source,
+        ingestion_epoch=ingestion_epoch,
         created_at=result.created_at,
         updated_at=result.created_at,
     ).model_dump()
     document_id = db.documents.insert_one(document).inserted_id
 
     try:
-        inserted = insert_tree_nodes(db, document_id, result)
+        inserted = insert_tree_nodes(db, document_id, result, ingestion_epoch=ingestion_epoch)
     except Exception:
         delete_graph_edges_for_document(db, document_id)
         db.nodes.delete_many({"document_id": document_id})
@@ -66,6 +69,7 @@ def rebuild_document(db: Database, document_id: str, result: IngestionResult) ->
     if not existing:
         raise ValueError(f"Document not found: {document_id}")
 
+    ingestion_epoch = resolved_ingestion_epoch(result)
     previous_trees = list(db.trees.find({"document_id": object_id}))
     previous_nodes = list(db.nodes.find({"document_id": object_id}))
     previous_edges = list_graph_edges_for_document(db, object_id)
@@ -80,11 +84,12 @@ def rebuild_document(db: Database, document_id: str, result: IngestionResult) ->
                     "title": result.title,
                     "summary": result.summary,
                     "source": result.source.model_dump(),
+                    "ingestion_epoch": ingestion_epoch,
                     "updated_at": result.created_at,
                 }
             },
         )
-        inserted = insert_tree_nodes(db, object_id, result)
+        inserted = insert_tree_nodes(db, object_id, result, ingestion_epoch=ingestion_epoch)
     except Exception:
         delete_graph_edges_for_document(db, object_id)
         db.nodes.delete_many({"document_id": object_id})
@@ -104,10 +109,25 @@ def rebuild_document(db: Database, document_id: str, result: IngestionResult) ->
     }
 
 
-def insert_tree_nodes(db: Database, document_id: object, result: IngestionResult) -> dict[str, Any]:
+def resolved_ingestion_epoch(result: IngestionResult) -> str:
+    if result.ingestion_epoch:
+        return result.ingestion_epoch
+    created_at = result.created_at
+    return f"{created_at:%Y-%m-%d}-{DEFAULT_INGESTION_EPOCH_SUFFIX}"
+
+
+def insert_tree_nodes(
+    db: Database,
+    document_id: object,
+    result: IngestionResult,
+    *,
+    ingestion_epoch: str | None = None,
+) -> dict[str, Any]:
+    ingestion_epoch = ingestion_epoch or resolved_ingestion_epoch(result)
     tree = TreeRecord(
         document_id=document_id,
         label=result.tree_label,
+        ingestion_epoch=ingestion_epoch,
         created_at=result.created_at,
         updated_at=result.created_at,
     )
@@ -135,10 +155,12 @@ def insert_tree_nodes(db: Database, document_id: object, result: IngestionResult
             proximity=node.proximity,
             usage_score=node.usage_score,
             continuity_critical=node.continuity_critical,
+            ingestion_epoch=ingestion_epoch,
             provenance=Provenance(
                 source_path=result.source.path,
                 source_checksum_sha256=result.source.checksum_sha256,
                 archive_path=result.source.archive_path,
+                ingestion_epoch=ingestion_epoch,
                 endorsement_label=endorsement_label,
                 adapter=result.adapter,
             ),
@@ -161,6 +183,7 @@ def insert_tree_nodes(db: Database, document_id: object, result: IngestionResult
     return {
         "tree_id": str(tree_id),
         "node_ids": [str(node_id) for node_id in node_ids],
+        "ingestion_epoch": ingestion_epoch,
         **edge_result,
     }
 
