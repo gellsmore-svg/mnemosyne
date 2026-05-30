@@ -616,6 +616,12 @@ def prepare_direct_answer_prompt(
         retrieval_status=retrieval_status,
     )
     prompt["context_metadata"]["controller_decision"] = controller_decision
+    prompt["context_metadata"]["evidence_summary"] = direct_evidence_summary(
+        selected_node_id=selected_node_id,
+        selected_node_source=selected_node_source,
+        retrieval_status=retrieval_status,
+        context_metadata=prompt["context_metadata"],
+    )
     prompt = inject_controller_decision_into_prompt(prompt, controller_decision)
     retrieval_output = {
         "retrieval_status": retrieval_status,
@@ -666,6 +672,47 @@ def inject_controller_decision_into_prompt(
     )
     updated["budget"] = budget
     return updated
+
+
+def direct_evidence_summary(
+    *,
+    selected_node_id: str | None,
+    selected_node_source: str | None,
+    retrieval_status: str,
+    context_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    included = context_metadata.get("included") or []
+    skipped = context_metadata.get("skipped") or []
+    source_fallback = context_metadata.get("source_fallback")
+    included_node_ids = sorted(
+        str(item.get("node_id"))
+        for item in included
+        if item.get("node_id")
+    )
+    summary = {
+        "mode": "direct",
+        "retrieval_status": retrieval_status,
+        "selected_node_id": selected_node_id,
+        "selected_node_source": selected_node_source,
+        "included_node_count": len(included_node_ids),
+        "included_node_ids": included_node_ids,
+        "skipped_count": len(skipped),
+        "source_fallback_used": bool(source_fallback),
+    }
+    if source_fallback:
+        summary["source_documents"] = [
+            {
+                "document_id": source_fallback.get("document_id"),
+                "title": source_fallback.get("title"),
+                "source_path": source_fallback.get("source_path"),
+                "used_chars": source_fallback.get("used_chars"),
+                "total_chars": source_fallback.get("total_chars"),
+                "truncated": source_fallback.get("truncated"),
+            }
+        ]
+    else:
+        summary["source_documents"] = []
+    return summary
 
 
 def is_low_intent_query(query: str) -> bool:

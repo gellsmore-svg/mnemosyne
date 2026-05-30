@@ -395,6 +395,17 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert "plain prompt" in captured["prompt"]["context_text"]
     assert "## Controller Decision" in captured["prompt"]["prompt_text"]
     assert "- Action: skip_weak_or_missing_repository_context" in captured["prompt"]["prompt_text"]
+    assert captured["prompt"]["context_metadata"]["evidence_summary"] == {
+        "mode": "direct",
+        "retrieval_status": "no_focus_node",
+        "selected_node_id": None,
+        "selected_node_source": None,
+        "included_node_count": 0,
+        "included_node_ids": [],
+        "skipped_count": 0,
+        "source_fallback_used": False,
+        "source_documents": [],
+    }
     assert [step["step"] for step in result["process_trace"]] == [
         "user_prompt",
         "retrieval_context",
@@ -756,6 +767,10 @@ def test_answer_query_uses_active_document_source_fallback(monkeypatch, tmp_path
     assert "source fallback contains the selected test evidence" in captured["prompt"]["context_text"]
     assert captured["prompt"]["context_metadata"]["included"] == []
     assert captured["prompt"]["context_metadata"]["source_fallback"]["document_id"] == "doc1"
+    evidence = captured["prompt"]["context_metadata"]["evidence_summary"]
+    assert evidence["source_fallback_used"] is True
+    assert evidence["source_documents"][0]["document_id"] == "doc1"
+    assert evidence["source_documents"][0]["truncated"] is False
     assert result["process_trace"][1]["output"]["retrieval_status"] == (
         "active_document_source_fallback"
     )

@@ -158,6 +158,7 @@ def context_construction_section(trace: list[dict[str, Any]]) -> dict[str, Any]:
             "focus_node_id": output.get("focus_node_id"),
             "controller_decision": output.get("controller_decision") or metadata.get("controller_decision"),
             "retrieval_decision": output.get("retrieval_decision"),
+            "evidence_summary": metadata.get("evidence_summary"),
             "included_nodes": compact_included_nodes(metadata.get("included") or []),
             "skipped_count": len(metadata.get("skipped") or []),
             "source_fallback": metadata.get("source_fallback"),
