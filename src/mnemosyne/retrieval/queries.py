@@ -297,7 +297,10 @@ def embedding_candidate_nodes(
     if not focus_embedding:
         return []
 
-    filters: dict[str, Any] = {"_id": {"$ne": focus["_id"]}}
+    filters: dict[str, Any] = {
+        "_id": {"$ne": focus["_id"]},
+        "embedding.vector": {"$exists": True},
+    }
     if not include_same_document and focus.get("document_id"):
         filters["document_id"] = {"$ne": focus["document_id"]}
 

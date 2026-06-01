@@ -341,19 +341,30 @@ def matches(row, query):
                 return False
             continue
         if isinstance(expected, dict):
-            if "$ne" in expected and row.get(key) == expected["$ne"]:
+            value = nested_get(row, key)
+            if "$exists" in expected and (value is not None) is not expected["$exists"]:
+                return False
+            if "$ne" in expected and value == expected["$ne"]:
                 return False
             if "$in" in expected:
-                value = row.get(key)
                 if isinstance(value, list):
                     if not set(value) & set(expected["$in"]):
                         return False
                 elif value not in expected["$in"]:
                     return False
             continue
-        if row.get(key) != expected:
+        if nested_get(row, key) != expected:
             return False
     return True
+
+
+def nested_get(row, dotted_key):
+    value = row
+    for part in dotted_key.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
 
 
 def test_semantic_candidate_nodes_ranks_shared_label_matches() -> None:
