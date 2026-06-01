@@ -137,6 +137,7 @@ def ensure_indexes(db: Database) -> None:
     db.nodes.create_index("text")
     db.nodes.create_index([("document_id", 1), ("created_at", -1)])
     db.nodes.create_index([("document_id", 1), ("ingestion_epoch", 1)])
+    db.nodes.create_index([("embedding.model", 1), ("embedding.dimensions", 1), ("document_id", 1)])
     db.nodes.create_index("ingestion_epoch")
     db.nodes.create_index("created_at")
     db.nodes.create_index("usage_score")
