@@ -364,6 +364,18 @@ def create_app() -> FastAPI:
             ].isoformat()
         return {"ok": True, **summary}
 
+    @app.get("/api/ingestion/status")
+    def ingestion_status(limit: int = 8) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "epochs": list_ingestion_epochs(db, limit=limit),
+            "runs": list_process_runs(
+                db,
+                session_id="ingestion",
+                limit=limit,
+            ),
+        }
+
     @app.get("/api/jobs")
     def jobs(
         limit: int = 10,
@@ -650,6 +662,44 @@ def ingest_folder_file_rows(ingest_dir: Path) -> list[dict[str, Any]]:
 
 def ingest_folder_sort_key(row: dict[str, Any]) -> tuple[str, str]:
     return (row.get("origin_date") or "9999-12-31", row.get("path") or "")
+
+
+def list_ingestion_epochs(db: Any, limit: int = 8) -> list[dict[str, Any]]:
+    rows = db.documents.aggregate(
+        [
+            {
+                "$group": {
+                    "_id": "$ingestion_epoch",
+                    "document_count": {"$sum": 1},
+                    "first_created_at": {"$min": "$created_at"},
+                    "last_updated_at": {"$max": "$updated_at"},
+                    "earliest_origin_date": {"$min": "$source.origin_date"},
+                    "latest_origin_date": {"$max": "$source.origin_date"},
+                }
+            },
+            {"$sort": {"last_updated_at": -1}},
+            {"$limit": max(1, min(int(limit), 50))},
+        ]
+    )
+    epochs = []
+    for row in rows:
+        epochs.append(
+            {
+                "ingestion_epoch": row.get("_id") or "unknown",
+                "document_count": row.get("document_count", 0),
+                "first_created_at": serialize_web_value(row.get("first_created_at")),
+                "last_updated_at": serialize_web_value(row.get("last_updated_at")),
+                "earliest_origin_date": row.get("earliest_origin_date"),
+                "latest_origin_date": row.get("latest_origin_date"),
+            }
+        )
+    return epochs
+
+
+def serialize_web_value(value: Any) -> Any:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
 
 
 app = create_app()

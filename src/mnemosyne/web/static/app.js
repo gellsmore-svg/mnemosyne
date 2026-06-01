@@ -378,6 +378,34 @@ async function loadQueue() {
   $("queueStatus").textContent = `Queue: ${statuses || "empty"}`;
 }
 
+async function loadIngestionStatus() {
+  const data = await api("/api/ingestion/status?limit=8");
+  const epochItems = data.epochs.length
+    ? data.epochs.map((epoch, index) => {
+        const range = [epoch.earliest_origin_date, epoch.latest_origin_date]
+          .filter(Boolean)
+          .join(" to ");
+        return (
+          `<div class="item">` +
+          `<strong>${index === 0 ? "Current epoch: " : "Epoch: "}${html(epoch.ingestion_epoch)}</strong>` +
+          `<div class="muted">${html(String(epoch.document_count))} document(s)` +
+          `${range ? ` | origin range ${html(range)}` : ""}` +
+          `${epoch.last_updated_at ? ` | updated ${html(epoch.last_updated_at)}` : ""}</div>` +
+          `</div>`
+        );
+      })
+    : [`<div class="item">No ingestion epochs recorded yet.</div>`];
+  const runItems = data.runs.length
+    ? data.runs.map((run) =>
+        `<div class="item"><strong>${html(run.status)} · ${html(run.process_id)}</strong>` +
+        `<div>${html(run.current_step_id || "no current step")}</div>` +
+        `<div class="muted">${html(run.run_id)} | ${html(run.updated_at || "")}</div></div>`
+      )
+    : [`<div class="item">No ingestion process runs recorded yet.</div>`];
+  $("ingestionStatus").innerHTML =
+    `<h3>Epochs</h3>${epochItems.join("")}<h3>Recent Ingestion Runs</h3>${runItems.join("")}`;
+}
+
 async function loadJobs() {
   const params = new URLSearchParams();
   params.set("limit", $("jobLimit").value || "6");
@@ -571,7 +599,7 @@ async function processInbox() {
   const data = await api("/api/process-inbox", { method: "POST" });
   $("processResult").textContent =
     data.activity_log || JSON.stringify(data, null, 2);
-  await Promise.all([loadQueue(), loadJobs(), loadDocuments(), searchNodes()]);
+  await Promise.all([loadQueue(), loadIngestionStatus(), loadJobs(), loadDocuments(), searchNodes()]);
 }
 
 async function uploadSourceFiles() {
@@ -621,6 +649,7 @@ async function refresh() {
     loadDocuments(),
     loadHistory(),
     loadQueue(),
+    loadIngestionStatus(),
     loadJobs(),
     loadSemanticCandidates(),
     searchNodes(),
@@ -635,6 +664,7 @@ $("displayMode").addEventListener("click", toggleDisplayMode);
 $("uploadSource").addEventListener("click", uploadSourceFiles);
 $("browseIngest").addEventListener("click", browseIngestFolder);
 $("processInbox").addEventListener("click", processInbox);
+$("loadIngestionStatus").addEventListener("click", loadIngestionStatus);
 $("loadHistory").addEventListener("click", loadHistory);
 $("loadJobs").addEventListener("click", loadJobs);
 $("loadSemanticCandidates").addEventListener("click", loadSemanticCandidates);

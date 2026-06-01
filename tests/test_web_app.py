@@ -35,6 +35,30 @@ def test_process_inbox_activity_log_prefers_human_summary() -> None:
     assert "Status: completed." in log
 
 
+def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_ingestion_epochs",
+        lambda _db, limit=8: [{"ingestion_epoch": "epoch1", "document_count": 2, "limit": limit}],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_process_runs",
+        lambda _db, session_id=None, status=None, limit=20: [
+            {"run_id": "run1", "session_id": session_id, "status": status, "limit": limit}
+        ],
+    )
+
+    response = client.get("/api/ingestion/status", params={"limit": 4})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "epochs": [{"ingestion_epoch": "epoch1", "document_count": 2, "limit": 4}],
+        "runs": [{"run_id": "run1", "session_id": "ingestion", "status": None, "limit": 4}],
+    }
+
+
 def test_index_serves_html() -> None:
     client = TestClient(app)
 

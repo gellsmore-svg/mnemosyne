@@ -141,6 +141,7 @@ Implemented behavior:
 
 - The inbox browser shows selected origin date, origin-date source, and date-candidate count for staged files, ordered by origin date and then path.
 - Recent jobs expose the persisted readable ingestion log for completed queue jobs.
+- `/api/ingestion/status` and the Ingestion tab now summarize recent ingestion epochs and ingestion process runs, including the current/latest epoch by update time.
 
 ## Slice 6: Semantic Substrate
 

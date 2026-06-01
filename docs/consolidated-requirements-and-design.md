@@ -200,6 +200,8 @@ Direct and queued ingestion now return both a structured `activity_report` and a
 
 The Ingestion tab now gives staged source files chronology context before processing: selected origin date, date source, date-candidate count, and origin-date ordering are visible from the inbox browser.
 
+The Ingestion tab also exposes recent ingestion epochs and ingestion process runs through `/api/ingestion/status`, making the latest/current epoch visible without requiring direct database inspection.
+
 Current ingestion is not yet the target LLM-assisted semantic ingestion pipeline.
 
 ### Target Ingestion Pipeline
