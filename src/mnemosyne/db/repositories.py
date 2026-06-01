@@ -166,7 +166,7 @@ def insert_tree_nodes(
     result: IngestionResult,
     *,
     ingestion_epoch: str | None = None,
-    embedder: MockEmbeddingAdapter | None = None,
+    embedder: Any | None = None,
 ) -> dict[str, Any]:
     ingestion_epoch = ingestion_epoch or resolved_ingestion_epoch(result)
     embedder = embedder or default_embedding_adapter()

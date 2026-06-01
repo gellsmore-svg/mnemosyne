@@ -386,9 +386,7 @@ def comparable_embeddings(source: dict[str, Any], candidate: dict[str, Any]) -> 
         return False
     source_model = source.get("model")
     candidate_model = candidate.get("model")
-    if source_model and candidate_model and source_model != candidate_model:
-        return False
-    return True
+    return bool(source_model and candidate_model and source_model == candidate_model)
 
 
 def cosine_similarity(source: list[float], candidate: list[float]) -> float:

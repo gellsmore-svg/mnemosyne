@@ -487,6 +487,36 @@ def test_cli_embedding_smoke_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_embedding_smoke_payload_returns_structured_adapter_errors() -> None:
+    from mnemosyne.cli import embedding_smoke_payload
+
+    class FailingAdapter:
+        name = "failing_embedding"
+        model = "broken-model"
+
+        def embed(self, _text):
+            raise RuntimeError("model unavailable")
+
+    config = SimpleNamespace(runtime=SimpleNamespace())
+
+    import mnemosyne.cli as cli
+
+    original_factory = cli.embedding_adapter
+    cli.embedding_adapter = lambda _runtime: FailingAdapter()
+    try:
+        output = embedding_smoke_payload(config, "text")
+    finally:
+        cli.embedding_adapter = original_factory
+
+    assert output == {
+        "ok": False,
+        "adapter": "failing_embedding",
+        "model": "broken-model",
+        "error": "model unavailable",
+        "error_type": "RuntimeError",
+    }
+
+
 def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

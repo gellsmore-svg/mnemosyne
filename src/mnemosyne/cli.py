@@ -205,7 +205,16 @@ def ingest_source_path(
 
 def embedding_smoke_payload(config, text: str) -> dict:
     adapter = embedding_adapter(config.runtime)
-    embedding = adapter.embed(text)
+    try:
+        embedding = adapter.embed(text)
+    except Exception as error:
+        return {
+            "ok": False,
+            "adapter": getattr(adapter, "name", None),
+            "model": getattr(adapter, "model", None),
+            "error": str(error),
+            "error_type": error.__class__.__name__,
+        }
     vector = embedding.get("vector") or []
     return {
         "ok": True,

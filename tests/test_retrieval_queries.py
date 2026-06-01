@@ -610,6 +610,78 @@ def test_embedding_candidate_nodes_can_include_same_document_when_requested() ->
     assert [candidate["node_id"] for candidate in included] == [str(same_doc_id)]
 
 
+def test_embedding_candidate_nodes_filters_unembedded_rows_before_candidate_limit() -> None:
+    document_id = ObjectId()
+    other_document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    target_id = ObjectId()
+    unembedded = [
+        {
+            "_id": ObjectId(),
+            "document_id": other_document_id,
+            "tree_id": tree_id,
+            "title": f"Unembedded {index}",
+            "text": "Old node without embedding.",
+        }
+        for index in range(120)
+    ]
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [1.0, 0.0]},
+            },
+            *unembedded,
+            {
+                "_id": target_id,
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Late Embedded Target",
+                "text": "Late target text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [0.9, 0.1]},
+            },
+        ]
+    )
+
+    candidates = embedding_candidate_nodes(db, str(focus_id), min_similarity=0.5, limit=1)
+
+    assert [candidate["node_id"] for candidate in candidates] == [str(target_id)]
+
+
+def test_embedding_candidate_nodes_requires_matching_model_metadata() -> None:
+    document_id = ObjectId()
+    other_document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [1.0, 0.0]},
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Missing Model",
+                "text": "Missing model text",
+                "embedding": {"dimensions": 2, "vector": [1.0, 0.0]},
+            },
+        ]
+    )
+
+    assert embedding_candidate_nodes(db, str(focus_id), min_similarity=0.5) == []
+
+
 def test_nearby_siblings_uses_sibling_position_not_order_delta() -> None:
     nodes = [
         {"_id": "a", "parent_id": "root", "order": 1},
