@@ -158,8 +158,17 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
 def test_backfill_embeddings_endpoint_uses_configured_adapter(monkeypatch) -> None:
     client = TestClient(app)
     embedder = {"name": "fake"}
+    updates = []
 
     monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr(
+        "mnemosyne.web.app.create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1", **kwargs},
+    )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
     monkeypatch.setattr(
         "mnemosyne.web.app.backfill_node_embeddings",
         lambda _db, used_embedder, **kwargs: {
@@ -187,7 +196,52 @@ def test_backfill_embeddings_endpoint_uses_configured_adapter(monkeypatch) -> No
         "label": "target",
         "document_id": "doc1",
         "force": True,
+        "process_run_id": "run1",
+        "process_status": "completed",
     }
+    assert updates == [
+        {
+            "run_id": "run1",
+            "status": "completed",
+            "current_step_id": "embedding_backfill_completed",
+            "completed_step_id": "embedding_backfill_batch",
+            "exception": None,
+        }
+    ]
+
+
+def test_backfill_embeddings_endpoint_marks_process_blocked_on_batch_failure(monkeypatch) -> None:
+    client = TestClient(app)
+    updates = []
+
+    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", lambda _runtime: "embedder")
+    monkeypatch.setattr(
+        "mnemosyne.web.app.create_process_run",
+        lambda _db, **kwargs: {"run_id": "run2", **kwargs},
+    )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.backfill_node_embeddings",
+        lambda *_args, **_kwargs: {
+            "ok": False,
+            "reason": "all_embedding_updates_failed",
+            "error_count": 2,
+            "errors": [{"title": "Bad", "error": "failed"}],
+        },
+    )
+
+    response = client.post("/api/backfill-embeddings", json={"limit": 2})
+
+    assert response.status_code == 200
+    assert response.json()["process_run_id"] == "run2"
+    assert response.json()["process_status"] == "blocked"
+    assert updates[0]["status"] == "blocked"
+    assert updates[0]["current_step_id"] == "embedding_backfill_blocked"
+    assert updates[0]["exception"]["reason"] == "all_embedding_updates_failed"
+    assert updates[0]["exception"]["details"]["error_count"] == 2
 
 
 def test_list_ingestion_epochs_reports_dated_document_coverage() -> None:

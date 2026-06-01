@@ -433,7 +433,14 @@ def create_app() -> FastAPI:
 
     @app.post("/api/backfill-embeddings")
     def backfill_embeddings(request: BackfillEmbeddingsRequest) -> dict[str, Any]:
-        return backfill_node_embeddings(
+        process_run = create_process_run(
+            db,
+            process_id="embedding_backfill",
+            session_id="ingestion",
+            current_step_id="embedding_backfill_running",
+            status="active",
+        )
+        result = backfill_node_embeddings(
             db,
             embedding_adapter(config.runtime),
             limit=request.limit,
@@ -441,6 +448,29 @@ def create_app() -> FastAPI:
             document_id=request.document_id,
             force=request.force,
         )
+        process_status = "completed" if result.get("ok") else "blocked"
+        update_process_run(
+            db,
+            process_run["run_id"],
+            status=process_status,
+            current_step_id="embedding_backfill_completed" if result.get("ok") else "embedding_backfill_blocked",
+            completed_step_id="embedding_backfill_batch",
+            exception=None
+            if result.get("ok")
+            else {
+                "reason": result.get("reason") or "embedding_backfill_failed",
+                "proposal": "Inspect sampled embedding errors, reduce scope, or verify the embedding adapter.",
+                "details": {
+                    "error_count": result.get("error_count"),
+                    "errors": result.get("errors", []),
+                },
+            },
+        )
+        return {
+            **result,
+            "process_run_id": process_run["run_id"],
+            "process_status": process_status,
+        }
 
     @app.get("/api/jobs")
     def jobs(

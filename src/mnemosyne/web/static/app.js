@@ -677,6 +677,7 @@ function embeddingBackfillSummary(data) {
   const lines = [
     `Status: ${data.ok ? "completed" : "needs attention"}`,
     data.reason ? `Reason: ${data.reason}` : null,
+    data.process_run_id ? `Process run: ${data.process_run_id} (${text(data.process_status)})` : null,
     `Adapter: ${text(data.adapter)} / ${text(data.model)} (${text(data.dimensions)} dims)`,
     `Batch: ${text(data.updated_count)} updated, ${text(data.skipped_count)} skipped, ${text(data.error_count)} error(s)`,
     `Scope: limit ${text(data.limit)}, label ${text(data.filters?.label)}, document ${text(data.filters?.document_id)}, force ${text(data.filters?.force)}`,
