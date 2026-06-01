@@ -270,6 +270,8 @@ Earliest credible origin date priority:
 
 The earliest credible origin date should generally win, because the goal is to reconstruct the development of ideas over time.
 
+Current ingestion records now store source-date candidates plus the selected `origin_date` and `origin_date_source` in document source metadata. The implemented extractor covers explicit content date markers, filename dates, filesystem creation/change dates, and filesystem modification dates. Chronological folder ordering and UI comparison across dated corpus runs remain open work.
+
 ## Graph, Semantics, And Review Requirements
 
 ### Graph Model

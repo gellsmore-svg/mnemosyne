@@ -19,6 +19,9 @@ class SourceRef(BaseModel):
     kind: str
     checksum_sha256: str | None = None
     archive_path: str | None = None
+    origin_date: str | None = None
+    origin_date_source: str | None = None
+    date_candidates: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class Provenance(BaseModel):

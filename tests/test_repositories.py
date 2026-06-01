@@ -79,11 +79,44 @@ def test_commit_ingestion_stamps_epoch_on_document_tree_nodes_and_provenance() -
 
     assert inserted["ingestion_epoch"] == "2026-05-30-test-001"
     assert db.documents.rows[0]["ingestion_epoch"] == "2026-05-30-test-001"
+    assert db.documents.rows[0]["source"]["checksum_sha256"] == "checksum"
     assert db.trees.rows[0]["ingestion_epoch"] == "2026-05-30-test-001"
     assert db.trees.rows[0]["status"] == "active"
     assert db.nodes.rows[0]["ingestion_epoch"] == "2026-05-30-test-001"
     assert db.nodes.rows[0]["status"] == "active"
     assert db.nodes.rows[0]["provenance"]["ingestion_epoch"] == "2026-05-30-test-001"
+
+
+def test_commit_ingestion_persists_source_origin_date_metadata() -> None:
+    db = FakeDb()
+    result = IngestionResult(
+        source=SourceRef(
+            path="source.md",
+            kind="markdown",
+            checksum_sha256="checksum",
+            origin_date="2020-01-01",
+            origin_date_source="explicit_content",
+            date_candidates=[
+                {
+                    "source": "explicit_content",
+                    "date": "2020-01-01",
+                    "raw": "2020",
+                    "rationale": "Explicit date marker found in document content.",
+                }
+            ],
+        ),
+        title="Source",
+        summary="Summary",
+        nodes=[IngestedNode(node_key="root", title="Root", text="Root text")],
+        created_at=datetime(2026, 5, 30, 12, tzinfo=timezone.utc),
+    )
+
+    commit_ingestion(db, result)
+
+    source = db.documents.rows[0]["source"]
+    assert source["origin_date"] == "2020-01-01"
+    assert source["origin_date_source"] == "explicit_content"
+    assert source["date_candidates"][0]["source"] == "explicit_content"
 
 
 def test_rebuild_document_restores_previous_records_on_node_failure() -> None:

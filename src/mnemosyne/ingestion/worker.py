@@ -10,6 +10,7 @@ from mnemosyne.config import AppConfig
 from mnemosyne.db.governance import create_process_run, update_process_run
 from mnemosyne.db.queue import claim_next_pending, complete_job, fail_job, reject_job, retry_job
 from mnemosyne.db.repositories import DuplicateSourceError, commit_ingestion
+from mnemosyne.ingestion.dates import annotate_source_dates
 from mnemosyne.ingestion.files import archive_source, move_request_file
 from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
 
@@ -53,6 +54,7 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
     try:
         text, source_kind = read_text_source(path)
         result = MockIngestionAdapter().process(path, text, source_kind)
+        annotate_source_dates(result, path, text)
         archived_path = archive_source(path, config.paths.archive, checksum)
         result.source.checksum_sha256 = checksum
         result.source.archive_path = str(archived_path)

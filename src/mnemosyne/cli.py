@@ -41,6 +41,7 @@ from mnemosyne.db.repositories import (
     review_semantic_edge_candidate,
 )
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
+from mnemosyne.ingestion.dates import annotate_source_dates
 from mnemosyne.ingestion.files import archive_source, move_request_file, sha256_file
 from mnemosyne.ingestion.parser import read_text_source
 from mnemosyne.ingestion.worker import discover_sources, process_next
@@ -115,6 +116,7 @@ def ingest_source_path(
         source_kind,
         extra_labels=labels,
     )
+    annotate_source_dates(result, path, text)
     result.ingestion_epoch = ingestion_epoch
     archived_path = archive_source(path, config.paths.archive, checksum)
     result.source.checksum_sha256 = checksum
@@ -206,6 +208,7 @@ def rebuild_document_from_existing_source(
         source_kind,
         extra_labels=existing_document_extra_labels(db, document_id),
     )
+    annotate_source_dates(result, adapter_path, text)
     result.source.path = source.get("path") or str(source_path)
     result.source.checksum_sha256 = source.get("checksum_sha256") or sha256_file(source_path)
     result.source.archive_path = source.get("archive_path") or str(source_path)

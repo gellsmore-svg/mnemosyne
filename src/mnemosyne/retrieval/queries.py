@@ -918,6 +918,8 @@ def serialize_document(document: dict[str, Any]) -> dict[str, Any]:
         "summary": document.get("summary"),
         "source": document.get("source", {}),
         "ingestion_epoch": document.get("ingestion_epoch"),
+        "origin_date": (document.get("source") or {}).get("origin_date"),
+        "origin_date_source": (document.get("source") or {}).get("origin_date_source"),
         "created_at": iso(document.get("created_at")),
         "updated_at": iso(document.get("updated_at")),
     }
