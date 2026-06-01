@@ -70,7 +70,7 @@ Implemented behavior:
 
 ## Slice 3: Chronological Source-Date Extraction
 
-Implementation status: source-date extraction and persistence are implemented for direct CLI ingestion, queued ingestion, and maintenance rebuilds. Chronological folder ordering remains open.
+Implementation status: source-date extraction and persistence are implemented for direct CLI ingestion, queued ingestion, and maintenance rebuilds. CLI folder ingestion now orders sources by selected origin date, then path.
 
 Goal:
 
@@ -93,6 +93,7 @@ Implemented behavior:
 - The ingestion date analyzer records explicit content dates, filename dates, filesystem creation/change dates, and filesystem modification dates as structured candidates.
 - The selected origin date and rationale are stored in document `source` metadata.
 - Retrieval document serialization exposes `origin_date` and `origin_date_source`.
+- `ingest-folder` builds a chronological source plan and reports the first 20 planned sources in `source_order`.
 
 ## Slice 4: Human-Readable Ingestion Logs
 

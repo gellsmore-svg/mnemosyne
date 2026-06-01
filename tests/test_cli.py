@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from bson import ObjectId
 
 from mnemosyne.cli import (
+    chronological_folder_source_plan,
     discover_folder_sources,
     document_ids_for_label,
     destructive_rebuild_refusal,
@@ -33,6 +34,27 @@ def test_discover_folder_sources_skips_git_directory(tmp_path: Path) -> None:
     (root / "included.md").write_text("included", encoding="utf-8")
 
     assert [path.name for path in discover_folder_sources(root)] == ["included.md"]
+
+
+def test_chronological_folder_source_plan_orders_by_origin_date(tmp_path: Path) -> None:
+    root = tmp_path / "source"
+    root.mkdir()
+    late_filename = root / "source-2026.md"
+    explicit_earlier = root / "source-2024.md"
+    undated = root / "undated.md"
+    late_filename.write_text("No explicit date.", encoding="utf-8")
+    explicit_earlier.write_text("Date: 2020\n\nEarlier content.", encoding="utf-8")
+    undated.write_text("No date marker.", encoding="utf-8")
+
+    plan = chronological_folder_source_plan(root)
+
+    assert [item["path"].name for item in plan] == [
+        "source-2024.md",
+        "source-2026.md",
+        "undated.md",
+    ]
+    assert plan[0]["origin_date"] == "2020-01-01"
+    assert plan[0]["origin_date_source"] == "explicit_content"
 
 
 def test_existing_document_extra_labels_excludes_structural_labels() -> None:

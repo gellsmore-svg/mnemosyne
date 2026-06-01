@@ -41,7 +41,7 @@ from mnemosyne.db.repositories import (
     review_semantic_edge_candidate,
 )
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
-from mnemosyne.ingestion.dates import annotate_source_dates
+from mnemosyne.ingestion.dates import analyze_source_dates, annotate_source_dates
 from mnemosyne.ingestion.files import archive_source, move_request_file, sha256_file
 from mnemosyne.ingestion.parser import read_text_source
 from mnemosyne.ingestion.worker import discover_sources, process_next
@@ -87,6 +87,27 @@ def discover_folder_sources(root: Path) -> list[Path]:
         and path.suffix.lower() in SUPPORTED_FOLDER_SUFFIXES
         and ".git" not in path.parts
     )
+
+
+def chronological_folder_source_plan(root: Path) -> list[dict]:
+    plan = []
+    for path in discover_folder_sources(root):
+        text, _source_kind = read_text_source(path)
+        date_analysis = analyze_source_dates(path, text)
+        plan.append(
+            {
+                "path": path,
+                "origin_date": date_analysis.get("origin_date"),
+                "origin_date_source": date_analysis.get("origin_date_source"),
+                "date_candidates": date_analysis.get("date_candidates") or [],
+            }
+        )
+    return sorted(plan, key=chronological_source_sort_key)
+
+
+def chronological_source_sort_key(item: dict) -> tuple[str, str]:
+    origin_date = item.get("origin_date") or "9999-12-31"
+    return (origin_date, str(item.get("path") or ""))
 
 
 def ingest_source_path(
@@ -1263,10 +1284,11 @@ def main() -> None:
         ensure_indexes(db)
         root = Path(args.path)
         results = []
-        sources = discover_folder_sources(root)
+        source_plan = chronological_folder_source_plan(root)
         if args.limit is not None:
-            sources = sources[: args.limit]
-        for path in sources:
+            source_plan = source_plan[: args.limit]
+        for item in source_plan:
+            path = item["path"]
             results.append(
                 ingest_source_path(
                     db,
@@ -1281,10 +1303,19 @@ def main() -> None:
             "ok": True,
             "root": str(root),
             "ingestion_epoch": args.ingestion_epoch,
-            "file_count": len(sources),
+            "ordering": "origin_date_then_path",
+            "file_count": len(source_plan),
             "inserted": sum(1 for result in results if result.get("ok")),
             "rejected": len(rejected),
             "rejection_reasons": rejection_reason_counts(rejected),
+            "source_order": [
+                {
+                    "path": str(item["path"]),
+                    "origin_date": item.get("origin_date"),
+                    "origin_date_source": item.get("origin_date_source"),
+                }
+                for item in source_plan[:20]
+            ],
         }
         if args.include_results:
             output["results"] = results
