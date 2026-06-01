@@ -203,6 +203,20 @@ def ingest_source_path(
     return attach_ingestion_activity(inserted, report)
 
 
+def embedding_smoke_payload(config, text: str) -> dict:
+    adapter = embedding_adapter(config.runtime)
+    embedding = adapter.embed(text)
+    vector = embedding.get("vector") or []
+    return {
+        "ok": True,
+        "adapter": embedding.get("adapter"),
+        "model": embedding.get("model"),
+        "dimensions": embedding.get("dimensions"),
+        "source_text_hash": embedding.get("source_text_hash"),
+        "vector_preview": vector[:5],
+    }
+
+
 def rejection_reason_counts(results: list[dict]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for result in results:
@@ -301,6 +315,10 @@ def main() -> None:
     subcommands.add_parser("queue-status")
     subcommands.add_parser("labels")
     subcommands.add_parser("sessions")
+    embedding_smoke = subcommands.add_parser("embedding-smoke")
+    embedding_smoke.add_argument("text")
+    embedding_smoke.add_argument("--adapter", choices=["mock", "ollama_http"], default=None)
+    embedding_smoke.add_argument("--model", default=None)
 
     agent_identities = subcommands.add_parser("agent-identities")
     agent_identities.add_argument("--limit", type=int, default=20)
@@ -840,6 +858,14 @@ def main() -> None:
     if args.command == "sessions":
         ensure_indexes(db)
         print(json.dumps({"ok": True, "sessions": list_sessions(db)}, indent=2))
+        return
+
+    if args.command == "embedding-smoke":
+        if args.adapter:
+            config.runtime.embedding_adapter = args.adapter
+        if args.model:
+            config.runtime.embedding_model = args.model
+        print(json.dumps(embedding_smoke_payload(config, args.text), indent=2))
         return
 
     if args.command == "active-documents":

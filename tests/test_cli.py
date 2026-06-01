@@ -446,6 +446,47 @@ def test_cli_enqueue_semantic_candidates_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_embedding_smoke_command(monkeypatch, capsys) -> None:
+    config = SimpleNamespace(
+        mongo=SimpleNamespace(),
+        runtime=SimpleNamespace(embedding_adapter="mock", embedding_model="mock-model"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "embedding-smoke",
+            "Taj Mahal",
+            "--adapter",
+            "ollama_http",
+            "--model",
+            "embed-model",
+        ],
+    )
+    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr(
+        "mnemosyne.cli.embedding_smoke_payload",
+        lambda cfg, text: {
+            "ok": True,
+            "text": text,
+            "adapter": cfg.runtime.embedding_adapter,
+            "model": cfg.runtime.embedding_model,
+        },
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "text": "Taj Mahal",
+        "adapter": "ollama_http",
+        "model": "embed-model",
+    }
+
+
 def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

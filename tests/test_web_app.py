@@ -188,7 +188,10 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     data = response.json()
     assert data["ok"] is True
     assert "ollama_cli" in data["available_adapters"]
+    assert "ollama_http" in data["available_embedding_adapters"]
     assert data["default_model"]
+    assert data["default_embedding_adapter"]
+    assert data["default_embedding_model"]
     assert data["memory_agent_model"]
     assert "gemma4:latest" in data["known_models"]
     assert data["model_options"]
