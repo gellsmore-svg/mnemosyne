@@ -245,6 +245,90 @@ def test_cli_backfill_embeddings_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_embedding_backfill_jobs_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "embedding-backfill-jobs", "--status", "pending", "--limit", "3"],
+    )
+    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: SimpleNamespace(mongo=SimpleNamespace()))
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.list_embedding_backfill_jobs",
+        lambda _db, status=None, limit=20: [{"status": status, "limit": limit}],
+    )
+
+    main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "jobs": [{"status": "pending", "limit": 3}],
+    }
+
+
+def test_cli_queue_embedding_backfill_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "queue-embedding-backfill",
+            "--limit",
+            "9",
+            "--label",
+            "target",
+            "--document-id",
+            "doc1",
+            "--force",
+            "--created-by",
+            "tester",
+        ],
+    )
+    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: SimpleNamespace(mongo=SimpleNamespace()))
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.create_embedding_backfill_job",
+        lambda _db, **kwargs: {"job_id": "job1", **kwargs},
+    )
+
+    main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "job": {
+            "job_id": "job1",
+            "batch_limit": 9,
+            "label": "target",
+            "document_id": "doc1",
+            "force": True,
+            "created_by": "tester",
+        },
+    }
+
+
+def test_cli_process_embedding_backfill_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["mnemosyne", "process-embedding-backfill"])
+    config = SimpleNamespace(mongo=SimpleNamespace(), runtime=SimpleNamespace())
+    embedder = SimpleNamespace(name="fake_embedding")
+    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("mnemosyne.cli.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr(
+        "mnemosyne.cli.process_next_embedding_backfill_job",
+        lambda _db, used_embedder: {"ok": True, "embedder": used_embedder.name},
+    )
+
+    main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "embedder": "fake_embedding",
+    }
+
+
 def test_cli_graph_status_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(sys, "argv", ["mnemosyne", "graph-status", "--limit", "3"])
     monkeypatch.setattr(

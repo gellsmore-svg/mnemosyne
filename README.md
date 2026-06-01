@@ -127,6 +127,9 @@ Existing active nodes can be embedded in bounded batches without rebuilding docu
 .venv/bin/mnemosyne backfill-embeddings --limit 100
 .venv/bin/mnemosyne backfill-embeddings --label ams_domain --limit 100
 .venv/bin/mnemosyne backfill-embeddings --document-id <document_id> --force --limit 20
+.venv/bin/mnemosyne queue-embedding-backfill --label ams_domain --limit 100
+.venv/bin/mnemosyne process-embedding-backfill
+.venv/bin/mnemosyne embedding-backfill-jobs --status pending
 ```
 
 For the first memory-agent flow, pass `--retrieval-mode agentic` or choose `agentic` in the web UI. In this mode Mnemosyne calls the configured memory-agent model iteratively, feeding prior tool results back into the agent until it stops or reaches `retrieval.memory_agent_max_iterations`. The current allowed read-only tools are `search_nodes`, `compile_context`, and `list_documents`. The final answer call is separate and uses the final answer adapter/model. This is still a scaffold: it does not yet implement semantic graph traversal, source fallback, or the full compiled context corpus schema.

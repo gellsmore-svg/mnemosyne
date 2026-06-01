@@ -46,6 +46,11 @@ from mnemosyne.db.repositories import (
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
 from mnemosyne.ingestion.activity import attach_ingestion_activity, ingestion_activity_report
 from mnemosyne.ingestion.dates import analyze_source_dates, annotate_source_dates
+from mnemosyne.ingestion.embedding_backfill import (
+    create_embedding_backfill_job,
+    list_embedding_backfill_jobs,
+    process_next_embedding_backfill_job,
+)
 from mnemosyne.ingestion.files import archive_source, move_request_file, sha256_file
 from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
 from mnemosyne.ingestion.worker import discover_sources, process_next
@@ -324,6 +329,16 @@ def main() -> None:
     embedding_backfill.add_argument("--label", default=None)
     embedding_backfill.add_argument("--document-id", default=None)
     embedding_backfill.add_argument("--force", action="store_true")
+    embedding_jobs = subcommands.add_parser("embedding-backfill-jobs")
+    embedding_jobs.add_argument("--status", default=None)
+    embedding_jobs.add_argument("--limit", type=int, default=20)
+    queue_embedding_job = subcommands.add_parser("queue-embedding-backfill")
+    queue_embedding_job.add_argument("--limit", type=int, default=100)
+    queue_embedding_job.add_argument("--label", default=None)
+    queue_embedding_job.add_argument("--document-id", default=None)
+    queue_embedding_job.add_argument("--force", action="store_true")
+    queue_embedding_job.add_argument("--created-by", default="cli")
+    subcommands.add_parser("process-embedding-backfill")
     subcommands.add_parser("enqueue-inbox")
     subcommands.add_parser("process-next")
     subcommands.add_parser("process-inbox")
@@ -702,6 +717,56 @@ def main() -> None:
                     label=args.label,
                     document_id=args.document_id,
                     force=args.force,
+                ),
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "embedding-backfill-jobs":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "jobs": list_embedding_backfill_jobs(
+                        db,
+                        status=args.status,
+                        limit=args.limit,
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "queue-embedding-backfill":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "job": create_embedding_backfill_job(
+                        db,
+                        batch_limit=args.limit,
+                        label=args.label,
+                        document_id=args.document_id,
+                        force=args.force,
+                        created_by=args.created_by,
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "process-embedding-backfill":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                process_next_embedding_backfill_job(
+                    db,
+                    embedding_adapter(config.runtime),
                 ),
                 indent=2,
             )
