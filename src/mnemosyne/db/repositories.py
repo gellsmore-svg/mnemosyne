@@ -6,7 +6,7 @@ from typing import Any
 from bson import ObjectId
 from pymongo.database import Database
 
-from mnemosyne.adapters.embedding import MockEmbeddingAdapter, default_embedding_adapter
+from mnemosyne.adapters.embedding import default_embedding_adapter
 from mnemosyne.models.ingestion import (
     DEFAULT_ENDORSEMENT_LABEL,
     SCHEMA_VERSION,
@@ -35,7 +35,7 @@ def find_duplicate_by_checksum(db: Database, checksum: str) -> dict | None:
 def commit_ingestion(
     db: Database,
     result: IngestionResult,
-    embedder: MockEmbeddingAdapter | None = None,
+    embedder: Any | None = None,
 ) -> dict[str, Any]:
     if result.source.checksum_sha256:
         existing = find_duplicate_by_checksum(db, result.source.checksum_sha256)
@@ -74,7 +74,7 @@ def rebuild_document(
     db: Database,
     document_id: str,
     result: IngestionResult,
-    embedder: MockEmbeddingAdapter | None = None,
+    embedder: Any | None = None,
 ) -> dict[str, Any]:
     object_id = ObjectId(document_id)
     existing = db.documents.find_one({"_id": object_id})
@@ -237,7 +237,7 @@ def insert_tree_nodes(
         "embedded_node_count": embedded_node_count,
         "embedding_adapter": embedder.name,
         "embedding_model": embedder.model,
-        "embedding_dimensions": embedder.dimensions,
+        "embedding_dimensions": getattr(embedder, "dimensions", None),
         **edge_result,
     }
 

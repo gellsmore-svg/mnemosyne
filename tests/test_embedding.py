@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import math
+from urllib import error
 
 from mnemosyne.adapters.embedding import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     MockEmbeddingAdapter,
+    OllamaHttpEmbeddingAdapter,
     embedding_adapter,
+    ollama_embedding_vector,
     source_text_hash,
 )
 from mnemosyne.config import RuntimeConfig
@@ -60,8 +63,83 @@ def test_embedding_adapter_factory_honors_runtime_config_dimensions() -> None:
     assert adapter.dimensions == 24
 
 
+def test_embedding_adapter_factory_can_create_ollama_http_adapter() -> None:
+    config = RuntimeConfig(embedding_adapter="ollama_http")
+    adapter = embedding_adapter(config)
+
+    assert isinstance(adapter, OllamaHttpEmbeddingAdapter)
+    assert adapter.model == "nomic-embed-text:latest"
+    assert adapter.dimensions is None
+
+
 def test_embedding_adapter_factory_defaults_without_config() -> None:
     adapter = embedding_adapter()
 
     assert isinstance(adapter, MockEmbeddingAdapter)
     assert adapter.dimensions == DEFAULT_EMBEDDING_DIMENSIONS
+
+
+def test_ollama_http_embedding_adapter_posts_to_embed_endpoint(monkeypatch) -> None:
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return b'{"embeddings": [[3, 4]]}'
+
+    def fake_urlopen(req, timeout):
+        captured["url"] = req.full_url
+        captured["body"] = req.data.decode("utf-8")
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr("mnemosyne.adapters.embedding.request.urlopen", fake_urlopen)
+    config = RuntimeConfig(
+        embedding_adapter="ollama_http",
+        embedding_model="test-embed:latest",
+        ollama_base_url="http://localhost:11434/",
+        ollama_timeout_seconds=9,
+    )
+    adapter = OllamaHttpEmbeddingAdapter(config)
+
+    payload = adapter.embed("Taj Mahal")
+
+    assert captured["url"] == "http://localhost:11434/api/embed"
+    assert '"model": "test-embed:latest"' in captured["body"]
+    assert '"input": "Taj Mahal"' in captured["body"]
+    assert captured["timeout"] == 9
+    assert payload["adapter"] == "ollama_http_embedding"
+    assert payload["model"] == "test-embed:latest"
+    assert payload["dimensions"] == 2
+    assert payload["vector"] == [0.6, 0.8]
+    assert adapter.dimensions == 2
+
+
+def test_ollama_http_embedding_adapter_reports_url_errors(monkeypatch) -> None:
+    def fake_urlopen(_req, timeout):
+        del timeout
+        raise error.URLError("connection refused")
+
+    monkeypatch.setattr("mnemosyne.adapters.embedding.request.urlopen", fake_urlopen)
+    adapter = OllamaHttpEmbeddingAdapter(RuntimeConfig(embedding_adapter="ollama_http"))
+
+    try:
+        adapter.embed("text")
+    except RuntimeError as exc:
+        assert "Ollama embedding request failed" in str(exc)
+        assert "nomic-embed-text:latest" in str(exc)
+    else:
+        raise AssertionError("Expected embedding adapter to report URL failure.")
+
+
+def test_ollama_embedding_vector_accepts_legacy_shape() -> None:
+    assert ollama_embedding_vector({"embedding": [1, 2, 3]}) == [1.0, 2.0, 3.0]
+
+
+def test_ollama_embedding_vector_rejects_malformed_values() -> None:
+    assert ollama_embedding_vector({"embeddings": [["not-a-number"]]}) == []
