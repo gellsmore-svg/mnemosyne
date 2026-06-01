@@ -550,7 +550,8 @@ async function createSession() {
 async function processInbox() {
   $("processResult").textContent = "Processing...";
   const data = await api("/api/process-inbox", { method: "POST" });
-  $("processResult").textContent = JSON.stringify(data, null, 2);
+  $("processResult").textContent =
+    data.activity_log || JSON.stringify(data, null, 2);
   await Promise.all([loadQueue(), loadJobs(), loadDocuments(), searchNodes()]);
 }
 

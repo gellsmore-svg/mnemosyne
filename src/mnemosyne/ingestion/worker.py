@@ -10,6 +10,11 @@ from mnemosyne.config import AppConfig
 from mnemosyne.db.governance import create_process_run, update_process_run
 from mnemosyne.db.queue import claim_next_pending, complete_job, fail_job, reject_job, retry_job
 from mnemosyne.db.repositories import DuplicateSourceError, commit_ingestion
+from mnemosyne.ingestion.activity import (
+    attach_ingestion_activity,
+    ingestion_activity_log,
+    ingestion_activity_report,
+)
 from mnemosyne.ingestion.dates import annotate_source_dates
 from mnemosyne.ingestion.files import archive_source, move_request_file
 from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
@@ -44,6 +49,16 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
             exception=ingestion_exception_payload("source_missing", "Restore source file and retry.", details),
         )
         return {
+            **activity_for_worker_failure(
+                path=path,
+                status="failed",
+                checksum_sha256=checksum,
+                job_id=str(job["_id"]),
+                process_run_id=process_run_id,
+                reason="source_missing",
+                message="Restore source file and retry.",
+                details=details,
+            ),
             "ok": False,
             "status": "failed",
             "job_id": str(job["_id"]),
@@ -78,13 +93,25 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
                 details,
             ),
         )
-        return {
+        rejected = {
             "ok": False,
             "status": "rejected",
             "job_id": str(job["_id"]),
             "process_run_id": process_run_id,
             **details,
         }
+        report = ingestion_activity_report(
+            path=path,
+            status="rejected",
+            checksum_sha256=error.checksum,
+            result=result,
+            job_id=str(job["_id"]),
+            process_run_id=process_run_id,
+            reason="duplicate_checksum",
+            message="Use the existing document or provide a distinct source.",
+            details=details,
+        )
+        return attach_ingestion_activity(rejected, report)
     except Exception as error:
         details = {"path": str(path), "error": str(error)}
         if job["attempts"] < config.queue.max_attempts:
@@ -100,7 +127,7 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
                     details,
                 ),
             )
-            return {
+            retrying = {
                 "ok": False,
                 "status": "retrying",
                 "job_id": str(job["_id"]),
@@ -109,6 +136,17 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
                 "max_attempts": config.queue.max_attempts,
                 **details,
             }
+            report = ingestion_activity_report(
+                path=path,
+                status="retrying",
+                checksum_sha256=checksum,
+                job_id=str(job["_id"]),
+                process_run_id=process_run_id,
+                reason=error.__class__.__name__,
+                message="Retry ingestion after transient failure.",
+                details=details,
+            )
+            return attach_ingestion_activity(retrying, report)
 
         dead_letter_path = None
         if path.exists():
@@ -127,13 +165,24 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
                 details,
             ),
         )
-        return {
+        failed = {
             "ok": False,
             "status": "failed",
             "job_id": str(job["_id"]),
             "process_run_id": process_run_id,
             **details,
         }
+        report = ingestion_activity_report(
+            path=path,
+            status="failed",
+            checksum_sha256=checksum,
+            job_id=str(job["_id"]),
+            process_run_id=process_run_id,
+            reason=error.__class__.__name__,
+            message="Inspect failed source and retry if appropriate.",
+            details=details,
+        )
+        return attach_ingestion_activity(failed, report)
 
     processed_path = move_request_file(path, config.paths.staging / "processed", checksum)
     inserted["archive_path"] = str(archived_path)
@@ -147,12 +196,49 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
         current_step_id="ingestion_committed",
         completed_step_id="commit_ingestion",
     )
-    return {
+    completed = {
         "ok": True,
         "status": "completed",
         "job_id": str(job["_id"]),
         "process_run_id": process_run_id,
         **inserted,
+    }
+    report = ingestion_activity_report(
+        path=path,
+        status="completed",
+        checksum_sha256=checksum,
+        result=result,
+        inserted=inserted,
+        job_id=str(job["_id"]),
+        process_run_id=process_run_id,
+    )
+    return attach_ingestion_activity(completed, report)
+
+
+def activity_for_worker_failure(
+    *,
+    path: Path,
+    status: str,
+    checksum_sha256: str,
+    job_id: str,
+    process_run_id: str | None,
+    reason: str,
+    message: str,
+    details: dict[str, Any],
+) -> dict[str, Any]:
+    report = ingestion_activity_report(
+        path=path,
+        status=status,
+        checksum_sha256=checksum_sha256,
+        job_id=job_id,
+        process_run_id=process_run_id,
+        reason=reason,
+        message=message,
+        details=details,
+    )
+    return {
+        "activity_report": report,
+        "activity_log": ingestion_activity_log(report),
     }
 
 

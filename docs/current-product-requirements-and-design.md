@@ -46,6 +46,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
 - Ingestion should favor quality over speed while the baseline is being established.
 - Ingestion must preserve source text and provenance instead of silently cleaning, summarizing, or rewriting it.
 - Every ingestion job should produce an understandable activity log covering source analysis, semantic processing, repository actions, LLM activity, and system actions.
+- Current direct and queued ingestion now return a structured activity report plus a plain activity log; the Ingestion tab shows the plain inbox-processing log first so operators do not have to read JSON for normal inspection.
 - Chronological corpus ingestion must determine the earliest credible origin date by priority:
   1. explicit date inside document;
   2. date embedded in filename;

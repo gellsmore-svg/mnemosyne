@@ -41,6 +41,7 @@ from mnemosyne.db.repositories import (
     review_semantic_edge_candidate,
 )
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
+from mnemosyne.ingestion.activity import attach_ingestion_activity, ingestion_activity_report
 from mnemosyne.ingestion.dates import analyze_source_dates, annotate_source_dates
 from mnemosyne.ingestion.files import archive_source, move_request_file, sha256_file
 from mnemosyne.ingestion.parser import read_text_source
@@ -120,7 +121,7 @@ def ingest_source_path(
     checksum = sha256_file(path)
     duplicate = find_duplicate_by_checksum(db, checksum)
     if duplicate:
-        return {
+        rejected = {
             "ok": False,
             "path": str(path),
             "status": "rejected",
@@ -129,6 +130,15 @@ def ingest_source_path(
             "existing_document_id": str(duplicate["_id"]),
             "message": "File rejected because identical content has already been ingested.",
         }
+        report = ingestion_activity_report(
+            path=path,
+            status="rejected",
+            checksum_sha256=checksum,
+            reason="duplicate_checksum",
+            message=rejected["message"],
+            details={"existing_document_id": rejected["existing_document_id"]},
+        )
+        return attach_ingestion_activity(rejected, report)
 
     text, source_kind = read_text_source(path)
     result = MockIngestionAdapter().process(
@@ -145,7 +155,7 @@ def ingest_source_path(
     try:
         inserted = commit_ingestion(db, result)
     except DuplicateSourceError as error:
-        return {
+        rejected = {
             "ok": False,
             "path": str(path),
             "status": "rejected",
@@ -154,11 +164,28 @@ def ingest_source_path(
             "existing_document_id": str(error.existing_document_id),
             "message": "File rejected because identical content has already been ingested.",
         }
+        report = ingestion_activity_report(
+            path=path,
+            status="rejected",
+            checksum_sha256=error.checksum,
+            result=result,
+            reason="duplicate_checksum",
+            message=rejected["message"],
+            details={"existing_document_id": rejected["existing_document_id"]},
+        )
+        return attach_ingestion_activity(rejected, report)
     inserted["ok"] = True
     inserted["path"] = str(path)
     inserted["archive_path"] = str(archived_path)
     inserted["checksum_sha256"] = checksum
-    return inserted
+    report = ingestion_activity_report(
+        path=path,
+        status="completed",
+        checksum_sha256=checksum,
+        result=result,
+        inserted=inserted,
+    )
+    return attach_ingestion_activity(inserted, report)
 
 
 def rejection_reason_counts(results: list[dict]) -> dict[str, int]:

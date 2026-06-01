@@ -97,6 +97,8 @@ Implemented behavior:
 
 ## Slice 4: Human-Readable Ingestion Logs
 
+Implementation status: initial direct and queued ingestion activity logs are implemented. Logs are attached alongside structured ingestion activity reports, and the web inbox processor displays the plain operator log by default. LLM-assisted ingestion logs remain open until the ingestion adapter exists.
+
 Goal:
 
 - Give every ingestion operation a readable activity report comparable to answer activity logs.
@@ -111,6 +113,12 @@ The log should explain:
 - relationship hints detected or proposed;
 - repository writes;
 - failures, retries, and review requirements.
+
+Implemented behavior:
+
+- Direct CLI ingestion returns `activity_report` and `activity_log` for successful and duplicate-rejected files.
+- Queue worker ingestion returns `activity_report` and `activity_log` for successful, rejected, retrying, failed, and missing-source jobs.
+- Web inbox processing aggregates per-job logs into an `Inbox Processing Activity Log` and shows that human-readable log in the Ingestion tab instead of defaulting to raw JSON.
 
 ## Slice 5: Ingestion UI Test Bench
 

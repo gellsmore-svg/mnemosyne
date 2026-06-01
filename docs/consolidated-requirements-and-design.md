@@ -196,6 +196,8 @@ The final model should see source evidence before diagnostics. Diagnostics help 
 
 Current ingestion is deterministic scaffold ingestion for Markdown and text files. It preserves source text, archives accepted files by checksum, rejects duplicates, writes documents/trees/nodes to MongoDB, and records queue/job state.
 
+Direct and queued ingestion now return both a structured `activity_report` and a plain `activity_log`. The log summarizes source path/type, checksum, duplicate or failure status, selected origin date and candidate count, adapter used, node and relationship-hint counts, repository writes, archive/processed paths, and operator-facing recovery notes. The web inbox processor aggregates these into an `Inbox Processing Activity Log` and shows the plain text first.
+
 Current ingestion is not yet the target LLM-assisted semantic ingestion pipeline.
 
 ### Target Ingestion Pipeline
@@ -437,17 +439,17 @@ Current answer flow:
 - Process runs are observational only; process enforcement is not active.
 - Internet-assisted reasoning and candidate knowledge promotion are planned but not implemented.
 - Real server-pushed per-step streaming is not implemented; the UI shows immediate client-side milestones and then the returned trace.
+- Ingestion logs currently explain deterministic ingestion runs; they do not yet include LLM ingestion call traces because LLM-assisted ingestion is not implemented.
 - Product naming remains unresolved because `Mnemosyne` collides with existing AI memory projects.
 
 ## Near-Term Priorities
 
-1. Improve LLM planner recovery and transparency when tool calls fail.
-2. Continue moving context strategy from deterministic direct retrieval toward the memory-agent/controller interface.
-3. Build human-readable ingestion logs.
-4. Add controlled repository refresh/rebuild with ingestion epochs.
-5. Improve chronological source-date extraction and corpus ordering.
-6. Expand context-document structure toward the target schema.
-7. Add internet temporary context and candidate-knowledge boundaries.
+1. Extend the ingestion UI test bench around readable logs, run inspection, and epoch visibility.
+2. Add controlled repository refresh/rebuild with ingestion epochs.
+3. Introduce the semantic substrate and reviewed relationship candidates needed for higher-quality ingestion.
+4. Continue moving context strategy from deterministic direct retrieval toward the memory-agent/controller interface.
+5. Expand context-document structure toward the target schema.
+6. Add internet temporary context and candidate-knowledge boundaries.
 8. Begin higher-quality semantic ingestion using local LLM calls.
 9. Continue UI refinement through real use on standard and e-paper displays.
 

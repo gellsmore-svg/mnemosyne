@@ -432,7 +432,12 @@ def create_app() -> FastAPI:
             if result["status"] == "idle":
                 break
             processed.append(result)
-        return {"ok": True, "enqueued": enqueued, "processed": processed}
+        return {
+            "ok": True,
+            "enqueued": enqueued,
+            "processed": processed,
+            "activity_log": process_inbox_activity_log(enqueued, processed),
+        }
 
     @app.post("/api/upload-source")
     def upload_source(request: UploadSourceRequest) -> dict[str, Any]:
@@ -599,6 +604,33 @@ def model_size_category(size_bytes: int | None) -> str:
 def model_sort_key(model: dict[str, Any]) -> tuple[int, int, str]:
     size = model.get("size_bytes")
     return (0 if size is not None else 1, -(size or 0), model.get("name") or "")
+
+
+def process_inbox_activity_log(enqueued: list[dict[str, Any]], processed: list[dict[str, Any]]) -> str:
+    lines = [
+        "Inbox Processing Activity Log",
+        f"- Staged source files inspected: {len(enqueued)}.",
+        f"- Ingestion jobs processed: {len(processed)}.",
+    ]
+    if enqueued:
+        rejected = [job for job in enqueued if job.get("status") == "rejected"]
+        lines.append(f"- Queue intake: {len(enqueued) - len(rejected)} accepted, {len(rejected)} rejected.")
+    if not processed:
+        lines.append("- Result: no pending ingestion jobs were available to process.")
+        return "\n".join(lines)
+    for index, result in enumerate(processed, start=1):
+        log = result.get("activity_log")
+        if log:
+            lines.append("")
+            lines.append(f"Run {index}")
+            lines.append(log)
+        else:
+            lines.append("")
+            lines.append(
+                f"Run {index}: {result.get('status', 'unknown')} for "
+                f"{result.get('path') or result.get('document_id') or 'unknown source'}."
+            )
+    return "\n".join(lines)
 
 
 app = create_app()

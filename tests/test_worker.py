@@ -61,6 +61,10 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
 
     assert result["ok"] is True
     assert result["process_run_id"] == "run1"
+    assert result["activity_report"]["kind"] == "ingestion_activity_report"
+    assert result["activity_report"]["semantic_processing"]["adapter"] == "mock"
+    assert "Ingestion Activity Log" in result["activity_log"]
+    assert "Repository write: document doc1" in result["activity_log"]
     assert updates == [
         {
             "run_id": "run1",
@@ -105,6 +109,8 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
     assert result["ok"] is False
     assert result["status"] == "failed"
     assert result["process_run_id"] == "run1"
+    assert result["activity_report"]["outcome"]["reason"] == "source_missing"
+    assert "Restore source file and retry." in result["activity_log"]
     assert updates[0]["status"] == "blocked"
     assert updates[0]["current_step_id"] == "source_missing"
     assert updates[0]["exception"]["reason"] == "source_missing"

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
-from mnemosyne.web.app import app, parse_ollama_model_list, parse_ollama_model_rows
+from mnemosyne.web.app import app, parse_ollama_model_list, parse_ollama_model_rows, process_inbox_activity_log
 
 
 def test_health_endpoint() -> None:
@@ -16,6 +16,18 @@ def test_health_endpoint() -> None:
 
     assert response.status_code == 200
     assert response.json()["ok"] is True
+
+
+def test_process_inbox_activity_log_prefers_human_summary() -> None:
+    log = process_inbox_activity_log(
+        [{"status": "pending"}, {"status": "rejected"}],
+        [{"status": "completed", "activity_log": "Ingestion Activity Log\n- Status: completed."}],
+    )
+
+    assert log.startswith("Inbox Processing Activity Log")
+    assert "Queue intake: 1 accepted, 1 rejected." in log
+    assert "Run 1" in log
+    assert "Status: completed." in log
 
 
 def test_index_serves_html() -> None:
