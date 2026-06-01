@@ -20,10 +20,11 @@ def test_discover_folder_sources_finds_markdown_and_text(tmp_path: Path) -> None
     root = tmp_path / "source"
     root.mkdir()
     (root / "a.md").write_text("a", encoding="utf-8")
+    (root / "a2.markdown").write_text("a2", encoding="utf-8")
     (root / "b.txt").write_text("b", encoding="utf-8")
     (root / "c.json").write_text("{}", encoding="utf-8")
 
-    assert [path.name for path in discover_folder_sources(root)] == ["a.md", "b.txt"]
+    assert [path.name for path in discover_folder_sources(root)] == ["a.md", "a2.markdown", "b.txt"]
 
 
 def test_discover_folder_sources_skips_git_directory(tmp_path: Path) -> None:
@@ -55,6 +56,21 @@ def test_chronological_folder_source_plan_orders_by_origin_date(tmp_path: Path) 
     ]
     assert plan[0]["origin_date"] == "2020-01-01"
     assert plan[0]["origin_date_source"] == "explicit_content"
+
+
+def test_chronological_folder_source_plan_keeps_unreadable_file_as_error(tmp_path: Path) -> None:
+    root = tmp_path / "source"
+    root.mkdir()
+    readable = root / "readable.md"
+    unreadable = root / "unreadable.md"
+    readable.write_text("Date: 2020\n\nReadable.", encoding="utf-8")
+    unreadable.write_bytes(b"\xff\xfe\x00\x00")
+
+    plan = chronological_folder_source_plan(root)
+
+    assert [item["path"].name for item in plan] == ["readable.md", "unreadable.md"]
+    assert plan[1]["error"] == "UnicodeDecodeError"
+    assert plan[1]["origin_date"] is None
 
 
 def test_existing_document_extra_labels_excludes_structural_labels() -> None:

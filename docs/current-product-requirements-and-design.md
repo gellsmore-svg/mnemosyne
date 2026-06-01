@@ -52,8 +52,9 @@ The system is not intended to be a single closed chatbot. It should become a mem
 - Chronological corpus ingestion must determine the earliest credible origin date by priority:
   1. explicit date inside document;
   2. date embedded in filename;
-  3. file creation date;
-  4. file modification date.
+  3. original file creation date, when preserved by the source acquisition path;
+  4. original file modification date, when preserved by the source acquisition path.
+- Filesystem timestamps are weak fallback evidence because staged uploads and copied files can reflect import time rather than authorship time.
 - Large corpora such as AMS / Relational Substrate / RS5 Clause material should be ingestible in likely historical order.
 
 ### Retrieval And Context Construction

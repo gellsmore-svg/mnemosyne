@@ -380,6 +380,10 @@ async function loadQueue() {
 
 async function loadIngestionStatus() {
   const data = await api("/api/ingestion/status?limit=8");
+  if (!data.ok || !Array.isArray(data.epochs) || !Array.isArray(data.runs)) {
+    $("ingestionStatus").innerHTML = `<div class="item">Ingestion status is unavailable.</div>`;
+    return;
+  }
   const epochItems = data.epochs.length
     ? data.epochs.map((epoch, index) => {
         const range = [epoch.earliest_origin_date, epoch.latest_origin_date]
@@ -634,7 +638,8 @@ async function browseIngestFolder() {
           (file) =>
             `<div class="item"><strong>${html(file.name)}</strong><br><small>${html(
               file.path
-            )} · ${file.bytes} bytes` +
+            )} · ${file.bytes == null ? "unreadable" : `${html(String(file.bytes))} bytes`}` +
+            `${file.status === "unreadable" ? ` · ${html(file.error || "read error")}` : ""}` +
             `${file.origin_date ? ` · origin ${html(file.origin_date)} (${html(file.origin_date_source || "unknown")})` : ""}` +
             ` · ${html(String(file.date_candidate_count || 0))} date candidate(s)</small></div>`
         )

@@ -8,10 +8,61 @@ from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.web.app import (
     app,
+    list_ingestion_epochs,
     parse_ollama_model_list,
     parse_ollama_model_rows,
     process_inbox_activity_log,
 )
+
+
+class SimpleEpochDb:
+    def __init__(self, documents: list[dict]):
+        self.documents = SimpleEpochCollection(documents)
+
+
+class SimpleEpochCollection:
+    def __init__(self, rows: list[dict]):
+        self.rows = rows
+
+    def aggregate(self, pipeline):
+        limit = pipeline[-1]["$limit"]
+        grouped = {}
+        for row in self.rows:
+            epoch = row.get("ingestion_epoch")
+            bucket = grouped.setdefault(
+                epoch,
+                {
+                    "_id": epoch,
+                    "document_count": 0,
+                    "dated_document_count": 0,
+                    "created_values": [],
+                    "updated_values": [],
+                    "origin_dates": [],
+                },
+            )
+            bucket["document_count"] += 1
+            bucket["created_values"].append(row.get("created_at"))
+            bucket["updated_values"].append(row.get("updated_at"))
+            origin_date = (row.get("source") or {}).get("origin_date")
+            if origin_date is not None:
+                bucket["dated_document_count"] += 1
+                bucket["origin_dates"].append(origin_date)
+        rows = []
+        for bucket in grouped.values():
+            origin_dates = bucket["origin_dates"]
+            rows.append(
+                {
+                    "_id": bucket["_id"],
+                    "document_count": bucket["document_count"],
+                    "dated_document_count": bucket["dated_document_count"],
+                    "first_created_at": min(bucket["created_values"]),
+                    "last_updated_at": max(bucket["updated_values"]),
+                    "earliest_origin_date": min(origin_dates) if origin_dates else "9999-12-31",
+                    "latest_origin_date": max(origin_dates) if origin_dates else None,
+                }
+            )
+        rows.sort(key=lambda row: row["last_updated_at"], reverse=True)
+        return rows[:limit]
 
 
 def test_health_endpoint() -> None:
@@ -71,6 +122,43 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
         ],
         "runs": [{"run_id": "run1", "session_id": "ingestion", "status": None, "limit": 4}],
     }
+
+
+def test_list_ingestion_epochs_reports_dated_document_coverage() -> None:
+    db = SimpleEpochDb(
+        [
+            {
+                "ingestion_epoch": "epoch-new",
+                "source": {"origin_date": "2020-01-01"},
+                "created_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+                "updated_at": datetime(2026, 6, 2, tzinfo=timezone.utc),
+            },
+            {
+                "ingestion_epoch": "epoch-new",
+                "source": {},
+                "created_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+                "updated_at": datetime(2026, 6, 3, tzinfo=timezone.utc),
+            },
+            {
+                "ingestion_epoch": "epoch-old",
+                "source": {},
+                "created_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
+                "updated_at": datetime(2026, 5, 2, tzinfo=timezone.utc),
+            },
+        ]
+    )
+
+    epochs = list_ingestion_epochs(db, limit=5)
+
+    assert epochs[0]["ingestion_epoch"] == "epoch-new"
+    assert epochs[0]["document_count"] == 2
+    assert epochs[0]["dated_document_count"] == 1
+    assert epochs[0]["earliest_origin_date"] == "2020-01-01"
+    assert epochs[0]["latest_origin_date"] == "2020-01-01"
+    assert epochs[1]["ingestion_epoch"] == "epoch-old"
+    assert epochs[1]["dated_document_count"] == 0
+    assert epochs[1]["earliest_origin_date"] is None
+    assert epochs[1]["latest_origin_date"] is None
 
 
 def test_index_serves_html() -> None:
@@ -794,3 +882,24 @@ def test_ingest_folder_lists_supported_files() -> None:
     assert row["origin_date"] == "2020-01-01"
     assert row["origin_date_source"] == "explicit_content"
     assert row["date_candidate_count"] >= 1
+
+
+def test_ingest_folder_lists_unreadable_file_without_failing() -> None:
+    client = TestClient(app)
+    config = load_config()
+    filename = f"web-folder-unreadable-{ObjectId()}.txt"
+    unreadable_path = config.paths.ingest / filename
+    config.paths.ingest.mkdir(parents=True, exist_ok=True)
+    unreadable_path.write_bytes(b"\xff\xfe\x00\x00")
+
+    try:
+        response = client.get("/api/ingest-folder")
+        data = response.json()
+    finally:
+        unreadable_path.unlink(missing_ok=True)
+
+    assert response.status_code == 200
+    row = next(row for row in data["files"] if row["name"] == filename)
+    assert row["status"] == "unreadable"
+    assert row["error"] == "UnicodeDecodeError"
+    assert row["origin_date"] is None

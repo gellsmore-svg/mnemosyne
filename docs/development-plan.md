@@ -80,8 +80,8 @@ Priority order:
 
 1. Explicit date inside document content.
 2. Date embedded in filename.
-3. File creation date.
-4. File modification date.
+3. Original file creation date, when preserved by the source acquisition path.
+4. Original file modification date, when preserved by the source acquisition path.
 
 Output:
 
@@ -91,9 +91,11 @@ Output:
 Implemented behavior:
 
 - The ingestion date analyzer records explicit content dates, filename dates, filesystem creation/change dates, and filesystem modification dates as structured candidates.
+- Filesystem candidates are treated as weak fallback evidence because web uploads and copied files can reflect import time rather than authorship time.
 - The selected origin date and rationale are stored in document `source` metadata.
 - Retrieval document serialization exposes `origin_date` and `origin_date_source`.
 - `ingest-folder` builds a chronological source plan and reports the first 20 planned sources in `source_order`.
+- `ingest-folder` and the Ingestion tab preserve unreadable supported files as explicit error rows instead of failing the entire folder/listing.
 
 ## Slice 4: Human-Readable Ingestion Logs
 

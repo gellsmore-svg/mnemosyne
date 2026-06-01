@@ -44,7 +44,7 @@ from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
 from mnemosyne.ingestion.activity import attach_ingestion_activity, ingestion_activity_report
 from mnemosyne.ingestion.dates import analyze_source_dates, annotate_source_dates
 from mnemosyne.ingestion.files import archive_source, move_request_file, sha256_file
-from mnemosyne.ingestion.parser import read_text_source
+from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
 from mnemosyne.ingestion.worker import discover_sources, process_next
 from mnemosyne.retrieval.queries import (
     build_prompt_envelope,
@@ -76,7 +76,6 @@ from mnemosyne.sessions.output_ingestion import (
 from mnemosyne.sessions.registry import create_session, list_sessions
 
 
-SUPPORTED_FOLDER_SUFFIXES = {".md", ".txt"}
 STRUCTURAL_NODE_LABELS = {"source_root", "source_section", "source_chunk"}
 
 
@@ -85,7 +84,7 @@ def discover_folder_sources(root: Path) -> list[Path]:
         path
         for path in root.rglob("*")
         if path.is_file()
-        and path.suffix.lower() in SUPPORTED_FOLDER_SUFFIXES
+        and path.suffix.lower() in SUPPORTED_SUFFIXES
         and ".git" not in path.parts
     )
 
@@ -93,8 +92,21 @@ def discover_folder_sources(root: Path) -> list[Path]:
 def chronological_folder_source_plan(root: Path) -> list[dict]:
     plan = []
     for path in discover_folder_sources(root):
-        text, _source_kind = read_text_source(path)
-        date_analysis = analyze_source_dates(path, text)
+        try:
+            text, _source_kind = read_text_source(path)
+            date_analysis = analyze_source_dates(path, text)
+        except Exception as error:
+            plan.append(
+                {
+                    "path": path,
+                    "origin_date": None,
+                    "origin_date_source": None,
+                    "date_candidates": [],
+                    "error": error.__class__.__name__,
+                    "message": str(error),
+                }
+            )
+            continue
         plan.append(
             {
                 "path": path,
@@ -1316,6 +1328,18 @@ def main() -> None:
             source_plan = source_plan[: args.limit]
         for item in source_plan:
             path = item["path"]
+            if item.get("error"):
+                results.append(
+                    {
+                        "ok": False,
+                        "path": str(path),
+                        "status": "rejected",
+                        "reason": "source_unreadable",
+                        "error": item["error"],
+                        "message": item.get("message"),
+                    }
+                )
+                continue
             results.append(
                 ingest_source_path(
                     db,
@@ -1340,6 +1364,7 @@ def main() -> None:
                     "path": str(item["path"]),
                     "origin_date": item.get("origin_date"),
                     "origin_date_source": item.get("origin_date_source"),
+                    "error": item.get("error"),
                 }
                 for item in source_plan[:20]
             ],

@@ -271,12 +271,12 @@ Earliest credible origin date priority:
 
 1. Explicit date inside document content.
 2. Date embedded in filename.
-3. File creation date.
-4. File modification date.
+3. Original file creation date, when preserved by the source acquisition path.
+4. Original file modification date, when preserved by the source acquisition path.
 
 The earliest credible origin date should generally win, because the goal is to reconstruct the development of ideas over time.
 
-Current ingestion records now store source-date candidates plus the selected `origin_date` and `origin_date_source` in document source metadata. The implemented extractor covers explicit content date markers, filename dates, filesystem creation/change dates, and filesystem modification dates. CLI folder ingestion now builds a chronological source plan ordered by selected origin date and then path, and reports the first planned sources in `source_order` so operators can inspect ordering before treating a run as authoritative. UI comparison across dated corpus runs remains open work.
+Current ingestion records now store source-date candidates plus the selected `origin_date` and `origin_date_source` in document source metadata. The implemented extractor covers explicit content date markers, filename dates, filesystem creation/change dates, and filesystem modification dates. Filesystem dates are weak fallback evidence: on Linux `ctime` is inode change time, and web-staged uploads usually reflect import time rather than authorship time. CLI folder ingestion now builds a chronological source plan ordered by selected origin date and then path, reports unreadable files as rejected source-plan entries instead of aborting the whole batch, and reports the first planned sources in `source_order` so operators can inspect ordering before treating a run as authoritative. UI comparison across dated corpus runs remains open work.
 
 ## Graph, Semantics, And Review Requirements
 
@@ -453,9 +453,9 @@ Current answer flow:
 3. Introduce the semantic substrate and reviewed relationship candidates needed for higher-quality ingestion.
 4. Continue moving context strategy from deterministic direct retrieval toward the memory-agent/controller interface.
 5. Expand context-document structure toward the target schema.
-6. Add internet temporary context and candidate-knowledge boundaries.
-8. Begin higher-quality semantic ingestion using local LLM calls.
-9. Continue UI refinement through real use on standard and e-paper displays.
+6. Begin higher-quality semantic ingestion using local LLM calls.
+7. Continue UI refinement through real use on standard and e-paper displays.
+8. Defer internet temporary context and candidate-knowledge boundaries until semantic candidates and provenance are stronger.
 
 ## Supporting Documents
 

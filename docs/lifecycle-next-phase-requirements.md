@@ -214,10 +214,12 @@ Date priority:
 
 1. Explicit date inside document content.
 2. Date embedded in filename.
-3. File creation date.
-4. File modification date.
+3. Original file creation date, when preserved by the source acquisition path.
+4. Original file modification date, when preserved by the source acquisition path.
 
 The earliest credible origin date should generally win.
+
+Filesystem timestamps are weak fallback evidence. They may represent copy/import time rather than authorship time, especially for web-staged uploads or copied corpora.
 
 Example:
 

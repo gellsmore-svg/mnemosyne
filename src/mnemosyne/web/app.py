@@ -642,9 +642,27 @@ def process_inbox_activity_log(enqueued: list[dict[str, Any]], processed: list[d
 def ingest_folder_file_rows(ingest_dir: Path) -> list[dict[str, Any]]:
     rows = []
     for path in discover_sources(ingest_dir):
-        stat = path.stat()
-        text, _source_kind = read_text_source(path)
-        date_analysis = analyze_source_dates(path, text)
+        try:
+            stat = path.stat()
+            text, _source_kind = read_text_source(path)
+            date_analysis = analyze_source_dates(path, text)
+        except Exception as error:
+            rows.append(
+                {
+                    "name": path.name,
+                    "path": str(path),
+                    "suffix": path.suffix.lower(),
+                    "bytes": None,
+                    "modified_at": None,
+                    "origin_date": None,
+                    "origin_date_source": None,
+                    "date_candidate_count": 0,
+                    "status": "unreadable",
+                    "error": error.__class__.__name__,
+                    "message": str(error),
+                }
+            )
+            continue
         rows.append(
             {
                 "name": path.name,
@@ -655,6 +673,7 @@ def ingest_folder_file_rows(ingest_dir: Path) -> list[dict[str, Any]]:
                 "origin_date": date_analysis.get("origin_date"),
                 "origin_date_source": date_analysis.get("origin_date_source"),
                 "date_candidate_count": len(date_analysis.get("date_candidates") or []),
+                "status": "ready",
             }
         )
     return sorted(rows, key=ingest_folder_sort_key)
