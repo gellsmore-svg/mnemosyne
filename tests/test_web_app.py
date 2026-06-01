@@ -6,7 +6,12 @@ from fastapi.testclient import TestClient
 
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
-from mnemosyne.web.app import app, parse_ollama_model_list, parse_ollama_model_rows, process_inbox_activity_log
+from mnemosyne.web.app import (
+    app,
+    parse_ollama_model_list,
+    parse_ollama_model_rows,
+    process_inbox_activity_log,
+)
 
 
 def test_health_endpoint() -> None:
@@ -731,7 +736,7 @@ def test_ingest_folder_lists_supported_files() -> None:
     supported_path = config.paths.ingest / filename
     unsupported_path = config.paths.ingest / f"{filename}.pdf"
     config.paths.ingest.mkdir(parents=True, exist_ok=True)
-    supported_path.write_text("folder source", encoding="utf-8")
+    supported_path.write_text("Date: 2020\n\nfolder source", encoding="utf-8")
     unsupported_path.write_text("ignored", encoding="utf-8")
 
     try:
@@ -743,6 +748,11 @@ def test_ingest_folder_lists_supported_files() -> None:
 
     assert response.status_code == 200
     assert data["ok"] is True
+    assert data["ordering"] == "origin_date_then_path"
     names = [row["name"] for row in data["files"]]
     assert filename in names
     assert f"{filename}.pdf" not in names
+    row = next(row for row in data["files"] if row["name"] == filename)
+    assert row["origin_date"] == "2020-01-01"
+    assert row["origin_date_source"] == "explicit_content"
+    assert row["date_candidate_count"] >= 1

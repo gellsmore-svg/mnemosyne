@@ -386,9 +386,28 @@ async function loadJobs() {
   if ($("jobReason").value) params.set("reason", $("jobReason").value);
   const data = await api(`/api/jobs?${params.toString()}`);
   $("jobs").replaceChildren(
-    ...data.jobs.map((job) =>
-      item(`<strong>${html(job.status)}</strong> <span class="muted">${job.reason ? html(job.reason) : ""}</span><div>${html(job.path)}</div><div class="muted">${html(job._id)} | attempts ${html(job.attempts)} | ${html(job.updated_at)}</div>`)
-    )
+    ...data.jobs.map((job) => {
+      const result = job.result || {};
+      const log = result.activity_log || "";
+      const meta = [
+        job._id,
+        `attempts ${job.attempts}`,
+        job.updated_at,
+        result.ingestion_epoch ? `epoch ${result.ingestion_epoch}` : "",
+      ].filter(Boolean).join(" | ");
+      const el = item(
+        `<strong>${html(job.status)}</strong> <span class="muted">${job.reason ? html(job.reason) : ""}</span>` +
+        `<div>${html(job.path)}</div>` +
+        `<div class="muted">${html(meta)}</div>`
+      );
+      if (log) {
+        const details = document.createElement("details");
+        details.className = "technical-report";
+        details.innerHTML = `<summary>Readable ingestion log</summary><pre>${html(log)}</pre>`;
+        el.appendChild(details);
+      }
+      return el;
+    })
   );
 }
 
@@ -586,7 +605,9 @@ async function browseIngestFolder() {
           (file) =>
             `<div class="item"><strong>${html(file.name)}</strong><br><small>${html(
               file.path
-            )} · ${file.bytes} bytes</small></div>`
+            )} · ${file.bytes} bytes` +
+            `${file.origin_date ? ` · origin ${html(file.origin_date)} (${html(file.origin_date_source || "unknown")})` : ""}` +
+            ` · ${html(String(file.date_candidate_count || 0))} date candidate(s)</small></div>`
         )
         .join("")
     : `<div class="item">No supported files in ${html(data.path)}.</div>`;

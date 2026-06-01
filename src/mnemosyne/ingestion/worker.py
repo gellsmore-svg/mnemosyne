@@ -188,14 +188,6 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
     inserted["archive_path"] = str(archived_path)
     inserted["processed_path"] = str(processed_path)
     inserted["checksum_sha256"] = checksum
-    complete_job(db, job["_id"], inserted)
-    finish_ingestion_process_run(
-        db,
-        process_run_id,
-        status="completed",
-        current_step_id="ingestion_committed",
-        completed_step_id="commit_ingestion",
-    )
     completed = {
         "ok": True,
         "status": "completed",
@@ -212,7 +204,18 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
         job_id=str(job["_id"]),
         process_run_id=process_run_id,
     )
-    return attach_ingestion_activity(completed, report)
+    attach_ingestion_activity(completed, report)
+    inserted["activity_report"] = completed["activity_report"]
+    inserted["activity_log"] = completed["activity_log"]
+    complete_job(db, job["_id"], inserted)
+    finish_ingestion_process_run(
+        db,
+        process_run_id,
+        status="completed",
+        current_step_id="ingestion_committed",
+        completed_step_id="commit_ingestion",
+    )
+    return completed
 
 
 def activity_for_worker_failure(

@@ -33,8 +33,9 @@ from mnemosyne.db.repositories import (
     review_semantic_edge_candidate,
 )
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
+from mnemosyne.ingestion.dates import analyze_source_dates
 from mnemosyne.ingestion.files import move_request_file, sha256_file
-from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES
+from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
 from mnemosyne.ingestion.worker import discover_sources, process_next
 from mnemosyne.retrieval.queries import list_documents, search_nodes
 from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
@@ -377,6 +378,9 @@ def create_app() -> FastAPI:
                 job["existing_document_id"] = str(job["existing_document_id"])
             if job.get("existing_queue_id"):
                 job["existing_queue_id"] = str(job["existing_queue_id"])
+            result = job.get("result") or {}
+            if result.get("document_id"):
+                result["document_id"] = str(result["document_id"])
             for field in ("created_at", "updated_at"):
                 if job.get(field):
                     job[field] = job[field].isoformat()
@@ -385,21 +389,11 @@ def create_app() -> FastAPI:
 
     @app.get("/api/ingest-folder")
     def ingest_folder() -> dict[str, Any]:
-        files = []
-        for path in discover_sources(config.paths.ingest):
-            stat = path.stat()
-            files.append(
-                {
-                    "name": path.name,
-                    "path": str(path),
-                    "suffix": path.suffix.lower(),
-                    "bytes": stat.st_size,
-                    "modified_at": stat.st_mtime,
-                }
-            )
+        files = ingest_folder_file_rows(config.paths.ingest)
         return {
             "ok": True,
             "path": str(config.paths.ingest),
+            "ordering": "origin_date_then_path",
             "files": files,
             "count": len(files),
         }
@@ -631,6 +625,31 @@ def process_inbox_activity_log(enqueued: list[dict[str, Any]], processed: list[d
                 f"{result.get('path') or result.get('document_id') or 'unknown source'}."
             )
     return "\n".join(lines)
+
+
+def ingest_folder_file_rows(ingest_dir: Path) -> list[dict[str, Any]]:
+    rows = []
+    for path in discover_sources(ingest_dir):
+        stat = path.stat()
+        text, _source_kind = read_text_source(path)
+        date_analysis = analyze_source_dates(path, text)
+        rows.append(
+            {
+                "name": path.name,
+                "path": str(path),
+                "suffix": path.suffix.lower(),
+                "bytes": stat.st_size,
+                "modified_at": stat.st_mtime,
+                "origin_date": date_analysis.get("origin_date"),
+                "origin_date_source": date_analysis.get("origin_date_source"),
+                "date_candidate_count": len(date_analysis.get("date_candidates") or []),
+            }
+        )
+    return sorted(rows, key=ingest_folder_sort_key)
+
+
+def ingest_folder_sort_key(row: dict[str, Any]) -> tuple[str, str]:
+    return (row.get("origin_date") or "9999-12-31", row.get("path") or "")
 
 
 app = create_app()

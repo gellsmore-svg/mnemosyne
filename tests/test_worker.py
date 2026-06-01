@@ -25,6 +25,7 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
     import mnemosyne.ingestion.worker as worker
 
     updates = []
+    completed_jobs = []
     source = tmp_path / "source.md"
     source.write_text("# Source\n\nText.", encoding="utf-8")
 
@@ -45,7 +46,11 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
         "commit_ingestion",
         lambda _db, result: {"document_id": "doc1", "tree_id": "tree1", "node_ids": ["node1"]},
     )
-    monkeypatch.setattr(worker, "complete_job", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        worker,
+        "complete_job",
+        lambda _db, _job_id, inserted: completed_jobs.append(inserted),
+    )
     monkeypatch.setattr(
         worker,
         "create_process_run",
@@ -65,6 +70,8 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
     assert result["activity_report"]["semantic_processing"]["adapter"] == "mock"
     assert "Ingestion Activity Log" in result["activity_log"]
     assert "Repository write: document doc1" in result["activity_log"]
+    assert completed_jobs[0]["activity_log"] == result["activity_log"]
+    assert completed_jobs[0]["activity_report"]["kind"] == "ingestion_activity_report"
     assert updates == [
         {
             "run_id": "run1",

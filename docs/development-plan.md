@@ -97,7 +97,7 @@ Implemented behavior:
 
 ## Slice 4: Human-Readable Ingestion Logs
 
-Implementation status: initial direct and queued ingestion activity logs are implemented. Logs are attached alongside structured ingestion activity reports, and the web inbox processor displays the plain operator log by default. LLM-assisted ingestion logs remain open until the ingestion adapter exists.
+Implementation status: initial direct and queued ingestion activity logs are implemented. Logs are attached alongside structured ingestion activity reports, web inbox processing displays the plain operator log by default, completed queue jobs retain their readable log, and the inbox browser shows origin-date ordering context. LLM-assisted ingestion logs remain open until the ingestion adapter exists.
 
 Goal:
 
@@ -118,6 +118,7 @@ Implemented behavior:
 
 - Direct CLI ingestion returns `activity_report` and `activity_log` for successful and duplicate-rejected files.
 - Queue worker ingestion returns `activity_report` and `activity_log` for successful, rejected, retrying, failed, and missing-source jobs.
+- Completed queue jobs persist their ingestion activity log inside the stored job result for later review.
 - Web inbox processing aggregates per-job logs into an `Inbox Processing Activity Log` and shows that human-readable log in the Ingestion tab instead of defaulting to raw JSON.
 
 ## Slice 5: Ingestion UI Test Bench
@@ -135,6 +136,11 @@ Required views:
 - created document/tree/node counts;
 - candidate relationships awaiting review;
 - comparison between epochs when available.
+
+Implemented behavior:
+
+- The inbox browser shows selected origin date, origin-date source, and date-candidate count for staged files, ordered by origin date and then path.
+- Recent jobs expose the persisted readable ingestion log for completed queue jobs.
 
 ## Slice 6: Semantic Substrate
 

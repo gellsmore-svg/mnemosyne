@@ -196,7 +196,9 @@ The final model should see source evidence before diagnostics. Diagnostics help 
 
 Current ingestion is deterministic scaffold ingestion for Markdown and text files. It preserves source text, archives accepted files by checksum, rejects duplicates, writes documents/trees/nodes to MongoDB, and records queue/job state.
 
-Direct and queued ingestion now return both a structured `activity_report` and a plain `activity_log`. The log summarizes source path/type, checksum, duplicate or failure status, selected origin date and candidate count, adapter used, node and relationship-hint counts, repository writes, archive/processed paths, and operator-facing recovery notes. The web inbox processor aggregates these into an `Inbox Processing Activity Log` and shows the plain text first.
+Direct and queued ingestion now return both a structured `activity_report` and a plain `activity_log`. The log summarizes source path/type, checksum, duplicate or failure status, selected origin date and candidate count, adapter used, node and relationship-hint counts, repository writes, archive/processed paths, and operator-facing recovery notes. Completed queue jobs persist the readable log in the stored job result. The web inbox processor aggregates per-job logs into an `Inbox Processing Activity Log` and shows the plain text first.
+
+The Ingestion tab now gives staged source files chronology context before processing: selected origin date, date source, date-candidate count, and origin-date ordering are visible from the inbox browser.
 
 Current ingestion is not yet the target LLM-assisted semantic ingestion pipeline.
 
