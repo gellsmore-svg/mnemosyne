@@ -449,10 +449,13 @@ async function loadSemanticCandidates() {
   $("semanticCandidateStatus").textContent = `Candidates: ${data.candidates.length} pending shown`;
   $("semanticCandidates").replaceChildren(
     ...data.candidates.map((candidate) => {
+      const evidence = candidate.candidate_source === "embedding_similarity"
+        ? `vector ${candidate.embedding_similarity ?? "n/a"}`
+        : `labels ${(candidate.shared_labels || []).join(", ")}`;
       const el = item(
         `<strong>${html(candidate.relation_type)}</strong>` +
         `<div>${html(candidate.source_title)} -> ${html(candidate.target_title)}</div>` +
-        `<div class="muted">${html(candidate.candidate_id)} | labels ${html((candidate.shared_labels || []).join(", "))}</div>`
+        `<div class="muted">${html(candidate.candidate_id)} | ${html(candidate.candidate_source || "label_overlap")} | ${html(evidence)}</div>`
       );
       const actions = document.createElement("div");
       actions.className = "button-row";

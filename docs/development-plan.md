@@ -157,7 +157,7 @@ Constraint:
 
 - Semantic writes remain candidate/review based. The memory-agent should not gain autonomous write authority.
 
-Status: Phase A implemented (mockable embedding substrate); semantic candidate generation into the review queue is still pending.
+Status: Phase A implemented (mockable embedding substrate); Phase B partially implemented (stored-vector semantic candidate diagnostics and review-queue enqueueing).
 
 Phase A implemented behavior:
 
@@ -165,11 +165,12 @@ Phase A implemented behavior:
 - The mock adapter derives a bounded, unit-norm vector from a SHA-256 expansion of the node text, so the same text always produces the same vector without any external model or network call.
 - During direct CLI ingestion and queued worker ingestion (both via `commit_ingestion`), and during maintenance rebuilds (`rebuild_document`), each node is annotated before commit with an `embedding` field holding adapter/model name, dimensions, vector, and the source text hash.
 - Ingestion activity reports/logs now surface the embedded node count, embedding model, and dimensions.
-- This phase intentionally does not change search ranking, semantic candidate ranking, or answer behavior; stored vectors are not yet read during retrieval.
+- This phase intentionally does not change search ranking, answer behavior, or memory-agent write authority.
+- Stored vectors can now be read by operator commands to propose pending semantic-edge candidates, distinguished from label-overlap candidates by `candidate_source: embedding_similarity` and similarity/model/dimension metadata.
 
 Phase A remaining work:
 
-- Generate semantic candidates from stored vectors into the existing review queue (still label-overlap based today).
+- Add web/API controls for triggering vector-backed candidate enqueueing from the Ingestion review tab.
 - Wire a real local embedding adapter behind the same boundary.
 - Only then consider any retrieval/ranking use of embeddings, kept candidate/review based.
 

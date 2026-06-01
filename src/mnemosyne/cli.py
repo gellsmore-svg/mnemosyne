@@ -33,6 +33,7 @@ from mnemosyne.db.repositories import (
     commit_ingestion,
     create_reviewed_semantic_edge,
     enqueue_semantic_edge_candidates,
+    enqueue_vector_semantic_edge_candidates,
     find_duplicate_by_checksum,
     document_tree,
     graph_edge_status,
@@ -59,6 +60,7 @@ from mnemosyne.retrieval.queries import (
     parse_iso_datetime,
     render_context_document,
     search_nodes,
+    embedding_candidate_nodes,
     semantic_candidate_nodes,
 )
 from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
@@ -414,12 +416,26 @@ def main() -> None:
     semantic_candidates.add_argument("--include-same-document", action="store_true")
     semantic_candidates.add_argument("--limit", type=int, default=10)
 
+    vector_candidates = subcommands.add_parser("vector-semantic-candidates")
+    vector_candidates.add_argument("node_id")
+    vector_candidates.add_argument("--include-same-document", action="store_true")
+    vector_candidates.add_argument("--min-similarity", type=float, default=0.75)
+    vector_candidates.add_argument("--limit", type=int, default=10)
+
     enqueue_semantic = subcommands.add_parser("enqueue-semantic-candidates")
     enqueue_semantic.add_argument("node_id")
     enqueue_semantic.add_argument("--include-same-document", action="store_true")
     enqueue_semantic.add_argument("--relation-type", default="related_to")
     enqueue_semantic.add_argument("--created-by", default="user")
     enqueue_semantic.add_argument("--limit", type=int, default=10)
+
+    enqueue_vector_semantic = subcommands.add_parser("enqueue-vector-semantic-candidates")
+    enqueue_vector_semantic.add_argument("node_id")
+    enqueue_vector_semantic.add_argument("--include-same-document", action="store_true")
+    enqueue_vector_semantic.add_argument("--relation-type", default="related_to")
+    enqueue_vector_semantic.add_argument("--created-by", default="user")
+    enqueue_vector_semantic.add_argument("--min-similarity", type=float, default=0.75)
+    enqueue_vector_semantic.add_argument("--limit", type=int, default=10)
 
     semantic_queue = subcommands.add_parser("semantic-edge-candidates")
     semantic_queue.add_argument("--status", default="pending")
@@ -1043,6 +1059,25 @@ def main() -> None:
         )
         return
 
+    if args.command == "vector-semantic-candidates":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "nodes": embedding_candidate_nodes(
+                        db,
+                        args.node_id,
+                        include_same_document=args.include_same_document,
+                        min_similarity=args.min_similarity,
+                        limit=args.limit,
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return
+
     if args.command == "enqueue-semantic-candidates":
         ensure_indexes(db)
         print(
@@ -1053,6 +1088,24 @@ def main() -> None:
                     include_same_document=args.include_same_document,
                     relation_type=args.relation_type,
                     created_by=args.created_by,
+                    limit=args.limit,
+                ),
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "enqueue-vector-semantic-candidates":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                enqueue_vector_semantic_edge_candidates(
+                    db,
+                    node_id=args.node_id,
+                    include_same_document=args.include_same_document,
+                    relation_type=args.relation_type,
+                    created_by=args.created_by,
+                    min_similarity=args.min_similarity,
                     limit=args.limit,
                 ),
                 indent=2,

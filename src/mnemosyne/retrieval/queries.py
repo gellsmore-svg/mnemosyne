@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime
 from typing import Any
@@ -279,6 +280,57 @@ def semantic_candidate_nodes(
     ]
 
 
+def embedding_candidate_nodes(
+    db: Database,
+    node_id: str,
+    limit: int = 10,
+    include_same_document: bool = False,
+    min_similarity: float = 0.75,
+) -> list[dict[str, Any]]:
+    node_object_id = parse_object_id(node_id)
+    if not node_object_id:
+        return []
+    focus = db.nodes.find_one({"_id": node_object_id})
+    if not focus:
+        return []
+    focus_embedding = valid_embedding_payload(focus.get("embedding"))
+    if not focus_embedding:
+        return []
+
+    filters: dict[str, Any] = {"_id": {"$ne": focus["_id"]}}
+    if not include_same_document and focus.get("document_id"):
+        filters["document_id"] = {"$ne": focus["document_id"]}
+
+    candidate_limit = max(limit * 10, 100)
+    candidates = []
+    for candidate in db.nodes.find(filters).limit(candidate_limit):
+        if "source_root" in (candidate.get("labels") or []):
+            continue
+        if is_superseded_node(candidate):
+            continue
+        candidate_embedding = valid_embedding_payload(candidate.get("embedding"))
+        if not candidate_embedding:
+            continue
+        if not comparable_embeddings(focus_embedding, candidate_embedding):
+            continue
+        similarity = cosine_similarity(
+            focus_embedding["vector"],
+            candidate_embedding["vector"],
+        )
+        if similarity < min_similarity:
+            continue
+        candidates.append(
+            {
+                **serialize_node(candidate),
+                "embedding_similarity": round(similarity, 6),
+                "embedding_model": candidate_embedding.get("model"),
+                "embedding_dimensions": candidate_embedding.get("dimensions"),
+            }
+        )
+    candidates.sort(key=embedding_candidate_sort_tuple)
+    return candidates[:limit]
+
+
 def semantic_labels(labels: list[str]) -> list[str]:
     return sorted(
         {
@@ -288,6 +340,71 @@ def semantic_labels(labels: list[str]) -> list[str]:
             and label not in STRUCTURAL_LABELS
             and not label.startswith("source_")
         }
+    )
+
+
+def valid_embedding_payload(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    vector = value.get("vector")
+    dimensions = value.get("dimensions")
+    if not isinstance(vector, list):
+        return None
+    if not vector:
+        return None
+    try:
+        parsed_vector = [float(item) for item in vector]
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(item) for item in parsed_vector):
+        return None
+    if dimensions is not None:
+        try:
+            parsed_dimensions = int(dimensions)
+        except (TypeError, ValueError):
+            return None
+        if parsed_dimensions != len(parsed_vector):
+            return None
+    else:
+        parsed_dimensions = len(parsed_vector)
+    if vector_norm(parsed_vector) <= 0:
+        return None
+    return {
+        "adapter": value.get("adapter"),
+        "model": value.get("model"),
+        "dimensions": parsed_dimensions,
+        "vector": parsed_vector,
+    }
+
+
+def comparable_embeddings(source: dict[str, Any], candidate: dict[str, Any]) -> bool:
+    if source.get("dimensions") != candidate.get("dimensions"):
+        return False
+    source_model = source.get("model")
+    candidate_model = candidate.get("model")
+    if source_model and candidate_model and source_model != candidate_model:
+        return False
+    return True
+
+
+def cosine_similarity(source: list[float], candidate: list[float]) -> float:
+    source_norm = vector_norm(source)
+    candidate_norm = vector_norm(candidate)
+    if source_norm <= 0 or candidate_norm <= 0:
+        return 0.0
+    dot_product = sum(left * right for left, right in zip(source, candidate))
+    return dot_product / (source_norm * candidate_norm)
+
+
+def vector_norm(vector: list[float]) -> float:
+    return math.sqrt(sum(item * item for item in vector))
+
+
+def embedding_candidate_sort_tuple(candidate: dict[str, Any]) -> tuple[float, int, tuple[tuple[int, Any], ...]]:
+    return (
+        -float(candidate.get("embedding_similarity") or 0),
+        -usage_score_bonus(candidate.get("usage_score")),
+        natural_sort_key(str(candidate.get("title") or candidate.get("node_id") or "")),
     )
 
 

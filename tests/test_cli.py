@@ -446,6 +446,92 @@ def test_cli_enqueue_semantic_candidates_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "vector-semantic-candidates",
+            "node1",
+            "--include-same-document",
+            "--min-similarity",
+            "0.82",
+            "--limit",
+            "3",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.embedding_candidate_nodes",
+        lambda _db, node_id, **kwargs: [{"node_id": node_id, **kwargs}],
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "nodes": [
+            {
+                "node_id": "node1",
+                "include_same_document": True,
+                "min_similarity": 0.82,
+                "limit": 3,
+            }
+        ],
+    }
+
+
+def test_cli_enqueue_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "enqueue-vector-semantic-candidates",
+            "node1",
+            "--include-same-document",
+            "--relation-type",
+            "supports",
+            "--created-by",
+            "cello",
+            "--min-similarity",
+            "0.82",
+            "--limit",
+            "3",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.enqueue_vector_semantic_edge_candidates",
+        lambda _db, **kwargs: {"ok": True, **kwargs},
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "node_id": "node1",
+        "include_same_document": True,
+        "relation_type": "supports",
+        "created_by": "cello",
+        "min_similarity": 0.82,
+        "limit": 3,
+    }
+
+
 def test_cli_semantic_edge_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

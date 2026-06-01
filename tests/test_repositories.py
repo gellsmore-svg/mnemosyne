@@ -9,6 +9,7 @@ from mnemosyne.db.repositories import (
     create_reviewed_semantic_edge,
     document_tree,
     enqueue_semantic_edge_candidates,
+    enqueue_vector_semantic_edge_candidates,
     graph_edge_status,
     list_semantic_edge_candidates,
     rebuild_document,
@@ -555,6 +556,69 @@ def test_enqueue_semantic_edge_candidates_stores_pending_review_rows(monkeypatch
     assert duplicate["skipped_existing_count"] == 1
 
 
+def test_enqueue_vector_semantic_edge_candidates_stores_similarity_review_rows(monkeypatch) -> None:
+    source_id = ObjectId()
+    target_id = ObjectId()
+    document_id = ObjectId()
+    db = FakeDb()
+    db.nodes.rows.append(
+        {
+            "_id": source_id,
+            "document_id": document_id,
+            "tree_id": ObjectId(),
+            "node_key": "source",
+            "title": "Source",
+            "labels": ["taj_mahal"],
+        }
+    )
+
+    monkeypatch.setattr(
+        "mnemosyne.retrieval.queries.embedding_candidate_nodes",
+        lambda _db, node_id, limit=10, include_same_document=False, min_similarity=0.75: [
+            {
+                "node_id": str(target_id),
+                "document_id": str(ObjectId()),
+                "node_key": "target",
+                "title": "Target",
+                "embedding_similarity": 0.91,
+                "embedding_model": "mock",
+                "embedding_dimensions": 16,
+            }
+        ],
+    )
+
+    result = enqueue_vector_semantic_edge_candidates(
+        db,
+        node_id=str(source_id),
+        relation_type="Related To",
+        created_by="cello",
+        min_similarity=0.8,
+    )
+
+    assert result["ok"] is True
+    assert result["candidate_source"] == "embedding_similarity"
+    assert result["min_similarity"] == 0.8
+    assert result["candidate_count"] == 1
+    assert result["enqueued_count"] == 1
+    assert len(db.semantic_edge_candidates.rows) == 1
+    row = db.semantic_edge_candidates.rows[0]
+    assert row["status"] == "pending"
+    assert row["candidate_source"] == "embedding_similarity"
+    assert row["source_node_id"] == source_id
+    assert row["target_node_id"] == target_id
+    assert row["source_document_id"] == document_id
+    assert row["relation_type"] == "related_to"
+    assert row["embedding_similarity"] == 0.91
+    assert row["embedding_model"] == "mock"
+    assert row["embedding_dimensions"] == 16
+    assert row["created_by"] == "cello"
+
+    duplicate = enqueue_vector_semantic_edge_candidates(db, node_id=str(source_id))
+
+    assert duplicate["enqueued_count"] == 0
+    assert duplicate["skipped_existing_count"] == 1
+
+
 def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
     source_id = ObjectId()
     target_id = ObjectId()
@@ -567,8 +631,12 @@ def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
             "source_node_id": source_id,
             "target_node_id": target_id,
             "relation_type": "related_to",
+            "candidate_source": "embedding_similarity",
             "shared_labels": ["memory_reference"],
             "shared_label_count": 1,
+            "embedding_similarity": 0.88,
+            "embedding_model": "mock",
+            "embedding_dimensions": 16,
             "source_title": "Source",
             "target_title": "Target",
             "created_by": "user",
@@ -590,8 +658,12 @@ def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
             "source_node_key": None,
             "target_node_key": None,
             "relation_type": "related_to",
+            "candidate_source": "embedding_similarity",
             "shared_labels": ["memory_reference"],
             "shared_label_count": 1,
+            "embedding_similarity": 0.88,
+            "embedding_model": "mock",
+            "embedding_dimensions": 16,
             "source_title": "Source",
             "target_title": "Target",
             "created_by": "user",

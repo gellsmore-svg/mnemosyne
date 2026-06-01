@@ -631,6 +631,100 @@ def enqueue_semantic_edge_candidates(
     return {
         "ok": True,
         "source_node_id": str(source_id),
+        "candidate_source": "label_overlap",
+        "candidate_count": len(candidates),
+        "enqueued_count": len(inserted),
+        "skipped_existing_count": skipped_existing,
+        "skipped_invalid_count": skipped_invalid,
+    }
+
+
+def enqueue_vector_semantic_edge_candidates(
+    db: Database,
+    node_id: str,
+    limit: int = 10,
+    include_same_document: bool = False,
+    relation_type: str = "related_to",
+    created_by: str = "user",
+    min_similarity: float = 0.75,
+) -> dict[str, Any]:
+    if not hasattr(db, "semantic_edge_candidates"):
+        return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
+    source_id = parse_object_id(node_id)
+    if source_id is None:
+        return {"ok": False, "reason": "invalid_source_node_id", "source_node_id": node_id}
+    source = db.nodes.find_one({"_id": source_id})
+    if not source:
+        return {"ok": False, "reason": "source_node_not_found", "source_node_id": node_id}
+    relation = normalized_relation_type(relation_type)
+    if not relation:
+        return {"ok": False, "reason": "invalid_relation_type", "relation_type": relation_type}
+
+    try:
+        threshold = float(min_similarity)
+    except (TypeError, ValueError):
+        threshold = 0.75
+    threshold = max(-1.0, min(threshold, 1.0))
+
+    from mnemosyne.retrieval.queries import embedding_candidate_nodes
+
+    candidates = embedding_candidate_nodes(
+        db,
+        node_id=node_id,
+        limit=bounded_candidate_limit(limit),
+        include_same_document=include_same_document,
+        min_similarity=threshold,
+    )
+    now = datetime.now(timezone.utc)
+    inserted = []
+    skipped_existing = 0
+    skipped_invalid = 0
+    for candidate in candidates:
+        target_id = parse_object_id(candidate.get("node_id"))
+        if target_id is None:
+            skipped_invalid += 1
+            continue
+        existing = db.semantic_edge_candidates.find_one(
+            {
+                "source_node_id": source_id,
+                "target_node_id": target_id,
+                "relation_type": relation,
+            }
+        )
+        if existing:
+            skipped_existing += 1
+            continue
+        inserted.append(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "status": "pending",
+                "candidate_source": "embedding_similarity",
+                "source_node_id": source_id,
+                "target_node_id": target_id,
+                "source_document_id": source.get("document_id"),
+                "target_document_id": parse_object_id(candidate.get("document_id")),
+                "source_node_key": source.get("node_key"),
+                "target_node_key": candidate.get("node_key"),
+                "relation_type": relation,
+                "shared_labels": candidate.get("shared_labels") or [],
+                "shared_label_count": candidate.get("shared_label_count") or 0,
+                "embedding_similarity": candidate.get("embedding_similarity"),
+                "embedding_model": candidate.get("embedding_model"),
+                "embedding_dimensions": candidate.get("embedding_dimensions"),
+                "source_title": source.get("title"),
+                "target_title": candidate.get("title"),
+                "created_by": created_by,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+    if inserted:
+        db.semantic_edge_candidates.insert_many(inserted)
+    return {
+        "ok": True,
+        "source_node_id": str(source_id),
+        "candidate_source": "embedding_similarity",
+        "min_similarity": threshold,
         "candidate_count": len(candidates),
         "enqueued_count": len(inserted),
         "skipped_existing_count": skipped_existing,
@@ -767,8 +861,12 @@ def serialize_semantic_edge_candidate(row: dict[str, Any]) -> dict[str, Any]:
         "source_node_key": row.get("source_node_key"),
         "target_node_key": row.get("target_node_key"),
         "relation_type": row.get("relation_type"),
+        "candidate_source": row.get("candidate_source") or "label_overlap",
         "shared_labels": row.get("shared_labels") or [],
         "shared_label_count": row.get("shared_label_count") or 0,
+        "embedding_similarity": row.get("embedding_similarity"),
+        "embedding_model": row.get("embedding_model"),
+        "embedding_dimensions": row.get("embedding_dimensions"),
         "source_title": row.get("source_title"),
         "target_title": row.get("target_title"),
         "created_by": row.get("created_by"),

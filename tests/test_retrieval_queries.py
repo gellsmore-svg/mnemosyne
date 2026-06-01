@@ -7,6 +7,7 @@ from mnemosyne.retrieval.queries import (
     build_prompt_envelope_without_context,
     context_record,
     default_no_context_system_instruction,
+    embedding_candidate_nodes,
     estimate_tokens,
     expand_graph_paths,
     expand_proximity,
@@ -464,6 +465,138 @@ def test_semantic_candidate_nodes_uses_natural_title_order_for_ties() -> None:
         "Paragraph 2",
         "Paragraph 10",
     ]
+
+
+def test_embedding_candidate_nodes_ranks_comparable_vector_matches() -> None:
+    document_id = ObjectId()
+    other_document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    strong_id = ObjectId()
+    weak_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+                "labels": ["source_chunk"],
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 3,
+                    "vector": [1.0, 0.0, 0.0],
+                },
+            },
+            {
+                "_id": weak_id,
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Weak",
+                "text": "Weak text",
+                "labels": ["source_chunk"],
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 3,
+                    "vector": [0.8, 0.6, 0.0],
+                },
+            },
+            {
+                "_id": strong_id,
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Strong",
+                "text": "Strong text",
+                "labels": ["source_section"],
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 3,
+                    "vector": [0.99, 0.01, 0.0],
+                },
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Wrong Model",
+                "text": "Wrong model text",
+                "labels": ["source_chunk"],
+                "embedding": {
+                    "model": "other",
+                    "dimensions": 3,
+                    "vector": [1.0, 0.0, 0.0],
+                },
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Root Candidate",
+                "text": "Root text",
+                "labels": ["source_root"],
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 3,
+                    "vector": [1.0, 0.0, 0.0],
+                },
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Same Doc",
+                "text": "Same doc text",
+                "labels": ["source_chunk"],
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 3,
+                    "vector": [1.0, 0.0, 0.0],
+                },
+            },
+        ]
+    )
+
+    candidates = embedding_candidate_nodes(db, str(focus_id), min_similarity=0.75)
+
+    assert [candidate["title"] for candidate in candidates] == ["Strong", "Weak"]
+    assert candidates[0]["node_id"] == str(strong_id)
+    assert candidates[0]["embedding_model"] == "mock"
+    assert candidates[0]["embedding_dimensions"] == 3
+    assert candidates[0]["embedding_similarity"] > candidates[1]["embedding_similarity"]
+
+
+def test_embedding_candidate_nodes_can_include_same_document_when_requested() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    same_doc_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [1.0, 0.0]},
+            },
+            {
+                "_id": same_doc_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Same Doc",
+                "text": "Same doc text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [1.0, 0.0]},
+            },
+        ]
+    )
+
+    excluded = embedding_candidate_nodes(db, str(focus_id))
+    included = embedding_candidate_nodes(db, str(focus_id), include_same_document=True)
+
+    assert excluded == []
+    assert [candidate["node_id"] for candidate in included] == [str(same_doc_id)]
 
 
 def test_nearby_siblings_uses_sibling_position_not_order_delta() -> None:
