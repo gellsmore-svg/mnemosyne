@@ -384,6 +384,14 @@ async function loadIngestionStatus() {
     $("ingestionStatus").innerHTML = `<div class="item">Ingestion status is unavailable.</div>`;
     return;
   }
+  const embedding = data.embedding || {};
+  const embeddingItem =
+    `<div class="item">` +
+    `<strong>${html(String(embedding.embedded_percent ?? 0))}% of active nodes embedded</strong>` +
+    `<div class="muted">${html(String(embedding.embedded_active_nodes ?? 0))} embedded` +
+    ` | ${html(String(embedding.missing_active_embeddings ?? 0))} missing` +
+    ` | ${html(String(embedding.total_active_nodes ?? 0))} active nodes</div>` +
+    `</div>`;
   const epochItems = data.epochs.length
     ? data.epochs.map((epoch, index) => {
         const range = [epoch.earliest_origin_date, epoch.latest_origin_date]
@@ -408,7 +416,7 @@ async function loadIngestionStatus() {
       )
     : [`<div class="item">No ingestion process runs recorded yet.</div>`];
   $("ingestionStatus").innerHTML =
-    `<h3>Epochs</h3>${epochItems.join("")}<h3>Recent Ingestion Runs</h3>${runItems.join("")}`;
+    `<h3>Embedding Coverage</h3>${embeddingItem}<h3>Epochs</h3>${epochItems.join("")}<h3>Recent Ingestion Runs</h3>${runItems.join("")}`;
 }
 
 async function loadJobs() {

@@ -410,10 +410,11 @@ def create_app() -> FastAPI:
         return {"ok": True, **summary}
 
     @app.get("/api/ingestion/status")
-    def ingestion_status(limit: int = 8) -> dict[str, Any]:
+    def ingestion_status(limit: int = 8, label: str | None = None) -> dict[str, Any]:
         return {
             "ok": True,
             "epochs": list_ingestion_epochs(db, limit=limit),
+            "embedding": embedding_coverage(db, label=label),
             "runs": list_process_runs(
                 db,
                 session_id="ingestion",
@@ -779,6 +780,28 @@ def list_ingestion_epochs(db: Any, limit: int = 8) -> list[dict[str, Any]]:
             }
         )
     return epochs
+
+
+def embedding_coverage(db: Any, label: str | None = None) -> dict[str, Any]:
+    query: dict[str, Any] = {"status": {"$ne": "superseded"}}
+    label_filter = str(label).strip() if label else None
+    if label_filter:
+        query["labels"] = label_filter
+    embedded_query = {
+        **query,
+        "embedding.vector": {"$exists": True},
+    }
+    total = db.nodes.count_documents(query)
+    embedded = db.nodes.count_documents(embedded_query)
+    missing = max(0, total - embedded)
+    percent = round((embedded / total) * 100, 1) if total else 0.0
+    return {
+        "total_active_nodes": total,
+        "embedded_active_nodes": embedded,
+        "missing_active_embeddings": missing,
+        "embedded_percent": percent,
+        "label": label_filter,
+    }
 
 
 def serialize_web_value(value: Any) -> Any:

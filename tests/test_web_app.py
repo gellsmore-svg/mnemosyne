@@ -8,6 +8,7 @@ from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.web.app import (
     app,
+    embedding_coverage,
     list_ingestion_epochs,
     parse_ollama_model_list,
     parse_ollama_model_rows,
@@ -65,6 +66,19 @@ class SimpleEpochCollection:
         return rows[:limit]
 
 
+class SimpleEmbeddingDb:
+    def __init__(self, nodes: list[dict]):
+        self.nodes = SimpleEmbeddingCollection(nodes)
+
+
+class SimpleEmbeddingCollection:
+    def __init__(self, rows: list[dict]):
+        self.rows = rows
+
+    def count_documents(self, query):
+        return len([row for row in self.rows if simple_match(row, query)])
+
+
 def test_health_endpoint() -> None:
     client = TestClient(app)
 
@@ -106,6 +120,16 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             {"run_id": "run1", "session_id": session_id, "status": status, "limit": limit}
         ],
     )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.embedding_coverage",
+        lambda _db, label=None: {
+            "total_active_nodes": 4,
+            "embedded_active_nodes": 3,
+            "missing_active_embeddings": 1,
+            "embedded_percent": 75.0,
+            "label": label,
+        },
+    )
 
     response = client.get("/api/ingestion/status", params={"limit": 4})
 
@@ -120,6 +144,13 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
                 "limit": 4,
             }
         ],
+        "embedding": {
+            "total_active_nodes": 4,
+            "embedded_active_nodes": 3,
+            "missing_active_embeddings": 1,
+            "embedded_percent": 75.0,
+            "label": None,
+        },
         "runs": [{"run_id": "run1", "session_id": "ingestion", "status": None, "limit": 4}],
     }
 
@@ -159,6 +190,35 @@ def test_list_ingestion_epochs_reports_dated_document_coverage() -> None:
     assert epochs[1]["dated_document_count"] == 0
     assert epochs[1]["earliest_origin_date"] is None
     assert epochs[1]["latest_origin_date"] is None
+
+
+def test_embedding_coverage_reports_active_embedding_readiness() -> None:
+    db = SimpleEmbeddingDb(
+        [
+            {"status": "active", "labels": ["target"], "embedding": {"vector": [1.0]}},
+            {"status": "active", "labels": ["target"]},
+            {"status": "active", "labels": ["other"], "embedding": {"vector": [1.0]}},
+            {"status": "superseded", "labels": ["target"], "embedding": {"vector": [1.0]}},
+        ]
+    )
+
+    coverage = embedding_coverage(db)
+    target_coverage = embedding_coverage(db, label="target")
+
+    assert coverage == {
+        "total_active_nodes": 3,
+        "embedded_active_nodes": 2,
+        "missing_active_embeddings": 1,
+        "embedded_percent": 66.7,
+        "label": None,
+    }
+    assert target_coverage == {
+        "total_active_nodes": 2,
+        "embedded_active_nodes": 1,
+        "missing_active_embeddings": 1,
+        "embedded_percent": 50.0,
+        "label": "target",
+    }
 
 
 def test_index_serves_html() -> None:
@@ -989,3 +1049,30 @@ def test_ingest_folder_lists_unreadable_file_without_failing() -> None:
     assert row["status"] == "unreadable"
     assert row["error"] == "UnicodeDecodeError"
     assert row["origin_date"] is None
+
+
+def simple_match(row, query):
+    for key, expected in query.items():
+        actual = simple_nested_get(row, key)
+        if isinstance(expected, dict):
+            if "$exists" in expected and (actual is not None) is not expected["$exists"]:
+                return False
+            if "$ne" in expected and actual == expected["$ne"]:
+                return False
+            continue
+        if isinstance(actual, list):
+            if expected not in actual:
+                return False
+            continue
+        if actual != expected:
+            return False
+    return True
+
+
+def simple_nested_get(row, dotted_key):
+    value = row
+    for part in dotted_key.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
