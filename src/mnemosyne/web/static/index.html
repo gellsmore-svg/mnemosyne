@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mnemosyne</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260601-embedding-coverage" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260601-embedding-backfill" />
   </head>
   <body>
     <main id="appShell" class="shell ask-mode">
@@ -98,6 +98,19 @@
           </section>
 
           <section class="operator">
+            <h2>Embedding Backfill</h2>
+            <div class="operator-grid">
+              <input id="embeddingBackfillLabel" placeholder="Label filter (optional)" />
+              <input id="embeddingBackfillDocumentId" placeholder="Document ID (optional)" />
+              <input id="embeddingBackfillLimit" type="number" min="1" max="1000" value="50" />
+              <label class="check-row"><input id="embeddingBackfillForce" type="checkbox" /> Force replace</label>
+              <button id="runEmbeddingBackfill">Run Backfill Batch</button>
+              <div id="embeddingBackfillStatus" class="status">Embedding backfill: idle</div>
+            </div>
+            <pre id="embeddingBackfillResult">Run a bounded batch after checking coverage.</pre>
+          </section>
+
+          <section class="operator">
             <h2>Semantic Edge Review</h2>
             <div class="operator-grid">
               <input id="semanticSourceNodeId" placeholder="Source node ID" />
@@ -169,6 +182,6 @@
       </aside>
     </main>
 
-    <script src="/static/app.js?v=20260601-embedding-coverage"></script>
+    <script src="/static/app.js?v=20260601-embedding-backfill"></script>
   </body>
 </html>

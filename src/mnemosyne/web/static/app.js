@@ -643,6 +643,54 @@ async function processInbox() {
   await Promise.all([loadQueue(), loadIngestionStatus(), loadJobs(), loadDocuments(), searchNodes()]);
 }
 
+async function runEmbeddingBackfill() {
+  const button = $("runEmbeddingBackfill");
+  const payload = {
+    limit: Number($("embeddingBackfillLimit").value || 50),
+    label: $("embeddingBackfillLabel").value.trim() || null,
+    document_id: $("embeddingBackfillDocumentId").value.trim() || null,
+    force: $("embeddingBackfillForce").checked,
+  };
+  button.disabled = true;
+  $("embeddingBackfillStatus").textContent = "Embedding backfill: running";
+  $("embeddingBackfillResult").textContent = "Embedding nodes...";
+  try {
+    const data = await api("/api/backfill-embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    $("embeddingBackfillStatus").textContent = data.ok
+      ? `Embedding backfill: ${data.updated_count} updated, ${data.skipped_count} skipped`
+      : `Embedding backfill: ${data.reason || "failed"}`;
+    $("embeddingBackfillResult").textContent = embeddingBackfillSummary(data);
+    await loadIngestionStatus();
+  } catch (error) {
+    $("embeddingBackfillStatus").textContent = "Embedding backfill: failed";
+    $("embeddingBackfillResult").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function embeddingBackfillSummary(data) {
+  const lines = [
+    `Status: ${data.ok ? "completed" : "needs attention"}`,
+    data.reason ? `Reason: ${data.reason}` : null,
+    `Adapter: ${text(data.adapter)} / ${text(data.model)} (${text(data.dimensions)} dims)`,
+    `Batch: ${text(data.updated_count)} updated, ${text(data.skipped_count)} skipped, ${text(data.error_count)} error(s)`,
+    `Scope: limit ${text(data.limit)}, label ${text(data.filters?.label)}, document ${text(data.filters?.document_id)}, force ${text(data.filters?.force)}`,
+  ].filter(Boolean);
+  if (Array.isArray(data.errors) && data.errors.length) {
+    lines.push("");
+    lines.push("Sample errors:");
+    data.errors.forEach((error) => {
+      lines.push(`- ${text(error.title || error.node_id)}: ${text(error.error_type)} - ${text(error.error)}`);
+    });
+  }
+  return lines.join("\n");
+}
+
 async function uploadSourceFiles() {
   const files = Array.from($("sourceUpload").files || []);
   if (!files.length) {
@@ -706,6 +754,7 @@ $("displayMode").addEventListener("click", toggleDisplayMode);
 $("uploadSource").addEventListener("click", uploadSourceFiles);
 $("browseIngest").addEventListener("click", browseIngestFolder);
 $("processInbox").addEventListener("click", processInbox);
+$("runEmbeddingBackfill").addEventListener("click", runEmbeddingBackfill);
 $("loadIngestionStatus").addEventListener("click", loadIngestionStatus);
 $("loadHistory").addEventListener("click", loadHistory);
 $("loadJobs").addEventListener("click", loadJobs);

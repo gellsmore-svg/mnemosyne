@@ -155,6 +155,41 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
     }
 
 
+def test_backfill_embeddings_endpoint_uses_configured_adapter(monkeypatch) -> None:
+    client = TestClient(app)
+    embedder = {"name": "fake"}
+
+    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr(
+        "mnemosyne.web.app.backfill_node_embeddings",
+        lambda _db, used_embedder, **kwargs: {
+            "ok": True,
+            "adapter": used_embedder["name"],
+            **kwargs,
+        },
+    )
+
+    response = client.post(
+        "/api/backfill-embeddings",
+        json={
+            "limit": 9,
+            "label": "target",
+            "document_id": "doc1",
+            "force": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "adapter": "fake",
+        "limit": 9,
+        "label": "target",
+        "document_id": "doc1",
+        "force": True,
+    }
+
+
 def test_list_ingestion_epochs_reports_dated_document_coverage() -> None:
     db = SimpleEpochDb(
         [

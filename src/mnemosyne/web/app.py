@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from mnemosyne.config import RuntimeConfig, load_config
+from mnemosyne.adapters.embedding import embedding_adapter
 from mnemosyne.db.client import get_database
 from mnemosyne.db.governance import (
     PROCESS_RUN_STATUSES,
@@ -29,6 +30,7 @@ from mnemosyne.db.governance import (
 )
 from mnemosyne.db.indexes import ensure_indexes
 from mnemosyne.db.repositories import (
+    backfill_node_embeddings,
     enqueue_semantic_edge_candidates,
     enqueue_vector_semantic_edge_candidates,
     list_semantic_edge_candidates,
@@ -117,6 +119,13 @@ class UpdateProcessRunRequest(BaseModel):
 class UploadSourceRequest(BaseModel):
     filename: str
     content: str
+
+
+class BackfillEmbeddingsRequest(BaseModel):
+    limit: int = 50
+    label: str | None = None
+    document_id: str | None = None
+    force: bool = False
 
 
 def create_app() -> FastAPI:
@@ -421,6 +430,17 @@ def create_app() -> FastAPI:
                 limit=limit,
             ),
         }
+
+    @app.post("/api/backfill-embeddings")
+    def backfill_embeddings(request: BackfillEmbeddingsRequest) -> dict[str, Any]:
+        return backfill_node_embeddings(
+            db,
+            embedding_adapter(config.runtime),
+            limit=request.limit,
+            label=request.label,
+            document_id=request.document_id,
+            force=request.force,
+        )
 
     @app.get("/api/jobs")
     def jobs(
