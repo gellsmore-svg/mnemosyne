@@ -189,6 +189,7 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     assert data["ok"] is True
     assert "ollama_cli" in data["available_adapters"]
     assert "ollama_http" in data["available_embedding_adapters"]
+    assert "ollama_powershell" in data["available_embedding_adapters"]
     assert data["default_model"]
     assert data["default_embedding_adapter"]
     assert data["default_embedding_model"]

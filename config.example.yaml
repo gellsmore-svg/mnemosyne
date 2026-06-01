@@ -12,6 +12,7 @@ runtime:
   model_adapter: mock
   answer_adapter: ollama_cli
   embedding_adapter: mock
+  # Use ollama_powershell when running Mnemosyne in WSL against Windows Ollama.
   embedding_model: nomic-embed-text:latest
   embedding_dimensions: 16
   memory_agent_adapter:

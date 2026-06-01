@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import subprocess
 import struct
 from typing import Any
 from urllib import error, request
@@ -96,7 +97,82 @@ class OllamaHttpEmbeddingAdapter:
         return vector
 
 
-def embedding_adapter(config: Any | None = None) -> MockEmbeddingAdapter | OllamaHttpEmbeddingAdapter:
+class OllamaPowerShellEmbeddingAdapter:
+    name = "ollama_powershell_embedding"
+
+    def __init__(self, config: Any) -> None:
+        self.config = config
+        self.model = getattr(config, "embedding_model", None) or DEFAULT_OLLAMA_EMBEDDING_MODEL
+        self.dimensions: int | None = None
+
+    def embed(self, text: str) -> dict[str, Any]:
+        normalized = text or ""
+        vector = l2_normalize(self._embedding_vector(normalized))
+        self.dimensions = len(vector)
+        return {
+            "adapter": self.name,
+            "model": self.model,
+            "dimensions": len(vector),
+            "vector": vector,
+            "source_text_hash": source_text_hash(normalized),
+        }
+
+    def _embedding_vector(self, text: str) -> list[float]:
+        endpoint = f"{str(self.config.ollama_base_url).rstrip('/')}/api/embed"
+        payload = json.dumps({"model": self.model, "input": text})
+        escaped_endpoint = endpoint.replace("'", "''")
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            (
+                "$ErrorActionPreference = 'Stop'; "
+                "$payload = [Console]::In.ReadToEnd(); "
+                f"$response = Invoke-RestMethod -Uri '{escaped_endpoint}' "
+                "-Method Post -ContentType 'application/json' "
+                "-Body $payload; "
+                "$response | "
+                "ConvertTo-Json -Depth 5 -Compress"
+            ),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                input=payload,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self.config.ollama_timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exception:
+            raise TimeoutError(
+                f"Ollama PowerShell embedding request timed out after "
+                f"{self.config.ollama_timeout_seconds}s while running {self.model}."
+            ) from exception
+        if completed.returncode != 0 or not completed.stdout.strip():
+            detail = "\n".join(part for part in [completed.stderr, completed.stdout] if part)
+            raise RuntimeError(
+                f"Ollama PowerShell embedding request failed for {self.model} "
+                f"at {endpoint}: {detail.strip() or completed.returncode}"
+            )
+        try:
+            data = json.loads(completed.stdout.lstrip("\ufeff").strip())
+        except json.JSONDecodeError as exception:
+            raise RuntimeError(
+                f"Ollama PowerShell embedding request returned invalid JSON for {self.model}."
+            ) from exception
+        vector = ollama_embedding_vector(data)
+        if not vector:
+            raise RuntimeError(
+                f"Ollama PowerShell embedding request returned no vector for {self.model}."
+            )
+        return vector
+
+
+def embedding_adapter(
+    config: Any | None = None,
+) -> MockEmbeddingAdapter | OllamaHttpEmbeddingAdapter | OllamaPowerShellEmbeddingAdapter:
     if config is None:
         return default_embedding_adapter()
     name = getattr(config, "embedding_adapter", "mock")
@@ -105,6 +181,8 @@ def embedding_adapter(config: Any | None = None) -> MockEmbeddingAdapter | Ollam
         return MockEmbeddingAdapter(dimensions=dimensions)
     if name == "ollama_http":
         return OllamaHttpEmbeddingAdapter(config)
+    if name == "ollama_powershell":
+        return OllamaPowerShellEmbeddingAdapter(config)
     raise ValueError(f"Unknown embedding adapter: {name}")
 
 

@@ -7,6 +7,7 @@ from mnemosyne.adapters.embedding import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     MockEmbeddingAdapter,
     OllamaHttpEmbeddingAdapter,
+    OllamaPowerShellEmbeddingAdapter,
     embedding_adapter,
     ollama_embedding_vector,
     source_text_hash,
@@ -72,6 +73,15 @@ def test_embedding_adapter_factory_can_create_ollama_http_adapter() -> None:
     assert adapter.dimensions is None
 
 
+def test_embedding_adapter_factory_can_create_ollama_powershell_adapter() -> None:
+    config = RuntimeConfig(embedding_adapter="ollama_powershell")
+    adapter = embedding_adapter(config)
+
+    assert isinstance(adapter, OllamaPowerShellEmbeddingAdapter)
+    assert adapter.model == "nomic-embed-text:latest"
+    assert adapter.dimensions is None
+
+
 def test_embedding_adapter_factory_defaults_without_config() -> None:
     adapter = embedding_adapter()
 
@@ -120,6 +130,62 @@ def test_ollama_http_embedding_adapter_posts_to_embed_endpoint(monkeypatch) -> N
     assert adapter.dimensions == 2
 
 
+def test_ollama_powershell_embedding_adapter_posts_payload_over_stdin(monkeypatch) -> None:
+    captured = {}
+
+    def fake_run(command, input, check, capture_output, text, timeout):
+        captured["command"] = command
+        captured["input"] = input
+        captured["check"] = check
+        captured["capture_output"] = capture_output
+        captured["text"] = text
+        captured["timeout"] = timeout
+        return type("Completed", (), {"returncode": 0, "stdout": '{"embeddings": [[3, 4]]}', "stderr": ""})()
+
+    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.run", fake_run)
+    config = RuntimeConfig(
+        embedding_adapter="ollama_powershell",
+        embedding_model="test-embed:latest",
+        ollama_timeout_seconds=9,
+    )
+    adapter = OllamaPowerShellEmbeddingAdapter(config)
+
+    payload = adapter.embed("Taj Mahal")
+
+    assert captured["command"][:3] == ["powershell.exe", "-NoProfile", "-NonInteractive"]
+    assert "Invoke-RestMethod" in captured["command"][-1]
+    assert "http://localhost:11434/api/embed" in captured["command"][-1]
+    assert '"model": "test-embed:latest"' in captured["input"]
+    assert '"input": "Taj Mahal"' in captured["input"]
+    assert captured["check"] is False
+    assert captured["capture_output"] is True
+    assert captured["text"] is True
+    assert captured["timeout"] == 9
+    assert payload["adapter"] == "ollama_powershell_embedding"
+    assert payload["model"] == "test-embed:latest"
+    assert payload["dimensions"] == 2
+    assert payload["vector"] == [0.6, 0.8]
+    assert adapter.dimensions == 2
+
+
+def test_ollama_powershell_embedding_adapter_keeps_text_out_of_command(monkeypatch) -> None:
+    captured = {}
+    tricky_text = 'quote"; $(Get-Process); newline\ntext'
+
+    def fake_run(command, input, check, capture_output, text, timeout):
+        captured["command"] = command
+        captured["input"] = input
+        return type("Completed", (), {"returncode": 0, "stdout": '{"embeddings": [[1, 0]]}', "stderr": ""})()
+
+    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.run", fake_run)
+    adapter = OllamaPowerShellEmbeddingAdapter(RuntimeConfig(embedding_adapter="ollama_powershell"))
+
+    adapter.embed(tricky_text)
+
+    assert tricky_text not in " ".join(captured["command"])
+    assert 'quote\\"; $(Get-Process); newline\\ntext' in captured["input"]
+
+
 def test_ollama_http_embedding_adapter_reports_url_errors(monkeypatch) -> None:
     def fake_urlopen(_req, timeout):
         del timeout
@@ -135,6 +201,26 @@ def test_ollama_http_embedding_adapter_reports_url_errors(monkeypatch) -> None:
         assert "nomic-embed-text:latest" in str(exc)
     else:
         raise AssertionError("Expected embedding adapter to report URL failure.")
+
+
+def test_ollama_powershell_embedding_adapter_reports_process_errors(monkeypatch) -> None:
+    def fake_run(*_args, **_kwargs):
+        return type(
+            "Completed",
+            (),
+            {"returncode": 1, "stdout": "", "stderr": "connection failed"},
+        )()
+
+    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.run", fake_run)
+    adapter = OllamaPowerShellEmbeddingAdapter(RuntimeConfig(embedding_adapter="ollama_powershell"))
+
+    try:
+        adapter.embed("text")
+    except RuntimeError as exc:
+        assert "Ollama PowerShell embedding request failed" in str(exc)
+        assert "connection failed" in str(exc)
+    else:
+        raise AssertionError("Expected PowerShell embedding adapter to report process failure.")
 
 
 def test_ollama_embedding_vector_accepts_legacy_shape() -> None:

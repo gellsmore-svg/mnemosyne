@@ -317,7 +317,11 @@ def main() -> None:
     subcommands.add_parser("sessions")
     embedding_smoke = subcommands.add_parser("embedding-smoke")
     embedding_smoke.add_argument("text")
-    embedding_smoke.add_argument("--adapter", choices=["mock", "ollama_http"], default=None)
+    embedding_smoke.add_argument(
+        "--adapter",
+        choices=["mock", "ollama_http", "ollama_powershell"],
+        default=None,
+    )
     embedding_smoke.add_argument("--model", default=None)
 
     agent_identities = subcommands.add_parser("agent-identities")

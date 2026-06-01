@@ -158,7 +158,7 @@ def create_app() -> FastAPI:
             "retrieval_mode": config.runtime.retrieval_mode,
             "available_retrieval_modes": ["direct", "agentic"],
             "available_adapters": ["mock", "ollama_cli", "ollama_http"],
-            "available_embedding_adapters": ["mock", "ollama_http"],
+            "available_embedding_adapters": ["mock", "ollama_http", "ollama_powershell"],
             "known_models": [model["name"] for model in model_options],
             "discovered_models": [model["name"] for model in discovered_models],
             "model_options": model_options,
