@@ -175,6 +175,14 @@ textarea {
   margin-bottom: 10px;
 }
 
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: #334155;
+}
+
 .status {
   background: white;
   border: 1px solid #d6dce4;

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mnemosyne</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260601-model-options" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260601-semantic-candidates" />
   </head>
   <body>
     <main id="appShell" class="shell ask-mode">
@@ -100,6 +100,12 @@
           <section class="operator">
             <h2>Semantic Edge Review</h2>
             <div class="operator-grid">
+              <input id="semanticSourceNodeId" placeholder="Source node ID" />
+              <input id="semanticLimit" type="number" min="1" max="50" value="10" />
+              <input id="semanticMinSimilarity" type="number" min="-1" max="1" step="0.01" value="0.75" />
+              <label class="check-row"><input id="semanticIncludeSameDocument" type="checkbox" /> Same document</label>
+              <button id="enqueueLabelCandidates">Queue Label Matches</button>
+              <button id="enqueueVectorCandidates">Queue Vector Matches</button>
               <button id="loadSemanticCandidates">Load Pending</button>
               <div id="semanticCandidateStatus" class="status">Candidates: unknown</div>
             </div>
@@ -163,6 +169,6 @@
       </aside>
     </main>
 
-    <script src="/static/app.js?v=20260601-model-options"></script>
+    <script src="/static/app.js?v=20260601-semantic-candidates"></script>
   </body>
 </html>

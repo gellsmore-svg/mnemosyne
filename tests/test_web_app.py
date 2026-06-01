@@ -683,6 +683,88 @@ def test_semantic_edge_candidates_endpoint(monkeypatch) -> None:
     }
 
 
+def test_enqueue_label_semantic_edge_candidates_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.enqueue_semantic_edge_candidates",
+        lambda _db, **kwargs: {"ok": True, "source": "label", **kwargs},
+    )
+
+    response = client.post(
+        "/api/review/enqueue-semantic-edge-candidates",
+        json={
+            "node_id": "node1",
+            "candidate_source": "label_overlap",
+            "include_same_document": True,
+            "relation_type": "supports",
+            "created_by": "tester",
+            "limit": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "source": "label",
+        "node_id": "node1",
+        "limit": 3,
+        "include_same_document": True,
+        "relation_type": "supports",
+        "created_by": "tester",
+    }
+
+
+def test_enqueue_vector_semantic_edge_candidates_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.enqueue_vector_semantic_edge_candidates",
+        lambda _db, **kwargs: {"ok": True, "source": "vector", **kwargs},
+    )
+
+    response = client.post(
+        "/api/review/enqueue-semantic-edge-candidates",
+        json={
+            "node_id": "node1",
+            "candidate_source": "embedding_similarity",
+            "include_same_document": True,
+            "relation_type": "supports",
+            "created_by": "tester",
+            "min_similarity": 0.82,
+            "limit": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "source": "vector",
+        "node_id": "node1",
+        "limit": 3,
+        "include_same_document": True,
+        "relation_type": "supports",
+        "created_by": "tester",
+        "min_similarity": 0.82,
+    }
+
+
+def test_enqueue_semantic_edge_candidates_endpoint_rejects_unknown_source() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/review/enqueue-semantic-edge-candidates",
+        json={"node_id": "node1", "candidate_source": "unknown"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": False,
+        "reason": "invalid_candidate_source",
+        "candidate_source": "unknown",
+    }
+
+
 def test_review_semantic_edge_candidate_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 

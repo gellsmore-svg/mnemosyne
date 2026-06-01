@@ -166,11 +166,10 @@ Phase A implemented behavior:
 - During direct CLI ingestion and queued worker ingestion (both via `commit_ingestion`), and during maintenance rebuilds (`rebuild_document`), each node is annotated before commit with an `embedding` field holding adapter/model name, dimensions, vector, and the source text hash.
 - Ingestion activity reports/logs now surface the embedded node count, embedding model, and dimensions.
 - This phase intentionally does not change search ranking, answer behavior, or memory-agent write authority.
-- Stored vectors can now be read by operator commands to propose pending semantic-edge candidates, distinguished from label-overlap candidates by `candidate_source: embedding_similarity` and similarity/model/dimension metadata.
+- Stored vectors can now be read by operator CLI/API/web controls to propose pending semantic-edge candidates, distinguished from label-overlap candidates by `candidate_source: embedding_similarity` and similarity/model/dimension metadata.
 
 Phase A remaining work:
 
-- Add web/API controls for triggering vector-backed candidate enqueueing from the Ingestion review tab.
 - Wire a real local embedding adapter behind the same boundary.
 - Only then consider any retrieval/ranking use of embeddings, kept candidate/review based.
 

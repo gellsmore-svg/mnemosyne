@@ -490,6 +490,31 @@ async function reviewSemanticCandidate(candidateId, action) {
   await loadSemanticCandidates();
 }
 
+async function enqueueSemanticCandidates(candidateSource) {
+  const nodeId = $("semanticSourceNodeId").value.trim();
+  if (!nodeId) {
+    $("semanticCandidateStatus").textContent = "Enter a source node ID first.";
+    return;
+  }
+  const data = await api("/api/review/enqueue-semantic-edge-candidates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      node_id: nodeId,
+      candidate_source: candidateSource,
+      include_same_document: $("semanticIncludeSameDocument").checked,
+      relation_type: "related_to",
+      created_by: "web",
+      min_similarity: Number($("semanticMinSimilarity").value || 0.75),
+      limit: Number($("semanticLimit").value || 10),
+    }),
+  });
+  $("semanticCandidateStatus").textContent = data.ok
+    ? `${data.enqueued_count} queued from ${data.candidate_source}; ${data.skipped_existing_count} existing`
+    : `Queue failed: ${data.reason || "unknown"}`;
+  await loadSemanticCandidates();
+}
+
 async function searchNodes() {
   const query = encodeURIComponent($("searchQuery").value);
   const data = await api(`/api/search?query=${query}&limit=8`);
@@ -677,6 +702,8 @@ $("loadIngestionStatus").addEventListener("click", loadIngestionStatus);
 $("loadHistory").addEventListener("click", loadHistory);
 $("loadJobs").addEventListener("click", loadJobs);
 $("loadSemanticCandidates").addEventListener("click", loadSemanticCandidates);
+$("enqueueLabelCandidates").addEventListener("click", () => enqueueSemanticCandidates("label_overlap"));
+$("enqueueVectorCandidates").addEventListener("click", () => enqueueSemanticCandidates("embedding_similarity"));
 document.querySelectorAll(".tab-button").forEach((button) => {
   button.addEventListener("click", () => switchTab(button.dataset.tab));
 });

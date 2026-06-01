@@ -29,6 +29,8 @@ from mnemosyne.db.governance import (
 )
 from mnemosyne.db.indexes import ensure_indexes
 from mnemosyne.db.repositories import (
+    enqueue_semantic_edge_candidates,
+    enqueue_vector_semantic_edge_candidates,
     list_semantic_edge_candidates,
     review_semantic_edge_candidate,
 )
@@ -84,6 +86,16 @@ class ReviewSemanticEdgeCandidateRequest(BaseModel):
     note: str | None = None
     weight: float = 0.7
     confidence: float = 0.6
+
+
+class EnqueueSemanticEdgeCandidatesRequest(BaseModel):
+    node_id: str
+    candidate_source: str = "label_overlap"
+    include_same_document: bool = False
+    relation_type: str = "related_to"
+    created_by: str = "web"
+    min_similarity: float = 0.75
+    limit: int = 10
 
 
 class CreateProcessRunRequest(BaseModel):
@@ -329,6 +341,36 @@ def create_app() -> FastAPI:
                 status=status,
                 limit=limit,
             ),
+        }
+
+    @app.post("/api/review/enqueue-semantic-edge-candidates")
+    def enqueue_semantic_edge_review_candidates(
+        request: EnqueueSemanticEdgeCandidatesRequest,
+    ) -> dict[str, Any]:
+        source = str(request.candidate_source or "label_overlap").strip().lower()
+        if source == "embedding_similarity":
+            return enqueue_vector_semantic_edge_candidates(
+                db,
+                node_id=request.node_id,
+                limit=request.limit,
+                include_same_document=request.include_same_document,
+                relation_type=request.relation_type,
+                created_by=request.created_by,
+                min_similarity=request.min_similarity,
+            )
+        if source == "label_overlap":
+            return enqueue_semantic_edge_candidates(
+                db,
+                node_id=request.node_id,
+                limit=request.limit,
+                include_same_document=request.include_same_document,
+                relation_type=request.relation_type,
+                created_by=request.created_by,
+            )
+        return {
+            "ok": False,
+            "reason": "invalid_candidate_source",
+            "candidate_source": request.candidate_source,
         }
 
     @app.post("/api/review/semantic-edge-candidate")
