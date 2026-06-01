@@ -319,7 +319,9 @@ async function loadRuntime() {
   defaultRetrievalMode.textContent = `default (${data.retrieval_mode})`;
   const modelOptions = [
     new Option(`default (${data.default_model})`, ""),
-    ...data.known_models.map((model) => new Option(model, model)),
+    ...(data.model_options || data.known_models.map((model) => ({ name: model, label: model }))).map(
+      (model) => new Option(model.label || model.name, model.name)
+    ),
   ];
   $("model").replaceChildren(...modelOptions);
 }

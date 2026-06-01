@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
-from mnemosyne.web.app import app
+from mnemosyne.web.app import app, parse_ollama_model_list, parse_ollama_model_rows
 
 
 def test_health_endpoint() -> None:
@@ -48,6 +48,38 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     assert data["default_model"]
     assert data["memory_agent_model"]
     assert "gemma4:latest" in data["known_models"]
+    assert data["model_options"]
+
+
+def test_parse_ollama_model_list_returns_model_names() -> None:
+    output = """NAME                    ID              SIZE      MODIFIED
+gemma4:26b              5571076f3d70    17 GB     16 hours ago
+qwen3.5:35b             3460ffeede54    23 GB     17 hours ago
+mistral-small:latest    8039dd90c113    14 GB     17 hours ago
+"""
+
+    assert parse_ollama_model_list(output) == [
+        "qwen3.5:35b",
+        "gemma4:26b",
+        "mistral-small:latest",
+    ]
+
+
+def test_parse_ollama_model_rows_sorts_largest_first_and_labels_size() -> None:
+    output = """NAME                    ID              SIZE      MODIFIED
+small:latest            aaa             815 MB    1 day ago
+large:latest            bbb             23 GB     1 day ago
+medium:latest           ccc             7.2 GB    1 day ago
+"""
+
+    rows = parse_ollama_model_rows(output)
+
+    assert [row["name"] for row in rows] == [
+        "large:latest",
+        "medium:latest",
+        "small:latest",
+    ]
+    assert [row["size_category"] for row in rows] == ["large", "medium", "small"]
 
 
 def test_session_endpoints() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from mnemosyne.config import load_config
+from mnemosyne.config import RuntimeConfig, load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.db.governance import (
     PROCESS_RUN_STATUSES,
@@ -49,6 +50,9 @@ from mnemosyne.sessions.output_ingestion import (
     process_next_output_ingestion,
 )
 from mnemosyne.sessions.registry import create_session, list_sessions
+
+
+FALLBACK_KNOWN_MODELS = ["gemma4:latest", "gemma3:1b"]
 
 
 class AskRequest(BaseModel):
@@ -121,6 +125,15 @@ def create_app() -> FastAPI:
 
     @app.get("/api/runtime")
     def runtime() -> dict[str, Any]:
+        discovered_models = ollama_model_rows(config.runtime)
+        model_options = model_options_with_fallbacks(
+            discovered_models,
+            [
+                config.runtime.ollama_model,
+                config.runtime.memory_agent_model or config.runtime.ollama_model,
+                *FALLBACK_KNOWN_MODELS,
+            ],
+        )
         return {
             "ok": True,
             "default_adapter": config.runtime.answer_adapter,
@@ -130,14 +143,9 @@ def create_app() -> FastAPI:
             "retrieval_mode": config.runtime.retrieval_mode,
             "available_retrieval_modes": ["direct", "agentic"],
             "available_adapters": ["mock", "ollama_cli", "ollama_http"],
-            "known_models": sorted(
-                {
-                    config.runtime.ollama_model,
-                    config.runtime.memory_agent_model or config.runtime.ollama_model,
-                    "gemma3:1b",
-                    "gemma4:latest",
-                }
-            ),
+            "known_models": [model["name"] for model in model_options],
+            "discovered_models": [model["name"] for model in discovered_models],
+            "model_options": model_options,
             "ollama_timeout_seconds": config.runtime.ollama_timeout_seconds,
         }
 
@@ -498,6 +506,99 @@ def unique_upload_path(directory: Path, filename: str, content_hash: str) -> Pat
     stem = path.stem
     suffix = path.suffix
     return directory / f"{stem}-{content_hash[:12]}{suffix}"
+
+
+def ollama_model_rows(runtime_config: RuntimeConfig) -> list[dict[str, Any]]:
+    try:
+        completed = subprocess.run(
+            [str(runtime_config.ollama_executable), "list"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return []
+    return parse_ollama_model_rows(completed.stdout)
+
+
+def parse_ollama_model_list(output: str) -> list[str]:
+    return [model["name"] for model in parse_ollama_model_rows(output)]
+
+
+def parse_ollama_model_rows(output: str) -> list[dict[str, Any]]:
+    models = []
+    seen = set()
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("NAME"):
+            continue
+        parts = stripped.split()
+        name = parts[0]
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        size = parse_ollama_size(parts[2], parts[3]) if len(parts) >= 4 else None
+        models.append(model_option(name=name, size_bytes=size, discovered=True))
+    return sorted(models, key=model_sort_key)
+
+
+def model_options_with_fallbacks(
+    discovered: list[dict[str, Any]],
+    fallback_names: list[str],
+) -> list[dict[str, Any]]:
+    models = [dict(model) for model in discovered]
+    seen = {model["name"] for model in models}
+    for name in fallback_names:
+        if name and name not in seen:
+            seen.add(name)
+            models.append(model_option(name=name, size_bytes=None, discovered=False))
+    return sorted(models, key=model_sort_key)
+
+
+def model_option(name: str, size_bytes: int | None, discovered: bool) -> dict[str, Any]:
+    size_category = model_size_category(size_bytes)
+    label = f"{name} ({size_category})" if size_category != "unknown" else name
+    return {
+        "name": name,
+        "label": label,
+        "size_bytes": size_bytes,
+        "size_category": size_category,
+        "discovered": discovered,
+    }
+
+
+def parse_ollama_size(value: str, unit: str) -> int | None:
+    try:
+        number = float(value)
+    except ValueError:
+        return None
+    multipliers = {
+        "kb": 1024,
+        "mb": 1024**2,
+        "gb": 1024**3,
+        "tb": 1024**4,
+    }
+    multiplier = multipliers.get(unit.lower())
+    if multiplier is None:
+        return None
+    return int(number * multiplier)
+
+
+def model_size_category(size_bytes: int | None) -> str:
+    if size_bytes is None:
+        return "unknown"
+    gib = size_bytes / 1024**3
+    if gib >= 12:
+        return "large"
+    if gib >= 4:
+        return "medium"
+    return "small"
+
+
+def model_sort_key(model: dict[str, Any]) -> tuple[int, int, str]:
+    size = model.get("size_bytes")
+    return (0 if size is not None else 1, -(size or 0), model.get("name") or "")
 
 
 app = create_app()
