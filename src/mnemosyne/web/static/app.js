@@ -389,6 +389,7 @@ async function loadIngestionStatus() {
           `<div class="item">` +
           `<strong>${index === 0 ? "Current epoch: " : "Epoch: "}${html(epoch.ingestion_epoch)}</strong>` +
           `<div class="muted">${html(String(epoch.document_count))} document(s)` +
+          ` | ${html(String(epoch.dated_document_count || 0))} dated` +
           `${range ? ` | origin range ${html(range)}` : ""}` +
           `${epoch.last_updated_at ? ` | updated ${html(epoch.last_updated_at)}` : ""}</div>` +
           `</div>`

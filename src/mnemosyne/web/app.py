@@ -671,9 +671,26 @@ def list_ingestion_epochs(db: Any, limit: int = 8) -> list[dict[str, Any]]:
                 "$group": {
                     "_id": "$ingestion_epoch",
                     "document_count": {"$sum": 1},
+                    "dated_document_count": {
+                        "$sum": {
+                            "$cond": [
+                                {"$ne": ["$source.origin_date", None]},
+                                1,
+                                0,
+                            ]
+                        }
+                    },
                     "first_created_at": {"$min": "$created_at"},
                     "last_updated_at": {"$max": "$updated_at"},
-                    "earliest_origin_date": {"$min": "$source.origin_date"},
+                    "earliest_origin_date": {
+                        "$min": {
+                            "$cond": [
+                                {"$ne": ["$source.origin_date", None]},
+                                "$source.origin_date",
+                                "9999-12-31",
+                            ]
+                        }
+                    },
                     "latest_origin_date": {"$max": "$source.origin_date"},
                 }
             },
@@ -683,13 +700,17 @@ def list_ingestion_epochs(db: Any, limit: int = 8) -> list[dict[str, Any]]:
     )
     epochs = []
     for row in rows:
+        earliest_origin_date = row.get("earliest_origin_date")
+        if earliest_origin_date == "9999-12-31":
+            earliest_origin_date = None
         epochs.append(
             {
                 "ingestion_epoch": row.get("_id") or "unknown",
                 "document_count": row.get("document_count", 0),
+                "dated_document_count": row.get("dated_document_count", 0),
                 "first_created_at": serialize_web_value(row.get("first_created_at")),
                 "last_updated_at": serialize_web_value(row.get("last_updated_at")),
-                "earliest_origin_date": row.get("earliest_origin_date"),
+                "earliest_origin_date": earliest_origin_date,
                 "latest_origin_date": row.get("latest_origin_date"),
             }
         )

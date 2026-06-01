@@ -40,7 +40,14 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "mnemosyne.web.app.list_ingestion_epochs",
-        lambda _db, limit=8: [{"ingestion_epoch": "epoch1", "document_count": 2, "limit": limit}],
+        lambda _db, limit=8: [
+            {
+                "ingestion_epoch": "epoch1",
+                "document_count": 2,
+                "dated_document_count": 1,
+                "limit": limit,
+            }
+        ],
     )
     monkeypatch.setattr(
         "mnemosyne.web.app.list_process_runs",
@@ -54,7 +61,14 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json() == {
         "ok": True,
-        "epochs": [{"ingestion_epoch": "epoch1", "document_count": 2, "limit": 4}],
+        "epochs": [
+            {
+                "ingestion_epoch": "epoch1",
+                "document_count": 2,
+                "dated_document_count": 1,
+                "limit": 4,
+            }
+        ],
         "runs": [{"run_id": "run1", "session_id": "ingestion", "status": None, "limit": 4}],
     }
 

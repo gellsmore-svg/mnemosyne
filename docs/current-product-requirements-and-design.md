@@ -48,7 +48,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
 - Every ingestion job should produce an understandable activity log covering source analysis, semantic processing, repository actions, LLM activity, and system actions.
 - Current direct and queued ingestion now return a structured activity report plus a plain activity log; completed queue jobs retain that log, and the Ingestion tab shows the plain inbox-processing log first so operators do not have to read JSON for normal inspection.
 - The Ingestion tab shows staged source origin dates, origin-date evidence, and date-candidate counts so chronological corpus ordering can be inspected before processing.
-- The Ingestion tab shows recent ingestion epochs and recent ingestion process runs so the operator can see which epoch is current and whether ingestion workflows completed or blocked.
+- The Ingestion tab shows recent ingestion epochs, dated-document coverage, and recent ingestion process runs so the operator can see which epoch is current and whether ingestion workflows completed or blocked.
 - Chronological corpus ingestion must determine the earliest credible origin date by priority:
   1. explicit date inside document;
   2. date embedded in filename;
