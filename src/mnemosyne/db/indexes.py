@@ -172,6 +172,8 @@ def ensure_indexes(db: Database) -> None:
     db.output_ingestion_queue.create_index([("session_id", 1), ("created_at", -1)])
     db.output_ingestion_queue.create_index("exchange_id", unique=True)
     db.output_ingestion_queue.create_index("content_hash_sha256")
+    db.embedding_backfill_jobs.create_index([("status", 1), ("created_at", 1)])
+    db.embedding_backfill_jobs.create_index([("updated_at", -1)])
     db.sessions.create_index("session_id", unique=True)
     db.sessions.create_index("updated_at")
     db.active_documents.create_index([("session_id", 1), ("last_referenced_at", -1)])

@@ -244,6 +244,43 @@ def test_backfill_embeddings_endpoint_marks_process_blocked_on_batch_failure(mon
     assert updates[0]["exception"]["details"]["error_count"] == 2
 
 
+def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.create_embedding_backfill_job",
+        lambda _db, **kwargs: {"job_id": "job1", **kwargs},
+    )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_embedding_backfill_jobs",
+        lambda _db, status=None, limit=10: [{"job_id": "job1", "status": status, "limit": limit}],
+    )
+    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", lambda _runtime: "embedder")
+    monkeypatch.setattr(
+        "mnemosyne.web.app.process_next_embedding_backfill_job",
+        lambda _db, embedder: {"ok": True, "status": "completed", "embedder": embedder},
+    )
+
+    created = client.post(
+        "/api/embedding-backfill-jobs",
+        json={"limit": 12, "label": "target", "document_id": "doc1", "force": True},
+    )
+    listed = client.get("/api/embedding-backfill-jobs", params={"status": "pending", "limit": 3})
+    processed = client.post("/api/process-embedding-backfill-job")
+
+    assert created.status_code == 200
+    assert created.json()["job"] == {
+        "job_id": "job1",
+        "batch_limit": 12,
+        "label": "target",
+        "document_id": "doc1",
+        "force": True,
+        "created_by": "web",
+    }
+    assert listed.json()["jobs"] == [{"job_id": "job1", "status": "pending", "limit": 3}]
+    assert processed.json() == {"ok": True, "status": "completed", "embedder": "embedder"}
+
+
 def test_list_ingestion_epochs_reports_dated_document_coverage() -> None:
     db = SimpleEpochDb(
         [

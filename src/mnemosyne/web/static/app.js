@@ -673,6 +673,55 @@ async function runEmbeddingBackfill() {
   }
 }
 
+function embeddingBackfillPayload() {
+  return {
+    limit: Number($("embeddingBackfillLimit").value || 50),
+    label: $("embeddingBackfillLabel").value.trim() || null,
+    document_id: $("embeddingBackfillDocumentId").value.trim() || null,
+    force: $("embeddingBackfillForce").checked,
+  };
+}
+
+async function queueEmbeddingBackfillJob() {
+  $("embeddingBackfillStatus").textContent = "Embedding backfill: queueing job";
+  const data = await api("/api/embedding-backfill-jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(embeddingBackfillPayload()),
+  });
+  $("embeddingBackfillStatus").textContent = `Embedding backfill: queued ${data.job.job_id}`;
+  $("embeddingBackfillResult").textContent = JSON.stringify(data.job, null, 2);
+  await loadEmbeddingBackfillJobs();
+}
+
+async function processEmbeddingBackfillJob() {
+  $("embeddingBackfillStatus").textContent = "Embedding backfill: processing next queued batch";
+  const data = await api("/api/process-embedding-backfill-job", { method: "POST" });
+  $("embeddingBackfillStatus").textContent = data.status === "idle"
+    ? "Embedding backfill: no pending jobs"
+    : `Embedding backfill: job ${data.job_id} is ${data.status}`;
+  $("embeddingBackfillResult").textContent = data.result
+    ? embeddingBackfillSummary(data.result)
+    : JSON.stringify(data, null, 2);
+  await Promise.all([loadEmbeddingBackfillJobs(), loadIngestionStatus()]);
+}
+
+async function loadEmbeddingBackfillJobs() {
+  const data = await api("/api/embedding-backfill-jobs?limit=6");
+  $("embeddingBackfillJobs").replaceChildren(
+    ...data.jobs.map((job) =>
+      item(
+        `<strong>${html(job.status)}</strong> <span class="muted">${html(job.job_id)}</span>` +
+        `<div class="muted">batch ${html(String(job.batch_limit))}` +
+        ` | ${html(String(job.updated_count))} updated` +
+        ` | ${html(String(job.error_count))} error(s)` +
+        ` | label ${html(text(job.label))}` +
+        ` | force ${html(String(job.force))}</div>`
+      )
+    )
+  );
+}
+
 function embeddingBackfillSummary(data) {
   const lines = [
     `Status: ${data.ok ? "completed" : "needs attention"}`,
@@ -742,6 +791,7 @@ async function refresh() {
     loadQueue(),
     loadIngestionStatus(),
     loadJobs(),
+    loadEmbeddingBackfillJobs(),
     loadSemanticCandidates(),
     searchNodes(),
   ]);
@@ -756,6 +806,8 @@ $("uploadSource").addEventListener("click", uploadSourceFiles);
 $("browseIngest").addEventListener("click", browseIngestFolder);
 $("processInbox").addEventListener("click", processInbox);
 $("runEmbeddingBackfill").addEventListener("click", runEmbeddingBackfill);
+$("queueEmbeddingBackfill").addEventListener("click", queueEmbeddingBackfillJob);
+$("processEmbeddingBackfillJob").addEventListener("click", processEmbeddingBackfillJob);
 $("loadIngestionStatus").addEventListener("click", loadIngestionStatus);
 $("loadHistory").addEventListener("click", loadHistory);
 $("loadJobs").addEventListener("click", loadJobs);

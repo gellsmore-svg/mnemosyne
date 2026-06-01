@@ -38,6 +38,11 @@ from mnemosyne.db.repositories import (
 )
 from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
 from mnemosyne.ingestion.dates import analyze_source_dates
+from mnemosyne.ingestion.embedding_backfill import (
+    create_embedding_backfill_job,
+    list_embedding_backfill_jobs,
+    process_next_embedding_backfill_job,
+)
 from mnemosyne.ingestion.files import move_request_file, sha256_file
 from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
 from mnemosyne.ingestion.worker import discover_sources, process_next
@@ -471,6 +476,31 @@ def create_app() -> FastAPI:
             "process_run_id": process_run["run_id"],
             "process_status": process_status,
         }
+
+    @app.get("/api/embedding-backfill-jobs")
+    def embedding_backfill_jobs(limit: int = 10, status: str | None = None) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "jobs": list_embedding_backfill_jobs(db, status=status, limit=limit),
+        }
+
+    @app.post("/api/embedding-backfill-jobs")
+    def create_embedding_backfill(request: BackfillEmbeddingsRequest) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "job": create_embedding_backfill_job(
+                db,
+                batch_limit=request.limit,
+                label=request.label,
+                document_id=request.document_id,
+                force=request.force,
+                created_by="web",
+            ),
+        }
+
+    @app.post("/api/process-embedding-backfill-job")
+    def process_embedding_backfill_job() -> dict[str, Any]:
+        return process_next_embedding_backfill_job(db, embedding_adapter(config.runtime))
 
     @app.get("/api/jobs")
     def jobs(

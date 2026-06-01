@@ -939,6 +939,8 @@ def backfill_node_embeddings(
     label_filter = str(label).strip() if label else None
     if label_filter:
         query["labels"] = label_filter
+    if not force:
+        query["embedding.vector"] = {"$exists": False}
 
     matched = 0
     scanned = 0
@@ -998,6 +1000,7 @@ def backfill_node_embeddings(
             "document_id": str(document_object_id) if document_object_id else None,
             "force": force,
             "status": "active",
+            "missing_embedding_only": not force,
         },
     }
 

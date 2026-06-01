@@ -238,10 +238,10 @@ def test_backfill_node_embeddings_updates_missing_embeddings_only() -> None:
     )
 
     assert result["ok"] is True
-    assert result["scanned_count"] == 2
-    assert result["matched_count"] == 2
+    assert result["scanned_count"] == 1
+    assert result["matched_count"] == 1
     assert result["updated_count"] == 1
-    assert result["skipped_count"] == 1
+    assert result["skipped_count"] == 0
     assert result["adapter"] == "fake_embedding"
     assert result["model"] == "fake-model"
     assert result["dimensions"] == 2
@@ -1101,13 +1101,13 @@ class FakeDb:
 
 def matches(row, query):
     for key, expected in query.items():
+        actual = nested_get(row, key)
         if isinstance(expected, dict):
-            if "$exists" in expected and (key in row) is not expected["$exists"]:
+            if "$exists" in expected and (actual is not None) is not expected["$exists"]:
                 return False
-            if "$ne" in expected and row.get(key) == expected["$ne"]:
+            if "$ne" in expected and actual == expected["$ne"]:
                 return False
             continue
-        actual = row.get(key)
         if isinstance(actual, list):
             if expected not in actual:
                 return False
