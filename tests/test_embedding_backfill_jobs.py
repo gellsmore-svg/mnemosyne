@@ -43,6 +43,7 @@ def test_process_next_embedding_backfill_job_keeps_full_batch_pending(monkeypatc
             "updated_count": 2,
             "skipped_count": 0,
             "error_count": 0,
+            "last_node_id": "node2",
         },
     )
 
@@ -53,6 +54,7 @@ def test_process_next_embedding_backfill_job_keeps_full_batch_pending(monkeypatc
     assert row["status"] == "pending"
     assert row["batch_count"] == 1
     assert row["updated_count"] == 2
+    assert row["last_node_id"] == "node2"
 
 
 def test_process_next_embedding_backfill_job_completes_partial_batch(monkeypatch) -> None:
@@ -77,7 +79,7 @@ def test_process_next_embedding_backfill_job_completes_partial_batch(monkeypatch
     assert db.embedding_backfill_jobs.rows[0]["status"] == "completed"
 
 
-def test_process_next_embedding_backfill_job_completes_forced_batch(monkeypatch) -> None:
+def test_process_next_embedding_backfill_job_keeps_forced_full_batch_pending(monkeypatch) -> None:
     db = FakeDb()
     create_embedding_backfill_job(db, batch_limit=2, force=True)
 
@@ -90,13 +92,15 @@ def test_process_next_embedding_backfill_job_completes_forced_batch(monkeypatch)
             "updated_count": 2,
             "skipped_count": 0,
             "error_count": 0,
+            "last_node_id": "node2",
         },
     )
 
     result = process_next_embedding_backfill_job(db, embedder="embedder")
 
-    assert result["status"] == "completed"
-    assert db.embedding_backfill_jobs.rows[0]["status"] == "completed"
+    assert result["status"] == "pending"
+    assert db.embedding_backfill_jobs.rows[0]["status"] == "pending"
+    assert db.embedding_backfill_jobs.rows[0]["last_node_id"] == "node2"
 
 
 def test_process_next_embedding_backfill_job_blocks_on_failure(monkeypatch) -> None:
@@ -123,6 +127,25 @@ def test_process_next_embedding_backfill_job_blocks_on_failure(monkeypatch) -> N
     assert row["status"] == "blocked"
     assert row["reason"] == "all_embedding_updates_failed"
     assert row["error_count"] == 2
+
+
+def test_process_next_embedding_backfill_job_blocks_on_exception(monkeypatch) -> None:
+    db = FakeDb()
+    create_embedding_backfill_job(db, batch_limit=5)
+
+    def raise_error(*_args, **_kwargs):
+        raise RuntimeError("adapter offline")
+
+    monkeypatch.setattr(embedding_backfill, "backfill_node_embeddings", raise_error)
+
+    result = process_next_embedding_backfill_job(db, embedder="embedder")
+
+    assert result["ok"] is False
+    assert result["status"] == "blocked"
+    row = db.embedding_backfill_jobs.rows[0]
+    assert row["status"] == "blocked"
+    assert row["reason"] == "embedding_backfill_exception"
+    assert row["error_count"] == 1
 
 
 def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:

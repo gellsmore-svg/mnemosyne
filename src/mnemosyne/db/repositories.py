@@ -926,14 +926,20 @@ def backfill_node_embeddings(
     label: str | None = None,
     document_id: str | None = None,
     force: bool = False,
+    after_node_id: str | None = None,
     max_errors: int = 5,
 ) -> dict[str, Any]:
     bounded_limit = bounded_candidate_limit(limit, maximum=1000)
     document_object_id = parse_object_id(document_id) if document_id else None
     if document_id and document_object_id is None:
         return {"ok": False, "reason": "invalid_document_id", "document_id": document_id}
+    after_object_id = parse_object_id(after_node_id) if after_node_id else None
+    if after_node_id and after_object_id is None:
+        return {"ok": False, "reason": "invalid_after_node_id", "after_node_id": after_node_id}
 
     query: dict[str, Any] = {"status": {"$ne": "superseded"}}
+    if after_object_id is not None:
+        query["_id"] = {"$gt": after_object_id}
     if document_object_id is not None:
         query["document_id"] = document_object_id
     label_filter = str(label).strip() if label else None
@@ -950,12 +956,15 @@ def backfill_node_embeddings(
     errors: list[dict[str, Any]] = []
     now = datetime.now(timezone.utc)
     last_dimensions = getattr(embedder, "dimensions", None)
+    last_node_id = None
 
-    for node in db.nodes.find(query).limit(bounded_limit):
+    for node in db.nodes.find(query).sort("_id", 1).limit(bounded_limit):
         scanned += 1
         matched += 1
-        if not force and node.get("embedding"):
-            last_dimensions = node["embedding"].get("dimensions") or last_dimensions
+        last_node_id = str(node.get("_id"))
+        existing_embedding = node.get("embedding") or {}
+        if not force and existing_embedding.get("vector"):
+            last_dimensions = existing_embedding.get("dimensions") or last_dimensions
             skipped += 1
             continue
         try:
@@ -991,6 +1000,7 @@ def backfill_node_embeddings(
         "error_count": error_count,
         "error_sample_limit": max_errors,
         "errors": errors,
+        "last_node_id": last_node_id,
         "adapter": getattr(embedder, "name", None),
         "model": getattr(embedder, "model", None),
         "dimensions": last_dimensions,
@@ -998,6 +1008,7 @@ def backfill_node_embeddings(
         "filters": {
             "label": label_filter,
             "document_id": str(document_object_id) if document_object_id else None,
+            "after_node_id": str(after_object_id) if after_object_id else None,
             "force": force,
             "status": "active",
             "missing_embedding_only": not force,

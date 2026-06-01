@@ -78,6 +78,29 @@ class SimpleEmbeddingCollection:
     def count_documents(self, query):
         return len([row for row in self.rows if simple_match(row, query)])
 
+    def aggregate(self, pipeline):
+        match_query = pipeline[0]["$match"]
+        grouped = {}
+        for row in self.rows:
+            if not simple_match(row, match_query):
+                continue
+            embedding = row.get("embedding") or {}
+            key = (
+                embedding.get("adapter"),
+                embedding.get("model"),
+                embedding.get("dimensions"),
+            )
+            grouped[key] = grouped.get(key, 0) + 1
+        rows = [
+            {
+                "_id": {"adapter": key[0], "model": key[1], "dimensions": key[2]},
+                "count": count,
+            }
+            for key, count in grouped.items()
+        ]
+        rows.sort(key=lambda row: row["count"], reverse=True)
+        return rows[: pipeline[-1]["$limit"]]
+
 
 def test_health_endpoint() -> None:
     client = TestClient(app)
@@ -127,6 +150,7 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             "embedded_active_nodes": 3,
             "missing_active_embeddings": 1,
             "embedded_percent": 75.0,
+            "profiles": [],
             "label": label,
         },
     )
@@ -149,6 +173,7 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             "embedded_active_nodes": 3,
             "missing_active_embeddings": 1,
             "embedded_percent": 75.0,
+            "profiles": [],
             "label": None,
         },
         "runs": [{"run_id": "run1", "session_id": "ingestion", "status": None, "limit": 4}],
@@ -246,6 +271,7 @@ def test_backfill_embeddings_endpoint_marks_process_blocked_on_batch_failure(mon
 
 def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
     client = TestClient(app)
+    updates = []
 
     monkeypatch.setattr(
         "mnemosyne.web.app.create_embedding_backfill_job",
@@ -256,6 +282,14 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
         lambda _db, status=None, limit=10: [{"job_id": "job1", "status": status, "limit": limit}],
     )
     monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", lambda _runtime: "embedder")
+    monkeypatch.setattr(
+        "mnemosyne.web.app.create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1", **kwargs},
+    )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
     monkeypatch.setattr(
         "mnemosyne.web.app.process_next_embedding_backfill_job",
         lambda _db, embedder: {"ok": True, "status": "completed", "embedder": embedder},
@@ -278,7 +312,15 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
         "created_by": "web",
     }
     assert listed.json()["jobs"] == [{"job_id": "job1", "status": "pending", "limit": 3}]
-    assert processed.json() == {"ok": True, "status": "completed", "embedder": "embedder"}
+    assert processed.json() == {
+        "ok": True,
+        "status": "completed",
+        "embedder": "embedder",
+        "process_run_id": "run1",
+        "process_status": "completed",
+    }
+    assert updates[0]["status"] == "completed"
+    assert updates[0]["current_step_id"] == "embedding_backfill_job_batch_processed"
 
 
 def test_list_ingestion_epochs_reports_dated_document_coverage() -> None:
@@ -323,7 +365,16 @@ def test_embedding_coverage_reports_active_embedding_readiness() -> None:
         [
             {"status": "active", "labels": ["target"], "embedding": {"vector": [1.0]}},
             {"status": "active", "labels": ["target"]},
-            {"status": "active", "labels": ["other"], "embedding": {"vector": [1.0]}},
+            {
+                "status": "active",
+                "labels": ["other"],
+                "embedding": {
+                    "adapter": "ollama_powershell_embedding",
+                    "model": "nomic-embed-text:latest",
+                    "dimensions": 768,
+                    "vector": [1.0],
+                },
+            },
             {"status": "superseded", "labels": ["target"], "embedding": {"vector": [1.0]}},
         ]
     )
@@ -336,6 +387,22 @@ def test_embedding_coverage_reports_active_embedding_readiness() -> None:
         "embedded_active_nodes": 2,
         "missing_active_embeddings": 1,
         "embedded_percent": 66.7,
+        "profiles": [
+            {
+                "adapter": None,
+                "model": None,
+                "dimensions": None,
+                "count": 1,
+                "is_mock": False,
+            },
+            {
+                "adapter": "ollama_powershell_embedding",
+                "model": "nomic-embed-text:latest",
+                "dimensions": 768,
+                "count": 1,
+                "is_mock": False,
+            },
+        ],
         "label": None,
     }
     assert target_coverage == {
@@ -343,6 +410,15 @@ def test_embedding_coverage_reports_active_embedding_readiness() -> None:
         "embedded_active_nodes": 1,
         "missing_active_embeddings": 1,
         "embedded_percent": 50.0,
+        "profiles": [
+            {
+                "adapter": None,
+                "model": None,
+                "dimensions": None,
+                "count": 1,
+                "is_mock": False,
+            }
+        ],
         "label": "target",
     }
 

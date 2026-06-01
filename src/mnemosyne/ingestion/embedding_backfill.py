@@ -38,6 +38,7 @@ def create_embedding_backfill_job(
         "updated_count": 0,
         "skipped_count": 0,
         "error_count": 0,
+        "last_node_id": None,
         "last_result": None,
         "reason": None,
         "created_at": now,
@@ -79,19 +80,40 @@ def process_next_embedding_backfill_job(db: Database, embedder: Any) -> dict[str
     if not job:
         return {"ok": True, "status": "idle"}
 
-    result = backfill_node_embeddings(
-        db,
-        embedder,
-        limit=job.get("batch_limit") or 100,
-        label=job.get("label"),
-        document_id=job.get("document_id"),
-        force=bool(job.get("force")),
-    )
+    try:
+        result = backfill_node_embeddings(
+            db,
+            embedder,
+            limit=job.get("batch_limit") or 100,
+            label=job.get("label"),
+            document_id=job.get("document_id"),
+            force=bool(job.get("force")),
+            after_node_id=job.get("last_node_id"),
+        )
+    except Exception as error:
+        result = {
+            "ok": False,
+            "reason": "embedding_backfill_exception",
+            "error_type": error.__class__.__name__,
+            "error": str(error),
+            "matched_count": 0,
+            "updated_count": 0,
+            "skipped_count": 0,
+            "error_count": 1,
+        }
+        block_embedding_backfill_job(db, job, result)
+        return {
+            "ok": False,
+            "status": "blocked",
+            "job_id": str(job["_id"]),
+            "result": result,
+        }
     status = next_embedding_backfill_status(job, result)
     update: dict[str, Any] = {
         "$set": {
             "status": status,
             "last_result": result,
+            "last_node_id": result.get("last_node_id") or job.get("last_node_id"),
             "reason": result.get("reason"),
             "updated_at": utc_now(),
         },
@@ -114,11 +136,31 @@ def process_next_embedding_backfill_job(db: Database, embedder: Any) -> dict[str
 def next_embedding_backfill_status(job: dict[str, Any], result: dict[str, Any]) -> str:
     if not result.get("ok"):
         return "blocked"
-    if job.get("force"):
-        return "completed"
     if int(result.get("matched_count") or 0) < int(job.get("batch_limit") or 100):
         return "completed"
     return "pending"
+
+
+def block_embedding_backfill_job(
+    db: Database,
+    job: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    db.embedding_backfill_jobs.update_one(
+        {"_id": job["_id"]},
+        {
+            "$set": {
+                "status": "blocked",
+                "last_result": result,
+                "reason": result.get("reason"),
+                "updated_at": utc_now(),
+            },
+            "$inc": {
+                "batch_count": 1,
+                "error_count": int(result.get("error_count") or 1),
+            },
+        },
+    )
 
 
 def serialize_embedding_backfill_job(row: dict[str, Any]) -> dict[str, Any]:
@@ -135,6 +177,7 @@ def serialize_embedding_backfill_job(row: dict[str, Any]) -> dict[str, Any]:
         "updated_count": row.get("updated_count", 0),
         "skipped_count": row.get("skipped_count", 0),
         "error_count": row.get("error_count", 0),
+        "last_node_id": row.get("last_node_id"),
         "reason": row.get("reason"),
         "last_result": row.get("last_result"),
         "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,

@@ -242,6 +242,7 @@ def test_backfill_node_embeddings_updates_missing_embeddings_only() -> None:
     assert result["matched_count"] == 1
     assert result["updated_count"] == 1
     assert result["skipped_count"] == 0
+    assert result["last_node_id"] == str(missing_id)
     assert result["adapter"] == "fake_embedding"
     assert result["model"] == "fake-model"
     assert result["dimensions"] == 2
@@ -297,6 +298,44 @@ def test_backfill_node_embeddings_collects_node_errors() -> None:
     assert result["error_sample_limit"] == 2
     assert [error["title"] for error in result["errors"]] == ["Bad 1", "Bad 2"]
     assert result["errors"][0]["error_type"] == "RuntimeError"
+
+
+def test_backfill_node_embeddings_continues_after_node_id() -> None:
+    db = FakeDb()
+    first_id = ObjectId()
+    second_id = ObjectId()
+    db.nodes.rows.extend(
+        [
+            {"_id": first_id, "title": "First", "text": "first", "status": "active"},
+            {"_id": second_id, "title": "Second", "text": "second", "status": "active"},
+        ]
+    )
+
+    result = backfill_node_embeddings(db, FakeEmbedder(), after_node_id=str(first_id), limit=10)
+
+    assert result["updated_count"] == 1
+    assert result["last_node_id"] == str(second_id)
+    assert "embedding" not in db.nodes.rows[0]
+    assert db.nodes.rows[1]["embedding"]["adapter"] == "fake_embedding"
+
+
+def test_backfill_node_embeddings_repairs_partial_embedding_without_vector() -> None:
+    db = FakeDb()
+    node_id = ObjectId()
+    db.nodes.rows.append(
+        {
+            "_id": node_id,
+            "title": "Partial",
+            "text": "partial",
+            "status": "active",
+            "embedding": {"adapter": "old"},
+        }
+    )
+
+    result = backfill_node_embeddings(db, FakeEmbedder())
+
+    assert result["updated_count"] == 1
+    assert db.nodes.rows[0]["embedding"]["vector"] == [1.0, 0.0]
 
 
 def test_rebuild_document_restores_previous_records_on_node_failure() -> None:
@@ -1106,6 +1145,8 @@ def matches(row, query):
             if "$exists" in expected and (actual is not None) is not expected["$exists"]:
                 return False
             if "$ne" in expected and actual == expected["$ne"]:
+                return False
+            if "$gt" in expected and not (actual is not None and actual > expected["$gt"]):
                 return False
             continue
         if isinstance(actual, list):

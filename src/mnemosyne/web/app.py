@@ -500,7 +500,41 @@ def create_app() -> FastAPI:
 
     @app.post("/api/process-embedding-backfill-job")
     def process_embedding_backfill_job() -> dict[str, Any]:
-        return process_next_embedding_backfill_job(db, embedding_adapter(config.runtime))
+        process_run = create_process_run(
+            db,
+            process_id="embedding_backfill_job_batch",
+            session_id="ingestion",
+            current_step_id="embedding_backfill_job_batch_running",
+            status="active",
+        )
+        result = process_next_embedding_backfill_job(db, embedding_adapter(config.runtime))
+        if result.get("status") == "idle":
+            update_process_run(
+                db,
+                process_run["run_id"],
+                status="completed",
+                current_step_id="embedding_backfill_job_idle",
+                completed_step_id="embedding_backfill_job_poll",
+            )
+            return {**result, "process_run_id": process_run["run_id"], "process_status": "completed"}
+        process_status = "blocked" if result.get("status") == "blocked" else "completed"
+        update_process_run(
+            db,
+            process_run["run_id"],
+            status=process_status,
+            current_step_id="embedding_backfill_job_batch_blocked"
+            if process_status == "blocked"
+            else "embedding_backfill_job_batch_processed",
+            completed_step_id="embedding_backfill_job_batch",
+            exception=None
+            if process_status == "completed"
+            else {
+                "reason": (result.get("result") or {}).get("reason") or "embedding_backfill_job_failed",
+                "proposal": "Inspect the embedding backfill job result, fix the adapter or scope, then queue a new job if appropriate.",
+                "details": result.get("result") or {},
+            },
+        )
+        return {**result, "process_run_id": process_run["run_id"], "process_status": process_status}
 
     @app.get("/api/jobs")
     def jobs(
@@ -880,8 +914,39 @@ def embedding_coverage(db: Any, label: str | None = None) -> dict[str, Any]:
         "embedded_active_nodes": embedded,
         "missing_active_embeddings": missing,
         "embedded_percent": percent,
+        "profiles": embedding_profile_counts(db, embedded_query),
         "label": label_filter,
     }
+
+
+def embedding_profile_counts(db: Any, embedded_query: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = db.nodes.aggregate(
+        [
+            {"$match": embedded_query},
+            {
+                "$group": {
+                    "_id": {
+                        "adapter": "$embedding.adapter",
+                        "model": "$embedding.model",
+                        "dimensions": "$embedding.dimensions",
+                    },
+                    "count": {"$sum": 1},
+                }
+            },
+            {"$sort": {"count": -1}},
+            {"$limit": 10},
+        ]
+    )
+    return [
+        {
+            "adapter": (row.get("_id") or {}).get("adapter"),
+            "model": (row.get("_id") or {}).get("model"),
+            "dimensions": (row.get("_id") or {}).get("dimensions"),
+            "count": row.get("count", 0),
+            "is_mock": str((row.get("_id") or {}).get("adapter") or "").startswith("mock"),
+        }
+        for row in rows
+    ]
 
 
 def serialize_web_value(value: Any) -> Any:

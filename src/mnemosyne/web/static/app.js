@@ -385,12 +385,19 @@ async function loadIngestionStatus() {
     return;
   }
   const embedding = data.embedding || {};
+  const profiles = Array.isArray(embedding.profiles) && embedding.profiles.length
+    ? embedding.profiles.slice(0, 3).map((profile) => {
+        const marker = profile.is_mock ? " mock" : "";
+        return `${profile.count} ${profile.model || "unknown model"} (${profile.dimensions || "unknown"} dims${marker})`;
+      }).join(" | ")
+    : "no embedded profiles";
   const embeddingItem =
     `<div class="item">` +
     `<strong>${html(String(embedding.embedded_percent ?? 0))}% of active nodes embedded</strong>` +
     `<div class="muted">${html(String(embedding.embedded_active_nodes ?? 0))} embedded` +
     ` | ${html(String(embedding.missing_active_embeddings ?? 0))} missing` +
     ` | ${html(String(embedding.total_active_nodes ?? 0))} active nodes</div>` +
+    `<div class="muted">Profiles: ${html(profiles)}</div>` +
     `</div>`;
   const epochItems = data.epochs.length
     ? data.epochs.map((epoch, index) => {
@@ -701,7 +708,7 @@ async function processEmbeddingBackfillJob() {
     ? "Embedding backfill: no pending jobs"
     : `Embedding backfill: job ${data.job_id} is ${data.status}`;
   $("embeddingBackfillResult").textContent = data.result
-    ? embeddingBackfillSummary(data.result)
+    ? embeddingBackfillSummary(data.result, data.status)
     : JSON.stringify(data, null, 2);
   await Promise.all([loadEmbeddingBackfillJobs(), loadIngestionStatus()]);
 }
@@ -722,9 +729,9 @@ async function loadEmbeddingBackfillJobs() {
   );
 }
 
-function embeddingBackfillSummary(data) {
+function embeddingBackfillSummary(data, jobStatus = null) {
   const lines = [
-    `Status: ${data.ok ? "completed" : "needs attention"}`,
+    `Status: ${jobStatus || (data.ok ? "completed" : "needs attention")}`,
     data.reason ? `Reason: ${data.reason}` : null,
     data.process_run_id ? `Process run: ${data.process_run_id} (${text(data.process_status)})` : null,
     `Adapter: ${text(data.adapter)} / ${text(data.model)} (${text(data.dimensions)} dims)`,
