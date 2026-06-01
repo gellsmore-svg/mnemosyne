@@ -114,6 +114,13 @@ Compiled context now renders the full stored node text, subject to the context b
 
 For a real local model call, use the default adapter or pass `--adapter ollama_cli` explicitly. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`. Ollama CLI prompts are sent through stdin, run with word wrapping disabled, and are bounded by `runtime.ollama_timeout_seconds`.
 
+Embeddings default to the deterministic `mock` adapter in committed config so tests and first runs are reproducible. For real local embeddings, install an Ollama embedding model such as `nomic-embed-text:latest`, set `runtime.embedding_adapter: ollama_http` when the Ollama HTTP API is reachable directly, or `runtime.embedding_adapter: ollama_powershell` when running Mnemosyne in WSL against Windows Ollama. Verify the selected adapter before ingestion:
+
+```bash
+.venv/bin/mnemosyne embedding-smoke "Taj Mahal test"
+.venv/bin/mnemosyne embedding-smoke "Taj Mahal test" --adapter ollama_powershell --model nomic-embed-text:latest
+```
+
 For the first memory-agent flow, pass `--retrieval-mode agentic` or choose `agentic` in the web UI. In this mode Mnemosyne calls the configured memory-agent model iteratively, feeding prior tool results back into the agent until it stops or reaches `retrieval.memory_agent_max_iterations`. The current allowed read-only tools are `search_nodes`, `compile_context`, and `list_documents`. The final answer call is separate and uses the final answer adapter/model. This is still a scaffold: it does not yet implement semantic graph traversal, source fallback, or the full compiled context corpus schema.
 
 ## Web UI
