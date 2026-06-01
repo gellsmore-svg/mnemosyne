@@ -674,7 +674,7 @@ def list_ingestion_epochs(db: Any, limit: int = 8) -> list[dict[str, Any]]:
                     "dated_document_count": {
                         "$sum": {
                             "$cond": [
-                                {"$ne": ["$source.origin_date", None]},
+                                {"$ne": [{"$ifNull": ["$source.origin_date", None]}, None]},
                                 1,
                                 0,
                             ]
@@ -685,7 +685,7 @@ def list_ingestion_epochs(db: Any, limit: int = 8) -> list[dict[str, Any]]:
                     "earliest_origin_date": {
                         "$min": {
                             "$cond": [
-                                {"$ne": ["$source.origin_date", None]},
+                                {"$ne": [{"$ifNull": ["$source.origin_date", None]}, None]},
                                 "$source.origin_date",
                                 "9999-12-31",
                             ]
