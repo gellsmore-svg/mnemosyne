@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from bson import ObjectId
 
 from mnemosyne.db.repositories import (
+    backfill_node_embeddings,
     backfill_structural_graph_edges,
     bounded_graph_group_limit,
     commit_ingestion,
@@ -17,6 +18,30 @@ from mnemosyne.db.repositories import (
     resolved_ingestion_epoch,
 )
 from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
+
+
+class FakeEmbedder:
+    name = "fake_embedding"
+    model = "fake-model"
+    dimensions = 2
+
+    def embed(self, text):
+        return {
+            "adapter": self.name,
+            "model": self.model,
+            "dimensions": self.dimensions,
+            "vector": [1.0, 0.0],
+            "source_text_hash": f"fake:{text}",
+        }
+
+
+class FailingEmbedder:
+    name = "failing_embedding"
+    model = "failing-model"
+    dimensions = None
+
+    def embed(self, _text):
+        raise RuntimeError("embedding failed")
 
 
 def test_commit_ingestion_rolls_back_partial_insert_on_node_failure() -> None:
@@ -166,6 +191,112 @@ def test_commit_ingestion_uses_supplied_embedder() -> None:
     commit_ingestion(db, result, embedder=MockEmbeddingAdapter(dimensions=8))
 
     assert len(db.nodes.rows[0]["embedding"]["vector"]) == 8
+
+
+def test_backfill_node_embeddings_updates_missing_embeddings_only() -> None:
+    db = FakeDb()
+    document_id = ObjectId()
+    missing_id = ObjectId()
+    existing_id = ObjectId()
+    superseded_id = ObjectId()
+    db.nodes.rows.extend(
+        [
+            {
+                "_id": missing_id,
+                "document_id": document_id,
+                "title": "Missing",
+                "text": "Missing embedding text",
+                "labels": ["target"],
+                "status": "active",
+            },
+            {
+                "_id": existing_id,
+                "document_id": document_id,
+                "title": "Existing",
+                "text": "Existing embedding text",
+                "labels": ["target"],
+                "status": "active",
+                "embedding": {"adapter": "old", "vector": [1]},
+            },
+            {
+                "_id": superseded_id,
+                "document_id": document_id,
+                "title": "Superseded",
+                "text": "Superseded text",
+                "labels": ["target"],
+                "status": "superseded",
+            },
+        ]
+    )
+
+    result = backfill_node_embeddings(
+        db,
+        FakeEmbedder(),
+        label="target",
+        document_id=str(document_id),
+        limit=10,
+    )
+
+    assert result["ok"] is True
+    assert result["scanned_count"] == 2
+    assert result["matched_count"] == 2
+    assert result["updated_count"] == 1
+    assert result["skipped_count"] == 1
+    assert result["adapter"] == "fake_embedding"
+    assert result["model"] == "fake-model"
+    assert result["dimensions"] == 2
+    missing = next(row for row in db.nodes.rows if row["_id"] == missing_id)
+    existing = next(row for row in db.nodes.rows if row["_id"] == existing_id)
+    superseded = next(row for row in db.nodes.rows if row["_id"] == superseded_id)
+    assert missing["embedding"]["adapter"] == "fake_embedding"
+    assert existing["embedding"]["adapter"] == "old"
+    assert "embedding" not in superseded
+
+
+def test_backfill_node_embeddings_force_replaces_existing_embeddings() -> None:
+    db = FakeDb()
+    node_id = ObjectId()
+    db.nodes.rows.append(
+        {
+            "_id": node_id,
+            "document_id": ObjectId(),
+            "title": "Existing",
+            "text": "Existing embedding text",
+            "labels": ["target"],
+            "status": "active",
+            "embedding": {"adapter": "old", "vector": [1]},
+        }
+    )
+
+    result = backfill_node_embeddings(db, FakeEmbedder(), label="target", force=True)
+
+    assert result["updated_count"] == 1
+    assert db.nodes.rows[0]["embedding"]["adapter"] == "fake_embedding"
+
+
+def test_backfill_node_embeddings_collects_node_errors() -> None:
+    db = FakeDb()
+    for title in ("Bad 1", "Bad 2", "Bad 3"):
+        db.nodes.rows.append(
+            {
+                "_id": ObjectId(),
+                "document_id": ObjectId(),
+                "title": title,
+                "text": "bad",
+                "status": "active",
+            }
+        )
+
+    result = backfill_node_embeddings(db, FailingEmbedder(), max_errors=2)
+
+    assert result["ok"] is False
+    assert result["reason"] == "all_embedding_updates_failed"
+    assert result["updated_count"] == 0
+    assert result["skipped_count"] == 3
+    assert result["error_count"] == 3
+    assert result["error_sample_limit"] == 2
+    assert [error["title"] for error in result["errors"]] == ["Bad 1", "Bad 2"]
+    assert result["errors"][0]["error_type"] == "RuntimeError"
 
 
 def test_rebuild_document_restores_previous_records_on_node_failure() -> None:
@@ -976,7 +1107,12 @@ def matches(row, query):
             if "$ne" in expected and row.get(key) == expected["$ne"]:
                 return False
             continue
-        if row.get(key) != expected:
+        actual = row.get(key)
+        if isinstance(actual, list):
+            if expected not in actual:
+                return False
+            continue
+        if actual != expected:
             return False
     return True
 

@@ -28,6 +28,7 @@ from mnemosyne.db.governance import (
 from mnemosyne.db.indexes import ensure_indexes
 from mnemosyne.db.repositories import (
     DuplicateSourceError,
+    backfill_node_embeddings,
     backfill_schema_metadata,
     backfill_structural_graph_edges,
     commit_ingestion,
@@ -318,6 +319,11 @@ def main() -> None:
     graph_status.add_argument("--limit", type=int, default=10)
     structural_edges = subcommands.add_parser("backfill-structural-graph-edges")
     structural_edges.add_argument("--limit", type=int, default=None)
+    embedding_backfill = subcommands.add_parser("backfill-embeddings")
+    embedding_backfill.add_argument("--limit", type=int, default=100)
+    embedding_backfill.add_argument("--label", default=None)
+    embedding_backfill.add_argument("--document-id", default=None)
+    embedding_backfill.add_argument("--force", action="store_true")
     subcommands.add_parser("enqueue-inbox")
     subcommands.add_parser("process-next")
     subcommands.add_parser("process-inbox")
@@ -680,6 +686,23 @@ def main() -> None:
         print(
             json.dumps(
                 {"ok": True, **backfill_structural_graph_edges(db, limit=args.limit)},
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "backfill-embeddings":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                backfill_node_embeddings(
+                    db,
+                    embedding_adapter(config.runtime),
+                    limit=args.limit,
+                    label=args.label,
+                    document_id=args.document_id,
+                    force=args.force,
+                ),
                 indent=2,
             )
         )

@@ -201,6 +201,50 @@ def test_cli_backfill_structural_graph_edges_command(monkeypatch, capsys) -> Non
     }
 
 
+def test_cli_backfill_embeddings_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "backfill-embeddings",
+            "--limit",
+            "7",
+            "--label",
+            "target",
+            "--document-id",
+            "doc1",
+            "--force",
+        ],
+    )
+    config = SimpleNamespace(mongo=SimpleNamespace(), runtime=SimpleNamespace())
+    embedder = SimpleNamespace(name="fake_embedding")
+    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("mnemosyne.cli.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr(
+        "mnemosyne.cli.backfill_node_embeddings",
+        lambda _db, used_embedder, **kwargs: {
+            "ok": True,
+            "embedder": used_embedder.name,
+            **kwargs,
+        },
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "embedder": "fake_embedding",
+        "limit": 7,
+        "label": "target",
+        "document_id": "doc1",
+        "force": True,
+    }
+
+
 def test_cli_graph_status_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(sys, "argv", ["mnemosyne", "graph-status", "--limit", "3"])
     monkeypatch.setattr(

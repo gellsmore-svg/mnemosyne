@@ -918,6 +918,90 @@ def summarize_node_text(text: str, limit: int = 500) -> str:
     return " ".join(text.split())[:limit]
 
 
+def backfill_node_embeddings(
+    db: Database,
+    embedder: Any,
+    *,
+    limit: int = 100,
+    label: str | None = None,
+    document_id: str | None = None,
+    force: bool = False,
+    max_errors: int = 5,
+) -> dict[str, Any]:
+    bounded_limit = bounded_candidate_limit(limit, maximum=1000)
+    document_object_id = parse_object_id(document_id) if document_id else None
+    if document_id and document_object_id is None:
+        return {"ok": False, "reason": "invalid_document_id", "document_id": document_id}
+
+    query: dict[str, Any] = {"status": {"$ne": "superseded"}}
+    if document_object_id is not None:
+        query["document_id"] = document_object_id
+    label_filter = str(label).strip() if label else None
+    if label_filter:
+        query["labels"] = label_filter
+
+    matched = 0
+    scanned = 0
+    updated = 0
+    skipped = 0
+    error_count = 0
+    errors: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
+    last_dimensions = getattr(embedder, "dimensions", None)
+
+    for node in db.nodes.find(query).limit(bounded_limit):
+        scanned += 1
+        matched += 1
+        if not force and node.get("embedding"):
+            last_dimensions = node["embedding"].get("dimensions") or last_dimensions
+            skipped += 1
+            continue
+        try:
+            embedding = embedder.embed(node.get("text") or "")
+        except Exception as error:
+            skipped += 1
+            error_count += 1
+            if len(errors) < max_errors:
+                errors.append(
+                    {
+                        "node_id": str(node.get("_id")),
+                        "title": node.get("title"),
+                        "error_type": error.__class__.__name__,
+                        "error": str(error),
+                    }
+                )
+            continue
+        db.nodes.update_one(
+            {"_id": node["_id"]},
+            {"$set": {"embedding": embedding, "updated_at": now}},
+        )
+        updated += 1
+        last_dimensions = embedding.get("dimensions")
+
+    all_attempted_updates_failed = matched > 0 and updated == 0 and error_count == matched
+    return {
+        "ok": not all_attempted_updates_failed,
+        **({"reason": "all_embedding_updates_failed"} if all_attempted_updates_failed else {}),
+        "scanned_count": scanned,
+        "matched_count": matched,
+        "updated_count": updated,
+        "skipped_count": skipped,
+        "error_count": error_count,
+        "error_sample_limit": max_errors,
+        "errors": errors,
+        "adapter": getattr(embedder, "name", None),
+        "model": getattr(embedder, "model", None),
+        "dimensions": last_dimensions,
+        "limit": bounded_limit,
+        "filters": {
+            "label": label_filter,
+            "document_id": str(document_object_id) if document_object_id else None,
+            "force": force,
+            "status": "active",
+        },
+    }
+
+
 def backfill_schema_metadata(db: Database) -> dict[str, int]:
     document_result = db.documents.update_many(
         {"schema_version": {"$exists": False}},
