@@ -6,6 +6,7 @@ from pathlib import Path
 
 from bson import ObjectId
 
+from mnemosyne.adapters.embedding import embedding_adapter
 from mnemosyne.adapters.mock import MockIngestionAdapter
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
@@ -165,7 +166,7 @@ def ingest_source_path(
     result.source.checksum_sha256 = checksum
     result.source.archive_path = str(archived_path)
     try:
-        inserted = commit_ingestion(db, result)
+        inserted = commit_ingestion(db, result, embedder=embedding_adapter(config.runtime))
     except DuplicateSourceError as error:
         rejected = {
             "ok": False,

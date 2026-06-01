@@ -11,6 +11,8 @@ paths:
 runtime:
   model_adapter: mock
   answer_adapter: ollama_cli
+  embedding_adapter: mock
+  embedding_dimensions: 16
   memory_agent_adapter:
   retrieval_mode: direct
   ollama_model: gemma3:1b

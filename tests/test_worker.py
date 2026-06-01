@@ -5,6 +5,8 @@ from bson import ObjectId
 from mnemosyne.config import AppConfig
 from mnemosyne.ingestion.worker import discover_sources, process_next
 
+from test_repositories import FakeDb as RepoFakeDb
+
 
 def test_discover_sources_only_returns_supported_files(tmp_path: Path) -> None:
     markdown = tmp_path / "a.md"
@@ -44,7 +46,7 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
     monkeypatch.setattr(
         worker,
         "commit_ingestion",
-        lambda _db, result: {"document_id": "doc1", "tree_id": "tree1", "node_ids": ["node1"]},
+        lambda _db, result, embedder=None: {"document_id": "doc1", "tree_id": "tree1", "node_ids": ["node1"]},
     )
     monkeypatch.setattr(
         worker,
@@ -121,6 +123,44 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
     assert updates[0]["status"] == "blocked"
     assert updates[0]["current_step_id"] == "source_missing"
     assert updates[0]["exception"]["reason"] == "source_missing"
+
+
+def test_process_next_persists_embeddings_through_worker_ingestion(monkeypatch, tmp_path: Path) -> None:
+    import mnemosyne.ingestion.worker as worker
+
+    source = tmp_path / "source.md"
+    source.write_text("# Source\n\nFirst paragraph.\n\nSecond paragraph.", encoding="utf-8")
+    db = RepoFakeDb()
+
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending",
+        lambda _db: {
+            "_id": ObjectId(),
+            "path": str(source),
+            "checksum_sha256": "worker-checksum",
+            "attempts": 0,
+        },
+    )
+    monkeypatch.setattr(worker, "archive_source", lambda path, archive_dir, checksum: tmp_path / "archive.md")
+    monkeypatch.setattr(worker, "move_request_file", lambda path, destination, checksum: tmp_path / "processed.md")
+    monkeypatch.setattr(worker, "complete_job", lambda _db, _job_id, inserted: None)
+    monkeypatch.setattr(worker, "create_process_run", lambda _db, **kwargs: {"run_id": "run1", **kwargs})
+    monkeypatch.setattr(worker, "update_process_run", lambda _db, run_id, **kwargs: None)
+
+    result = process_next(db, AppConfig())
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert result["embedded_node_count"] == len(db.nodes.rows)
+    assert db.nodes.rows, "expected the worker path to insert nodes"
+    for row in db.nodes.rows:
+        embedding = row["embedding"]
+        assert embedding["adapter"] == "mock_embedding"
+        assert embedding["dimensions"] == 16
+        assert len(embedding["vector"]) == 16
+        assert embedding["source_text_hash"].startswith("sha256:")
+    assert "node(s) embedded" in result["activity_log"]
 
 
 class FakeDb:

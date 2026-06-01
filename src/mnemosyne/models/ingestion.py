@@ -100,6 +100,7 @@ class NodeRecord(BaseModel):
     ingestion_epoch: str
     status: str = "active"
     provenance: Provenance
+    embedding: dict[str, Any] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime

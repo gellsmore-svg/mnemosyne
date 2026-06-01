@@ -70,6 +70,9 @@ def ingestion_activity_report(
             "node_count": stored_node_count,
             "edge_count": inserted.get("edge_count"),
             "ingestion_epoch": inserted.get("ingestion_epoch") or (result.ingestion_epoch if result else None),
+            "embedded_node_count": inserted.get("embedded_node_count"),
+            "embedding_model": inserted.get("embedding_model"),
+            "embedding_dimensions": inserted.get("embedding_dimensions"),
         },
         "outcome": {
             "reason": reason,
@@ -126,6 +129,13 @@ def ingestion_activity_log(report: dict[str, Any]) -> str:
             "- Repository write: document "
             f"{repo['document_id']} with {repo.get('node_count', 0)} node(s)"
             f" in epoch {repo.get('ingestion_epoch') or 'unknown'}."
+        )
+    if repo.get("embedded_node_count"):
+        lines.append(
+            "- Embeddings: "
+            f"{repo['embedded_node_count']} node(s) embedded with "
+            f"{repo.get('embedding_model') or 'unknown model'} "
+            f"({repo.get('embedding_dimensions') or 0} dims)."
         )
     if source.get("archive_path"):
         lines.append(f"- Archive: {source['archive_path']}.")

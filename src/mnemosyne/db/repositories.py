@@ -6,6 +6,7 @@ from typing import Any
 from bson import ObjectId
 from pymongo.database import Database
 
+from mnemosyne.adapters.embedding import MockEmbeddingAdapter, default_embedding_adapter
 from mnemosyne.models.ingestion import (
     DEFAULT_ENDORSEMENT_LABEL,
     SCHEMA_VERSION,
@@ -31,7 +32,11 @@ def find_duplicate_by_checksum(db: Database, checksum: str) -> dict | None:
     return db.documents.find_one({"source.checksum_sha256": checksum})
 
 
-def commit_ingestion(db: Database, result: IngestionResult) -> dict[str, Any]:
+def commit_ingestion(
+    db: Database,
+    result: IngestionResult,
+    embedder: MockEmbeddingAdapter | None = None,
+) -> dict[str, Any]:
     if result.source.checksum_sha256:
         existing = find_duplicate_by_checksum(db, result.source.checksum_sha256)
         if existing:
@@ -49,7 +54,9 @@ def commit_ingestion(db: Database, result: IngestionResult) -> dict[str, Any]:
     document_id = db.documents.insert_one(document).inserted_id
 
     try:
-        inserted = insert_tree_nodes(db, document_id, result, ingestion_epoch=ingestion_epoch)
+        inserted = insert_tree_nodes(
+            db, document_id, result, ingestion_epoch=ingestion_epoch, embedder=embedder
+        )
     except Exception:
         delete_graph_edges_for_document(db, document_id)
         db.nodes.delete_many({"document_id": document_id})
@@ -63,7 +70,12 @@ def commit_ingestion(db: Database, result: IngestionResult) -> dict[str, Any]:
     }
 
 
-def rebuild_document(db: Database, document_id: str, result: IngestionResult) -> dict[str, Any]:
+def rebuild_document(
+    db: Database,
+    document_id: str,
+    result: IngestionResult,
+    embedder: MockEmbeddingAdapter | None = None,
+) -> dict[str, Any]:
     object_id = ObjectId(document_id)
     existing = db.documents.find_one({"_id": object_id})
     if not existing:
@@ -92,7 +104,9 @@ def rebuild_document(db: Database, document_id: str, result: IngestionResult) ->
                 }
             },
         )
-        inserted = insert_tree_nodes(db, object_id, result, ingestion_epoch=ingestion_epoch)
+        inserted = insert_tree_nodes(
+            db, object_id, result, ingestion_epoch=ingestion_epoch, embedder=embedder
+        )
     except Exception:
         db.documents.replace_one({"_id": object_id}, existing)
         restore_collection_rows(db.trees, object_id, previous_trees)
@@ -152,8 +166,10 @@ def insert_tree_nodes(
     result: IngestionResult,
     *,
     ingestion_epoch: str | None = None,
+    embedder: MockEmbeddingAdapter | None = None,
 ) -> dict[str, Any]:
     ingestion_epoch = ingestion_epoch or resolved_ingestion_epoch(result)
+    embedder = embedder or default_embedding_adapter()
     tree = TreeRecord(
         document_id=document_id,
         label=result.tree_label,
@@ -166,9 +182,12 @@ def insert_tree_nodes(
 
     key_to_id: dict[str, object] = {}
     node_ids = []
+    embedded_node_count = 0
     for order, node in enumerate(result.nodes):
         endorsement_label = node.endorsement_label or DEFAULT_ENDORSEMENT_LABEL
         parent_id = key_to_id.get(node.parent_key) if node.parent_key else None
+        embedding = embedder.embed(node.text)
+        embedded_node_count += 1
         node_record = NodeRecord(
             document_id=document_id,
             tree_id=tree_id,
@@ -194,6 +213,7 @@ def insert_tree_nodes(
                 endorsement_label=endorsement_label,
                 adapter=result.adapter,
             ),
+            embedding=embedding,
             metadata=node.metadata,
             created_at=result.created_at,
             updated_at=result.created_at,
@@ -214,6 +234,10 @@ def insert_tree_nodes(
         "tree_id": str(tree_id),
         "node_ids": [str(node_id) for node_id in node_ids],
         "ingestion_epoch": ingestion_epoch,
+        "embedded_node_count": embedded_node_count,
+        "embedding_adapter": embedder.name,
+        "embedding_model": embedder.model,
+        "embedding_dimensions": embedder.dimensions,
         **edge_result,
     }
 

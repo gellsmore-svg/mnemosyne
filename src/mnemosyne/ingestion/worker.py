@@ -5,6 +5,7 @@ from typing import Any
 
 from pymongo.database import Database
 
+from mnemosyne.adapters.embedding import embedding_adapter
 from mnemosyne.adapters.mock import MockIngestionAdapter
 from mnemosyne.config import AppConfig
 from mnemosyne.db.governance import create_process_run, update_process_run
@@ -73,7 +74,7 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
         archived_path = archive_source(path, config.paths.archive, checksum)
         result.source.checksum_sha256 = checksum
         result.source.archive_path = str(archived_path)
-        inserted = commit_ingestion(db, result)
+        inserted = commit_ingestion(db, result, embedder=embedding_adapter(config.runtime))
     except DuplicateSourceError as error:
         dead_letter_path = move_request_file(path, config.paths.dead_letter / "duplicate", checksum)
         details = {

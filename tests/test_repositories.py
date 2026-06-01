@@ -119,6 +119,54 @@ def test_commit_ingestion_persists_source_origin_date_metadata() -> None:
     assert source["date_candidates"][0]["source"] == "explicit_content"
 
 
+def test_commit_ingestion_annotates_nodes_with_embedding_metadata() -> None:
+    db = FakeDb()
+    result = IngestionResult(
+        source=SourceRef(path="source.md", kind="markdown", checksum_sha256="checksum"),
+        title="Source",
+        summary="Summary",
+        nodes=[
+            IngestedNode(node_key="root", title="Root", text="Root text"),
+            IngestedNode(node_key="child", parent_key="root", title="Child", text="Child text"),
+        ],
+        created_at=datetime.now(timezone.utc),
+    )
+
+    inserted = commit_ingestion(db, result)
+
+    assert inserted["embedded_node_count"] == 2
+    assert inserted["embedding_adapter"] == "mock_embedding"
+    assert inserted["embedding_dimensions"] == 16
+    for row in db.nodes.rows:
+        embedding = row["embedding"]
+        assert embedding["adapter"] == "mock_embedding"
+        assert embedding["model"] == "mock-deterministic-v1"
+        assert embedding["dimensions"] == 16
+        assert len(embedding["vector"]) == 16
+        assert embedding["source_text_hash"].startswith("sha256:")
+    # Embeddings are deterministic from the node text, not the node identity.
+    root = next(row for row in db.nodes.rows if row["node_key"] == "root")
+    child = next(row for row in db.nodes.rows if row["node_key"] == "child")
+    assert root["embedding"]["vector"] != child["embedding"]["vector"]
+
+
+def test_commit_ingestion_uses_supplied_embedder() -> None:
+    from mnemosyne.adapters.embedding import MockEmbeddingAdapter
+
+    db = FakeDb()
+    result = IngestionResult(
+        source=SourceRef(path="source.md", kind="markdown", checksum_sha256="checksum"),
+        title="Source",
+        summary="Summary",
+        nodes=[IngestedNode(node_key="root", title="Root", text="Root text")],
+        created_at=datetime.now(timezone.utc),
+    )
+
+    commit_ingestion(db, result, embedder=MockEmbeddingAdapter(dimensions=8))
+
+    assert len(db.nodes.rows[0]["embedding"]["vector"]) == 8
+
+
 def test_rebuild_document_restores_previous_records_on_node_failure() -> None:
     document_id = ObjectId()
     tree_id = ObjectId()
