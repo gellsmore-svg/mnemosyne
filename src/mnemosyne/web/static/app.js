@@ -416,11 +416,30 @@ async function loadIngestionStatus() {
       })
     : [`<div class="item">No ingestion epochs recorded yet.</div>`];
   const runItems = data.runs.length
-    ? data.runs.map((run) =>
-        `<div class="item"><strong>${html(run.status)} · ${html(run.process_id)}</strong>` +
-        `<div>${html(run.current_step_id || "no current step")}</div>` +
-        `<div class="muted">${html(run.run_id)} | ${html(run.updated_at || "")}</div></div>`
-      )
+    ? data.runs.map((run) => {
+        const completed = Array.isArray(run.completed_steps) ? run.completed_steps : [];
+        const exceptions = Array.isArray(run.exceptions) ? run.exceptions : [];
+        const el = item(
+          `<strong>${html(run.status)} · ${html(run.process_id)}</strong>` +
+          `<div>${html(run.current_step_id || "no current step")}</div>` +
+          `<div class="muted">${html(run.run_id)} | ${html(run.updated_at || "")}` +
+          ` | ${html(String(completed.length))} completed step(s)` +
+          ` | ${html(String(exceptions.length))} exception(s)</div>`
+        );
+        if (completed.length || exceptions.length) {
+          const details = document.createElement("details");
+          details.className = "technical-report";
+          const completedLines = completed.length
+            ? completed.map((step) => `- ${text(step.step_id)} (${text(step.completed_at)})`).join("\n")
+            : "- No completed steps recorded.";
+          const exceptionLines = exceptions.length
+            ? exceptions.map((entry) => `- ${text(entry.reason || "unknown")}: ${text(entry.proposal || entry.note || "no proposal recorded")}`).join("\n")
+            : "- No exceptions recorded.";
+          details.innerHTML = `<summary>Run detail</summary><pre>Completed steps:\n${html(completedLines)}\n\nExceptions:\n${html(exceptionLines)}</pre>`;
+          el.appendChild(details);
+        }
+        return el;
+      })
     : [`<div class="item">No ingestion process runs recorded yet.</div>`];
   $("ingestionStatus").innerHTML =
     `<h3>Embedding Coverage</h3>${embeddingItem}<h3>Epochs</h3>${epochItems.join("")}<h3>Recent Ingestion Runs</h3>${runItems.join("")}`;
