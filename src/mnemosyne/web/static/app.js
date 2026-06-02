@@ -467,10 +467,14 @@ async function loadSemanticCandidates() {
       const evidence = candidate.candidate_source === "embedding_similarity"
         ? `vector ${candidate.embedding_similarity ?? "n/a"}`
         : `labels ${(candidate.shared_labels || []).join(", ")}`;
+      const context = candidate.selection_context || {};
+      const selection = candidate.candidate_source === "embedding_similarity" && context.min_similarity !== undefined
+        ? ` | threshold ${context.min_similarity}, ${context.embedding_model || candidate.embedding_model || "unknown"} ${context.embedding_dimensions || candidate.embedding_dimensions || "?"} dims`
+        : "";
       const el = item(
         `<strong>${html(candidate.relation_type)}</strong>` +
         `<div>${html(candidate.source_title)} -> ${html(candidate.target_title)}</div>` +
-        `<div class="muted">${html(candidate.candidate_id)} | ${html(candidate.candidate_source || "label_overlap")} | ${html(evidence)}</div>`
+        `<div class="muted">${html(candidate.candidate_id)} | ${html(candidate.candidate_source || "label_overlap")} | ${html(evidence + selection)}</div>`
       );
       const actions = document.createElement("div");
       actions.className = "button-row";

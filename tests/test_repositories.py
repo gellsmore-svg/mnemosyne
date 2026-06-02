@@ -784,6 +784,14 @@ def test_enqueue_vector_semantic_edge_candidates_stores_similarity_review_rows(m
     assert row["embedding_similarity"] == 0.91
     assert row["embedding_model"] == "mock"
     assert row["embedding_dimensions"] == 16
+    assert row["selection_context"] == {
+        "candidate_source": "embedding_similarity",
+        "min_similarity": 0.8,
+        "include_same_document": False,
+        "requested_limit": 10,
+        "embedding_model": "mock",
+        "embedding_dimensions": 16,
+    }
     assert row["created_by"] == "cello"
 
     duplicate = enqueue_vector_semantic_edge_candidates(db, node_id=str(source_id))
@@ -810,6 +818,10 @@ def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
             "embedding_similarity": 0.88,
             "embedding_model": "mock",
             "embedding_dimensions": 16,
+            "selection_context": {
+                "candidate_source": "embedding_similarity",
+                "min_similarity": 0.75,
+            },
             "source_title": "Source",
             "target_title": "Target",
             "created_by": "user",
@@ -837,6 +849,10 @@ def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
             "embedding_similarity": 0.88,
             "embedding_model": "mock",
             "embedding_dimensions": 16,
+            "selection_context": {
+                "candidate_source": "embedding_similarity",
+                "min_similarity": 0.75,
+            },
             "source_title": "Source",
             "target_title": "Target",
             "created_by": "user",
