@@ -1581,7 +1581,16 @@ def compact_edge_summary(edge: dict[str, Any]) -> dict[str, Any]:
         "weight": edge.get("weight"),
         "confidence": edge.get("confidence"),
     }
-    for key in ("provenance_source", "reviewer", "shared_label_count"):
+    for key in (
+        "provenance_source",
+        "reviewer",
+        "shared_label_count",
+        "candidate_source",
+        "embedding_similarity",
+        "embedding_model",
+        "embedding_dimensions",
+        "selection_min_similarity",
+    ):
         if edge.get(key) is not None:
             item[key] = edge.get(key)
     return item

@@ -925,6 +925,11 @@ def test_expand_proximity_scores_adjacent_nodes() -> None:
                     "source": "semantic_candidate_review",
                     "reviewer": "tester",
                     "shared_label_count": 2,
+                    "candidate_source": "embedding_similarity",
+                    "embedding_similarity": 0.91,
+                    "embedding_model": "mock",
+                    "embedding_dimensions": 16,
+                    "selection_context": {"min_similarity": 0.8},
                 },
             },
         ],
@@ -938,6 +943,11 @@ def test_expand_proximity_scores_adjacent_nodes() -> None:
     assert nodes[0]["edge"]["provenance_source"] == "semantic_candidate_review"
     assert nodes[0]["edge"]["reviewer"] == "tester"
     assert nodes[0]["edge"]["shared_label_count"] == 2
+    assert nodes[0]["edge"]["candidate_source"] == "embedding_similarity"
+    assert nodes[0]["edge"]["embedding_similarity"] == 0.91
+    assert nodes[0]["edge"]["embedding_model"] == "mock"
+    assert nodes[0]["edge"]["embedding_dimensions"] == 16
+    assert nodes[0]["edge"]["selection_min_similarity"] == 0.8
 
 
 def test_expand_proximity_returns_empty_for_bad_node_id() -> None:

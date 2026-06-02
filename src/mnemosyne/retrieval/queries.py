@@ -725,7 +725,7 @@ def adjacent_node_for_edge(edge: dict[str, Any], node_id: str) -> dict[str, Any]
 
 def edge_summary(edge: dict[str, Any]) -> dict[str, Any]:
     provenance = edge.get("provenance") or {}
-    return {
+    summary = {
         "edge_id": edge.get("edge_id"),
         "source_node_id": edge.get("source_node_id"),
         "target_node_id": edge.get("target_node_id"),
@@ -737,6 +737,18 @@ def edge_summary(edge: dict[str, Any]) -> dict[str, Any]:
         "reviewer": provenance.get("reviewer"),
         "shared_label_count": provenance.get("shared_label_count"),
     }
+    if provenance.get("candidate_source"):
+        summary["candidate_source"] = provenance.get("candidate_source")
+    if provenance.get("embedding_similarity") is not None:
+        summary["embedding_similarity"] = provenance.get("embedding_similarity")
+    if provenance.get("embedding_model"):
+        summary["embedding_model"] = provenance.get("embedding_model")
+    if provenance.get("embedding_dimensions"):
+        summary["embedding_dimensions"] = provenance.get("embedding_dimensions")
+    selection_context = provenance.get("selection_context") or {}
+    if selection_context.get("min_similarity") is not None:
+        summary["selection_min_similarity"] = selection_context.get("min_similarity")
+    return summary
 
 
 def edge_proximity_score(edge: dict[str, Any]) -> float:

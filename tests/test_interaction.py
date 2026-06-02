@@ -1731,6 +1731,11 @@ def test_memory_agent_tool_summary_includes_proximity_matches() -> None:
                                 "provenance_source": "semantic_candidate_review",
                                 "reviewer": "tester",
                                 "shared_label_count": 2,
+                                "candidate_source": "embedding_similarity",
+                                "embedding_similarity": 0.91,
+                                "embedding_model": "mock",
+                                "embedding_dimensions": 16,
+                                "selection_min_similarity": 0.8,
                             },
                         }
                     ],
@@ -1755,6 +1760,11 @@ def test_memory_agent_tool_summary_includes_proximity_matches() -> None:
                 "provenance_source": "semantic_candidate_review",
                 "reviewer": "tester",
                 "shared_label_count": 2,
+                "candidate_source": "embedding_similarity",
+                "embedding_similarity": 0.91,
+                "embedding_model": "mock",
+                "embedding_dimensions": 16,
+                "selection_min_similarity": 0.8,
             },
         }
     ]
