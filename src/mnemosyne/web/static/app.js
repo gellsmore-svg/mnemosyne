@@ -402,6 +402,20 @@ async function loadIngestionStatus() {
     `<div class="muted">Profiles: ${html(profiles)}</div>` +
     `${Array.isArray(embedding.warnings) && embedding.warnings.length ? `<div class="muted">Warnings: ${html(embedding.warnings.join(" | "))}</div>` : ""}` +
     `</div>`;
+  const backfill = data.embedding_backfill || {};
+  const backfillCounts = backfill.recent_status_counts
+    ? Object.entries(backfill.recent_status_counts).map(([status, count]) => `${status}: ${count}`).join(" | ")
+    : "no recent jobs";
+  const nextJob = backfill.next_job || {};
+  const backfillItem =
+    `<div class="item">` +
+    `<strong>Backfill jobs: ${html(backfill.status || "unknown")}</strong>` +
+    `<div>${html(backfill.summary || "Embedding backfill job status has not been assessed.")}</div>` +
+    `<div class="muted">Recommended action: ${html(backfill.recommended_action || "Refresh ingestion status.")}</div>` +
+    `<div class="muted">Recent jobs checked: ${html(String(backfill.recent_jobs_checked ?? 0))}` +
+    ` | ${html(backfillCounts)}</div>` +
+    `${nextJob.job_id ? `<div class="muted">Next job: ${html(nextJob.job_id)} | ${html(nextJob.status || "")} | batch ${html(String(nextJob.batch_limit || ""))}</div>` : ""}` +
+    `</div>`;
   const epochItems = data.epochs.length
     ? data.epochs.map((epoch, index) => {
         const range = [epoch.earliest_origin_date, epoch.latest_origin_date]
@@ -445,7 +459,7 @@ async function loadIngestionStatus() {
       })
     : [`<div class="item">No ingestion process runs recorded yet.</div>`];
   $("ingestionStatus").innerHTML =
-    `<h3>Embedding Coverage</h3>${embeddingItem}<h3>Epochs</h3>${epochItems.join("")}<h3>Recent Ingestion Runs</h3>${runItems.join("")}`;
+    `<h3>Embedding Coverage</h3>${embeddingItem}${backfillItem}<h3>Epochs</h3>${epochItems.join("")}<h3>Recent Ingestion Runs</h3>${runItems.join("")}`;
 }
 
 async function loadJobs() {

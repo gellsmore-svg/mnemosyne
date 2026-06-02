@@ -441,10 +441,12 @@ def create_app() -> FastAPI:
 
     @app.get("/api/ingestion/status")
     def ingestion_status(limit: int = 8, label: str | None = None) -> dict[str, Any]:
+        embedding = embedding_coverage(db, label=label)
         return {
             "ok": True,
             "epochs": list_ingestion_epochs(db, limit=limit),
-            "embedding": embedding_coverage(db, label=label),
+            "embedding": embedding,
+            "embedding_backfill": embedding_backfill_status(db, embedding),
             "runs": list_process_runs(
                 db,
                 session_id="ingestion",
@@ -1019,6 +1021,49 @@ def annotate_embedding_coverage(coverage: dict[str, Any]) -> dict[str, Any]:
         "summary": summary,
         "recommended_action": action,
         "warnings": warnings,
+    }
+
+
+def embedding_backfill_status(db: Any, coverage: dict[str, Any], limit: int = 20) -> dict[str, Any]:
+    jobs = list_embedding_backfill_jobs(db, limit=limit)
+    counts: dict[str, int] = {}
+    for job in jobs:
+        status = job.get("status") or "unknown"
+        counts[status] = counts.get(status, 0) + 1
+
+    next_job = next(
+        (job for job in jobs if job.get("status") in {"pending", "processing", "blocked"}),
+        None,
+    )
+    missing = int(coverage.get("missing_active_embeddings") or 0)
+    if counts.get("pending"):
+        status = "pending"
+        summary = f"{counts['pending']} recent embedding backfill job(s) are queued."
+        action = "Process the next bounded backfill batches and refresh ingestion status."
+    elif counts.get("processing"):
+        status = "processing"
+        summary = f"{counts['processing']} recent embedding backfill job(s) are marked processing."
+        action = "Refresh status after the current worker finishes; if this persists, inspect the job for a stuck processing state."
+    elif counts.get("blocked"):
+        status = "blocked"
+        summary = f"{counts['blocked']} recent embedding backfill job(s) are blocked."
+        action = "Open the latest job log, resolve the recorded error, then queue a new scoped backfill if needed."
+    elif missing > 0:
+        status = "needed"
+        summary = "No recent active backfill job is queued, but active nodes still lack embeddings."
+        action = "Queue an embedding backfill job with a conservative batch size."
+    else:
+        status = "not_needed"
+        summary = "No embedding backfill job is currently needed for active-node coverage."
+        action = "Move to vector-match preview and reviewed semantic-edge candidate work."
+
+    return {
+        "status": status,
+        "summary": summary,
+        "recommended_action": action,
+        "recent_status_counts": counts,
+        "recent_jobs_checked": len(jobs),
+        "next_job": next_job,
     }
 
 

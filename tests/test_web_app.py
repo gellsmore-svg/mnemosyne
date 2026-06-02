@@ -11,6 +11,7 @@ from mnemosyne.web.app import (
     app,
     embedding_backfill_batch_failure_reason,
     embedding_backfill_batch_step_ids,
+    embedding_backfill_status,
     embedding_coverage,
     list_ingestion_epochs,
     parse_ollama_model_list,
@@ -161,6 +162,17 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             "warnings": [],
         },
     )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.embedding_backfill_status",
+        lambda _db, coverage: {
+            "status": "pending",
+            "summary": "1 recent embedding backfill job(s) are queued.",
+            "recommended_action": "Process the next bounded backfill batches and refresh ingestion status.",
+            "recent_status_counts": {"pending": 1},
+            "recent_jobs_checked": 1,
+            "next_job": {"job_id": "job1", "status": "pending"},
+        },
+    )
 
     response = client.get("/api/ingestion/status", params={"limit": 4})
 
@@ -186,6 +198,14 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             "summary": "3 of 4 active node(s) have embeddings; 1 still need vectors.",
             "recommended_action": "Continue processing embedding backfill job batches before relying on vector candidate review.",
             "warnings": [],
+        },
+        "embedding_backfill": {
+            "status": "pending",
+            "summary": "1 recent embedding backfill job(s) are queued.",
+            "recommended_action": "Process the next bounded backfill batches and refresh ingestion status.",
+            "recent_status_counts": {"pending": 1},
+            "recent_jobs_checked": 1,
+            "next_job": {"job_id": "job1", "status": "pending"},
         },
         "runs": [{"run_id": "run1", "session_id": "ingestion", "status": None, "limit": 4}],
     }
@@ -577,6 +597,55 @@ def test_annotate_embedding_coverage_reports_operator_action_states() -> None:
     assert "forced embedding backfill" in mock_ready["recommended_action"]
     assert ready["status"] == "ready"
     assert "Preview vector matches" in ready["recommended_action"]
+
+
+def test_embedding_backfill_status_reports_pending_jobs(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_embedding_backfill_jobs",
+        lambda _db, limit=20: [
+            {"job_id": "job1", "status": "pending", "batch_limit": 10},
+            {"job_id": "job2", "status": "completed", "batch_limit": 10},
+        ],
+    )
+
+    status = embedding_backfill_status(None, {"missing_active_embeddings": 5})
+
+    assert status["status"] == "pending"
+    assert status["recent_status_counts"] == {"pending": 1, "completed": 1}
+    assert status["next_job"]["job_id"] == "job1"
+    assert "Process the next bounded backfill batches" in status["recommended_action"]
+
+
+def test_embedding_backfill_status_reports_blocked_jobs(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "mnemosyne.web.app.list_embedding_backfill_jobs",
+        lambda _db, limit=20: [{"job_id": "job1", "status": "blocked", "reason": "failed"}],
+    )
+
+    status = embedding_backfill_status(None, {"missing_active_embeddings": 5})
+
+    assert status["status"] == "blocked"
+    assert status["next_job"]["job_id"] == "job1"
+    assert "Open the latest job log" in status["recommended_action"]
+
+
+def test_embedding_backfill_status_reports_needed_when_no_job_exists(monkeypatch) -> None:
+    monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+
+    status = embedding_backfill_status(None, {"missing_active_embeddings": 5})
+
+    assert status["status"] == "needed"
+    assert status["next_job"] is None
+    assert "Queue an embedding backfill job" in status["recommended_action"]
+
+
+def test_embedding_backfill_status_reports_not_needed_when_coverage_complete(monkeypatch) -> None:
+    monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+
+    status = embedding_backfill_status(None, {"missing_active_embeddings": 0})
+
+    assert status["status"] == "not_needed"
+    assert "vector-match preview" in status["recommended_action"]
 
 
 def test_index_serves_html() -> None:
