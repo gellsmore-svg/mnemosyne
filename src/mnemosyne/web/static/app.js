@@ -407,6 +407,7 @@ async function loadIngestionStatus() {
     ? Object.entries(backfill.recent_status_counts).map(([status, count]) => `${status}: ${count}`).join(" | ")
     : "no recent jobs";
   const nextJob = backfill.next_job || {};
+  const nextJobProgress = embeddingBackfillJobProgress(nextJob);
   const backfillItem =
     `<div class="item">` +
     `<strong>Backfill jobs: ${html(backfill.status || "unknown")}</strong>` +
@@ -414,7 +415,7 @@ async function loadIngestionStatus() {
     `<div class="muted">Recommended action: ${html(backfill.recommended_action || "Refresh ingestion status.")}</div>` +
     `<div class="muted">Recent jobs checked: ${html(String(backfill.recent_jobs_checked ?? 0))}` +
     ` | ${html(backfillCounts)}</div>` +
-    `${nextJob.job_id ? `<div class="muted">Next job: ${html(nextJob.job_id)} | ${html(nextJob.status || "")} | batch ${html(String(nextJob.batch_limit || ""))}</div>` : ""}` +
+    `${nextJob.job_id ? `<div class="muted">Next job: ${html(nextJob.job_id)} | ${html(nextJob.status || "")} | batch ${html(String(nextJob.batch_limit || ""))}${nextJobProgress ? ` | ${html(nextJobProgress)}` : ""}</div>` : ""}` +
     `</div>`;
   const epochItems = data.epochs.length
     ? data.epochs.map((epoch, index) => {
@@ -781,8 +782,8 @@ async function queueEmbeddingBackfillJob() {
     body: JSON.stringify(embeddingBackfillPayload()),
   });
   $("embeddingBackfillStatus").textContent = `Embedding backfill: queued ${data.job.job_id}`;
-  $("embeddingBackfillResult").textContent = JSON.stringify(data.job, null, 2);
-  await loadEmbeddingBackfillJobs();
+  $("embeddingBackfillResult").textContent = embeddingBackfillJobSummary(data.job);
+  await Promise.all([loadEmbeddingBackfillJobs(), loadIngestionStatus()]);
 }
 
 async function processEmbeddingBackfillJob() {
@@ -805,7 +806,7 @@ async function loadEmbeddingBackfillJobs() {
       const el = item(
         `<strong>${html(job.status)}</strong> <span class="muted">${html(job.job_id)}</span>` +
         `<div class="muted">batch ${html(String(job.batch_limit))}` +
-        ` | ${html(String(job.updated_count))} updated` +
+        ` | ${html(embeddingBackfillJobProgress(job) || `${text(job.updated_count)} updated`)}` +
         ` | ${html(String(job.error_count))} error(s)` +
         ` | label ${html(text(job.label))}` +
         ` | force ${html(String(job.force))}</div>`
@@ -842,6 +843,35 @@ function embeddingBackfillSummary(data, jobStatus = null) {
     });
   }
   return lines.join("\n");
+}
+
+function embeddingBackfillJobSummary(job) {
+  const progress = embeddingBackfillJobProgress(job);
+  const lines = [
+    `Status: ${text(job.status || "queued")}`,
+    `Job: ${text(job.job_id)}`,
+    `Repository action: queue a persistent embedding backfill job`,
+    `Scope: batch limit ${text(job.batch_limit)}, label ${text(job.label)}, document ${text(job.document_id)}, force ${text(job.force)}`,
+    progress ? `Progress estimate: ${progress}` : null,
+    `Next step: process queued job batches, then refresh ingestion status to watch coverage increase.`,
+  ].filter(Boolean);
+  if (job.created_at || job.updated_at) {
+    lines.push(`Timeline: created ${text(job.created_at)}, updated ${text(job.updated_at)}`);
+  }
+  return lines.join("\n");
+}
+
+function embeddingBackfillJobProgress(job) {
+  if (!job || job.scope_total === null || job.scope_total === undefined) {
+    return "";
+  }
+  const total = Number(job.scope_total);
+  const updated = Number(job.updated_count || 0);
+  const remaining = Number(job.remaining_estimate ?? Math.max(0, total - updated));
+  const percent = job.progress_percent === null || job.progress_percent === undefined
+    ? "unknown"
+    : `${job.progress_percent}%`;
+  return `${updated} / ${total} updated (${percent}, about ${remaining} remaining)`;
 }
 
 function embeddingBackfillBatchRunSummary(data) {

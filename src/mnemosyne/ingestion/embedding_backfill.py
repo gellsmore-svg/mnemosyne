@@ -9,7 +9,9 @@ from pymongo.database import Database
 from mnemosyne.db.repositories import (
     backfill_node_embeddings,
     bounded_candidate_limit,
+    count_backfill_embedding_candidates,
     embedding_backfill_activity_log,
+    InvalidEmbeddingBackfillScope,
 )
 
 
@@ -30,6 +32,12 @@ def create_embedding_backfill_job(
     created_by: str = "operator",
 ) -> dict[str, Any]:
     now = utc_now()
+    scope_total = embedding_backfill_scope_total(
+        db,
+        label=label,
+        document_id=document_id,
+        force=force,
+    )
     job = {
         "schema_version": EMBEDDING_BACKFILL_SCHEMA_VERSION,
         "status": "pending",
@@ -37,6 +45,7 @@ def create_embedding_backfill_job(
         "label": str(label).strip() if label else None,
         "document_id": str(document_id).strip() if document_id else None,
         "force": bool(force),
+        "scope_total": scope_total,
         "created_by": created_by,
         "batch_count": 0,
         "updated_count": 0,
@@ -51,6 +60,24 @@ def create_embedding_backfill_job(
     result = db.embedding_backfill_jobs.insert_one(job)
     job["_id"] = result.inserted_id
     return serialize_embedding_backfill_job(job)
+
+
+def embedding_backfill_scope_total(
+    db: Database,
+    *,
+    label: str | None = None,
+    document_id: str | None = None,
+    force: bool = False,
+) -> int | None:
+    try:
+        return count_backfill_embedding_candidates(
+            db,
+            label=label,
+            document_id=document_id,
+            force=force,
+        )
+    except InvalidEmbeddingBackfillScope:
+        return None
 
 
 def list_embedding_backfill_jobs(
@@ -203,6 +230,14 @@ def block_embedding_backfill_job(
 
 
 def serialize_embedding_backfill_job(row: dict[str, Any]) -> dict[str, Any]:
+    scope_total = row.get("scope_total")
+    updated_count = int(row.get("updated_count") or 0)
+    remaining_estimate = None
+    progress_percent = None
+    if scope_total is not None:
+        scope_total = int(scope_total or 0)
+        remaining_estimate = max(0, scope_total - updated_count)
+        progress_percent = round((updated_count / scope_total) * 100, 1) if scope_total else None
     return {
         "job_id": str(row.get("_id")),
         "schema_version": row.get("schema_version"),
@@ -211,9 +246,12 @@ def serialize_embedding_backfill_job(row: dict[str, Any]) -> dict[str, Any]:
         "label": row.get("label"),
         "document_id": row.get("document_id"),
         "force": row.get("force", False),
+        "scope_total": scope_total,
+        "remaining_estimate": remaining_estimate,
+        "progress_percent": progress_percent,
         "created_by": row.get("created_by"),
         "batch_count": row.get("batch_count", 0),
-        "updated_count": row.get("updated_count", 0),
+        "updated_count": updated_count,
         "skipped_count": row.get("skipped_count", 0),
         "error_count": row.get("error_count", 0),
         "last_node_id": row.get("last_node_id"),

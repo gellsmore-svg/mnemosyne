@@ -929,6 +929,57 @@ def parse_object_id(value: str) -> ObjectId | None:
         return None
 
 
+class InvalidEmbeddingBackfillScope(ValueError):
+    def __init__(self, reason: str, field: str, value: str):
+        super().__init__(reason)
+        self.reason = reason
+        self.field = field
+        self.value = value
+
+
+def embedding_backfill_node_query(
+    *,
+    label: str | None = None,
+    document_id: str | None = None,
+    force: bool = False,
+    after_node_id: str | None = None,
+) -> dict[str, Any]:
+    document_object_id = parse_object_id(document_id) if document_id else None
+    if document_id and document_object_id is None:
+        raise InvalidEmbeddingBackfillScope("invalid_document_id", "document_id", document_id)
+    after_object_id = parse_object_id(after_node_id) if after_node_id else None
+    if after_node_id and after_object_id is None:
+        raise InvalidEmbeddingBackfillScope("invalid_after_node_id", "after_node_id", after_node_id)
+
+    query: dict[str, Any] = {"status": {"$ne": "superseded"}}
+    if after_object_id is not None:
+        query["_id"] = {"$gt": after_object_id}
+    if document_object_id is not None:
+        query["document_id"] = document_object_id
+    label_filter = str(label).strip() if label else None
+    if label_filter:
+        query["labels"] = label_filter
+    if not force:
+        query["embedding.vector"] = {"$exists": False}
+    return query
+
+
+def count_backfill_embedding_candidates(
+    db: Database,
+    *,
+    label: str | None = None,
+    document_id: str | None = None,
+    force: bool = False,
+) -> int:
+    return db.nodes.count_documents(
+        embedding_backfill_node_query(
+            label=label,
+            document_id=document_id,
+            force=force,
+        )
+    )
+
+
 def normalized_relation_type(value: Any) -> str:
     return "_".join(str(value or "").strip().lower().split())
 
@@ -957,25 +1008,17 @@ def backfill_node_embeddings(
     max_errors: int = 5,
 ) -> dict[str, Any]:
     bounded_limit = bounded_candidate_limit(limit, maximum=1000)
-    document_object_id = parse_object_id(document_id) if document_id else None
-    if document_id and document_object_id is None:
-        result = {"ok": False, "reason": "invalid_document_id", "document_id": document_id}
-        return {**result, "activity_log": embedding_backfill_activity_log(result)}
-    after_object_id = parse_object_id(after_node_id) if after_node_id else None
-    if after_node_id and after_object_id is None:
-        result = {"ok": False, "reason": "invalid_after_node_id", "after_node_id": after_node_id}
-        return {**result, "activity_log": embedding_backfill_activity_log(result)}
-
-    query: dict[str, Any] = {"status": {"$ne": "superseded"}}
-    if after_object_id is not None:
-        query["_id"] = {"$gt": after_object_id}
-    if document_object_id is not None:
-        query["document_id"] = document_object_id
     label_filter = str(label).strip() if label else None
-    if label_filter:
-        query["labels"] = label_filter
-    if not force:
-        query["embedding.vector"] = {"$exists": False}
+    try:
+        query = embedding_backfill_node_query(
+            label=label_filter,
+            document_id=document_id,
+            force=force,
+            after_node_id=after_node_id,
+        )
+    except InvalidEmbeddingBackfillScope as error:
+        result = {"ok": False, "reason": error.reason, error.field: error.value}
+        return {**result, "activity_log": embedding_backfill_activity_log(result)}
 
     matched = 0
     scanned = 0
@@ -1036,8 +1079,8 @@ def backfill_node_embeddings(
         "limit": bounded_limit,
         "filters": {
             "label": label_filter,
-            "document_id": str(document_object_id) if document_object_id else None,
-            "after_node_id": str(after_object_id) if after_object_id else None,
+            "document_id": str(query.get("document_id")) if query.get("document_id") else None,
+            "after_node_id": str((query.get("_id") or {}).get("$gt")) if query.get("_id") else None,
             "force": force,
             "status": "active",
             "missing_embedding_only": not force,

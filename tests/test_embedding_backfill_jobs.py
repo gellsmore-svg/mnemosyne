@@ -12,7 +12,7 @@ from mnemosyne.ingestion.embedding_backfill import (
 
 
 def test_create_embedding_backfill_job_persists_scope() -> None:
-    db = FakeDb()
+    db = FakeDb(nodes=[{"status": "active", "labels": ["ams_domain"]}])
 
     job = create_embedding_backfill_job(
         db,
@@ -28,7 +28,27 @@ def test_create_embedding_backfill_job_persists_scope() -> None:
     assert job["label"] == "ams_domain"
     assert job["document_id"] == "doc1"
     assert job["force"] is True
+    assert job["scope_total"] is None
+    assert job["remaining_estimate"] is None
+    assert job["progress_percent"] is None
     assert job["created_by"] == "test"
+
+
+def test_create_embedding_backfill_job_counts_scope_total() -> None:
+    db = FakeDb(
+        nodes=[
+            {"status": "active", "labels": ["target"]},
+            {"status": "active", "labels": ["target"], "embedding": {"vector": [1.0]}},
+            {"status": "active", "labels": ["other"]},
+            {"status": "superseded", "labels": ["target"]},
+        ]
+    )
+
+    job = create_embedding_backfill_job(db, batch_limit=25, label="target")
+
+    assert job["scope_total"] == 1
+    assert job["remaining_estimate"] == 1
+    assert job["progress_percent"] == 0.0
 
 
 def test_process_next_embedding_backfill_job_keeps_full_batch_pending(monkeypatch) -> None:
@@ -56,6 +76,7 @@ def test_process_next_embedding_backfill_job_keeps_full_batch_pending(monkeypatc
     assert row["status"] == "pending"
     assert row["batch_count"] == 1
     assert row["updated_count"] == 2
+    assert serialize_first_job(db)["progress_percent"] is None
     assert row["last_node_id"] == "node2"
     assert row["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
 
@@ -248,6 +269,9 @@ def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:
     assert len(jobs) == 1
     assert jobs[0]["status"] == "pending"
     assert isinstance(jobs[0]["job_id"], str)
+    assert jobs[0]["scope_total"] is None
+    assert jobs[0]["remaining_estimate"] is None
+    assert jobs[0]["progress_percent"] is None
     assert jobs[0]["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
 
 
@@ -295,13 +319,48 @@ class FakeCollection:
         return None
 
 
+class FakeNodeCollection(FakeCollection):
+    def count_documents(self, query):
+        return len([row for row in self.rows if matches(row, query)])
+
+
 class FakeDb:
-    def __init__(self):
+    def __init__(self, nodes=None):
         self.embedding_backfill_jobs = FakeCollection()
+        self.nodes = FakeNodeCollection()
+        self.nodes.rows = list(nodes or [])
 
 
 def matches(row, query):
-    return all(row.get(key) == value for key, value in query.items())
+    for key, value in query.items():
+        row_value = dotted_value(row, key)
+        if isinstance(value, dict):
+            if "$ne" in value and row_value == value["$ne"]:
+                return False
+            if "$exists" in value and (row_value is not None) != bool(value["$exists"]):
+                return False
+            if "$gt" in value and not row_value > value["$gt"]:
+                return False
+            continue
+        if isinstance(row_value, list):
+            if value not in row_value:
+                return False
+        elif row_value != value:
+            return False
+    return True
+
+
+def dotted_value(row, key):
+    value = row
+    for part in key.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return None
+        value = value[part]
+    return value
+
+
+def serialize_first_job(db):
+    return list_embedding_backfill_jobs(db)[0]
 
 
 def apply_update(row, update):
