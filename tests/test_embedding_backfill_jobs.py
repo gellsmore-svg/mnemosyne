@@ -235,7 +235,12 @@ def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:
     db = FakeDb()
     db.embedding_backfill_jobs.rows = [
         {"_id": ObjectId(), "status": "completed", "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc)},
-        {"_id": ObjectId(), "status": "pending", "updated_at": datetime(2026, 1, 2, tzinfo=timezone.utc)},
+        {
+            "_id": ObjectId(),
+            "status": "pending",
+            "updated_at": datetime(2026, 1, 2, tzinfo=timezone.utc),
+            "last_result": {"activity_log": "Embedding Backfill Activity Log\n- Status: pending."},
+        },
     ]
 
     jobs = list_embedding_backfill_jobs(db, status="pending")
@@ -243,6 +248,7 @@ def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:
     assert len(jobs) == 1
     assert jobs[0]["status"] == "pending"
     assert isinstance(jobs[0]["job_id"], str)
+    assert jobs[0]["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
 
 
 class FakeInsertResult:

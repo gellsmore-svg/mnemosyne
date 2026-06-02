@@ -765,16 +765,24 @@ async function processEmbeddingBackfillJob() {
 async function loadEmbeddingBackfillJobs() {
   const data = await api("/api/embedding-backfill-jobs?limit=6");
   $("embeddingBackfillJobs").replaceChildren(
-    ...data.jobs.map((job) =>
-      item(
+    ...data.jobs.map((job) => {
+      const el = item(
         `<strong>${html(job.status)}</strong> <span class="muted">${html(job.job_id)}</span>` +
         `<div class="muted">batch ${html(String(job.batch_limit))}` +
         ` | ${html(String(job.updated_count))} updated` +
         ` | ${html(String(job.error_count))} error(s)` +
         ` | label ${html(text(job.label))}` +
         ` | force ${html(String(job.force))}</div>`
-      )
-    )
+      );
+      const log = job.last_result?.activity_log || "";
+      if (log) {
+        const details = document.createElement("details");
+        details.className = "technical-report";
+        details.innerHTML = `<summary>Last batch log</summary><pre>${html(log)}</pre>`;
+        el.appendChild(details);
+      }
+      return el;
+    })
   );
 }
 
