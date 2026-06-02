@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from bson import ObjectId
 from pymongo import ReturnDocument
 from pymongo.database import Database
 
@@ -95,6 +96,57 @@ def list_embedding_backfill_jobs(
         .limit(bounded_candidate_limit(limit, maximum=100))
     )
     return [serialize_embedding_backfill_job(row) for row in rows]
+
+
+def requeue_processing_embedding_backfill_job(
+    db: Database,
+    job_id: str,
+    *,
+    reason: str = "operator_requeued_processing_job",
+    actor: str = "operator",
+) -> dict[str, Any]:
+    object_id = parse_job_object_id(job_id)
+    if object_id is None:
+        return {
+            "ok": False,
+            "status": "invalid_job_id",
+            "reason": "invalid_job_id",
+            "job_id": job_id,
+        }
+    now = utc_now()
+    row = db.embedding_backfill_jobs.find_one_and_update(
+        {"_id": object_id, "status": "processing"},
+        {
+            "$set": {
+                "status": "pending",
+                "reason": reason,
+                "requeued_at": now,
+                "requeued_by": actor,
+                "requeue_reason": reason,
+                "updated_at": now,
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+    if not row:
+        return {
+            "ok": False,
+            "status": "not_requeued",
+            "reason": "job_not_processing_or_not_found",
+            "job_id": job_id,
+        }
+    return {
+        "ok": True,
+        "status": "pending",
+        "job": serialize_embedding_backfill_job(row),
+    }
+
+
+def parse_job_object_id(job_id: str) -> ObjectId | None:
+    try:
+        return ObjectId(str(job_id))
+    except Exception:
+        return None
 
 
 def claim_next_embedding_backfill_job(db: Database) -> dict[str, Any] | None:
@@ -256,6 +308,9 @@ def serialize_embedding_backfill_job(row: dict[str, Any]) -> dict[str, Any]:
         "error_count": row.get("error_count", 0),
         "last_node_id": row.get("last_node_id"),
         "reason": row.get("reason"),
+        "requeued_at": row.get("requeued_at").isoformat() if row.get("requeued_at") else None,
+        "requeued_by": row.get("requeued_by"),
+        "requeue_reason": row.get("requeue_reason"),
         "last_result": row.get("last_result"),
         "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
         "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,

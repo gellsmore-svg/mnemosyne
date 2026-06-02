@@ -42,6 +42,7 @@ from mnemosyne.ingestion.embedding_backfill import (
     create_embedding_backfill_job,
     list_embedding_backfill_jobs,
     process_embedding_backfill_batches,
+    requeue_processing_embedding_backfill_job,
 )
 from mnemosyne.ingestion.files import move_request_file, sha256_file
 from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
@@ -132,6 +133,11 @@ class BackfillEmbeddingsRequest(BaseModel):
     label: str | None = None
     document_id: str | None = None
     force: bool = False
+
+
+class RequeueEmbeddingBackfillJobRequest(BaseModel):
+    reason: str = "operator_requeued_processing_job"
+    actor: str = "web"
 
 
 def create_app() -> FastAPI:
@@ -515,6 +521,21 @@ def create_app() -> FastAPI:
                 created_by="web",
             ),
         }
+
+    @app.post("/api/embedding-backfill-jobs/{job_id}/requeue")
+    def requeue_embedding_backfill_job(
+        job_id: str,
+        request: RequeueEmbeddingBackfillJobRequest,
+    ) -> dict[str, Any]:
+        result = requeue_processing_embedding_backfill_job(
+            db,
+            job_id,
+            reason=request.reason,
+            actor=request.actor,
+        )
+        if not result.get("ok"):
+            raise HTTPException(status_code=409, detail=result)
+        return result
 
     @app.post("/api/process-embedding-backfill-job")
     def process_embedding_backfill_job(max_batches: int = 1) -> dict[str, Any]:

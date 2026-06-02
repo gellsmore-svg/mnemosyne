@@ -337,12 +337,29 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
             ],
         },
     )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.requeue_processing_embedding_backfill_job",
+        lambda _db, job_id, reason, actor: {
+            "ok": True,
+            "status": "pending",
+            "job": {
+                "job_id": job_id,
+                "status": "pending",
+                "reason": reason,
+                "requeued_by": actor,
+            },
+        },
+    )
 
     created = client.post(
         "/api/embedding-backfill-jobs",
         json={"limit": 12, "label": "target", "document_id": "doc1", "force": True},
     )
     listed = client.get("/api/embedding-backfill-jobs", params={"status": "pending", "limit": 3})
+    requeued = client.post(
+        "/api/embedding-backfill-jobs/job1/requeue",
+        json={"reason": "worker_restart", "actor": "tester"},
+    )
     processed = client.post("/api/process-embedding-backfill-job", params={"max_batches": 4})
 
     assert created.status_code == 200
@@ -355,6 +372,16 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
         "created_by": "web",
     }
     assert listed.json()["jobs"] == [{"job_id": "job1", "status": "pending", "limit": 3}]
+    assert requeued.json() == {
+        "ok": True,
+        "status": "pending",
+        "job": {
+            "job_id": "job1",
+            "status": "pending",
+            "reason": "worker_restart",
+            "requeued_by": "tester",
+        },
+    }
     assert processed.json() == {
         "ok": True,
         "status": "completed",
@@ -377,6 +404,25 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
     ]
     assert updates[-1]["status"] == "completed"
     assert updates[-1]["current_step_id"] == "embedding_backfill_job_batch_processed"
+
+
+def test_embedding_backfill_requeue_endpoint_rejects_non_processing_job(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.requeue_processing_embedding_backfill_job",
+        lambda _db, job_id, reason, actor: {
+            "ok": False,
+            "status": "not_requeued",
+            "reason": "job_not_processing_or_not_found",
+            "job_id": job_id,
+        },
+    )
+
+    response = client.post("/api/embedding-backfill-jobs/job1/requeue", json={})
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["reason"] == "job_not_processing_or_not_found"
 
 
 def test_embedding_backfill_batch_failure_reason_uses_batch_reason() -> None:

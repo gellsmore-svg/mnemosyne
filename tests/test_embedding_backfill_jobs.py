@@ -8,6 +8,7 @@ from mnemosyne.ingestion.embedding_backfill import (
     list_embedding_backfill_jobs,
     process_embedding_backfill_batches,
     process_next_embedding_backfill_job,
+    requeue_processing_embedding_backfill_job,
 )
 
 
@@ -273,6 +274,63 @@ def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:
     assert jobs[0]["remaining_estimate"] is None
     assert jobs[0]["progress_percent"] is None
     assert jobs[0]["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
+
+
+def test_requeue_processing_embedding_backfill_job_marks_pending() -> None:
+    db = FakeDb()
+    job_id = ObjectId()
+    db.embedding_backfill_jobs.rows = [
+        {
+            "_id": job_id,
+            "status": "processing",
+            "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "updated_count": 10,
+            "scope_total": 20,
+        }
+    ]
+
+    result = requeue_processing_embedding_backfill_job(
+        db,
+        str(job_id),
+        reason="worker_restart",
+        actor="tester",
+    )
+
+    assert result["ok"] is True
+    assert result["job"]["status"] == "pending"
+    assert result["job"]["reason"] == "worker_restart"
+    assert result["job"]["requeued_by"] == "tester"
+    assert result["job"]["progress_percent"] == 50.0
+    assert db.embedding_backfill_jobs.rows[0]["status"] == "pending"
+
+
+def test_requeue_processing_embedding_backfill_job_rejects_non_processing() -> None:
+    db = FakeDb()
+    job_id = ObjectId()
+    db.embedding_backfill_jobs.rows = [
+        {"_id": job_id, "status": "pending", "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc)}
+    ]
+
+    result = requeue_processing_embedding_backfill_job(db, str(job_id))
+
+    assert result == {
+        "ok": False,
+        "status": "not_requeued",
+        "reason": "job_not_processing_or_not_found",
+        "job_id": str(job_id),
+    }
+    assert db.embedding_backfill_jobs.rows[0]["status"] == "pending"
+
+
+def test_requeue_processing_embedding_backfill_job_rejects_invalid_id() -> None:
+    result = requeue_processing_embedding_backfill_job(FakeDb(), "not-an-object-id")
+
+    assert result == {
+        "ok": False,
+        "status": "invalid_job_id",
+        "reason": "invalid_job_id",
+        "job_id": "not-an-object-id",
+    }
 
 
 class FakeInsertResult:

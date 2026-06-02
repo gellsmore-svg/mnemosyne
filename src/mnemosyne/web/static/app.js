@@ -818,9 +818,36 @@ async function loadEmbeddingBackfillJobs() {
         details.innerHTML = `<summary>Last batch log</summary><pre>${html(log)}</pre>`;
         el.appendChild(details);
       }
+      if (job.status === "processing") {
+        const button = document.createElement("button");
+        button.className = "secondary";
+        button.textContent = "Requeue stuck job";
+        button.addEventListener("click", () => requeueEmbeddingBackfillJob(job.job_id));
+        el.appendChild(button);
+      }
       return el;
     })
   );
+}
+
+async function requeueEmbeddingBackfillJob(jobId) {
+  $("embeddingBackfillStatus").textContent = `Embedding backfill: requeueing ${jobId}`;
+  try {
+    const data = await api(`/api/embedding-backfill-jobs/${encodeURIComponent(jobId)}/requeue`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reason: "operator_requeued_processing_job",
+        actor: "web",
+      }),
+    });
+    $("embeddingBackfillStatus").textContent = `Embedding backfill: requeued ${data.job.job_id}`;
+    $("embeddingBackfillResult").textContent = embeddingBackfillJobSummary(data.job);
+    await Promise.all([loadEmbeddingBackfillJobs(), loadIngestionStatus()]);
+  } catch (error) {
+    $("embeddingBackfillStatus").textContent = "Embedding backfill: requeue failed";
+    $("embeddingBackfillResult").textContent = error.message;
+  }
 }
 
 function embeddingBackfillSummary(data, jobStatus = null) {
