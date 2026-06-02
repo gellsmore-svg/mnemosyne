@@ -63,6 +63,7 @@ from mnemosyne.sessions.registry import create_session, list_sessions
 
 
 FALLBACK_KNOWN_MODELS = ["gemma4:latest", "gemma3:1b"]
+WEB_EMBEDDING_BACKFILL_MAX_BATCHES = 10
 
 
 class AskRequest(BaseModel):
@@ -500,6 +501,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/process-embedding-backfill-job")
     def process_embedding_backfill_job(max_batches: int = 1) -> dict[str, Any]:
+        bounded_batches = max(1, min(max_batches, WEB_EMBEDDING_BACKFILL_MAX_BATCHES))
         process_run = create_process_run(
             db,
             process_id="embedding_backfill_job_batch",
@@ -510,7 +512,7 @@ def create_app() -> FastAPI:
         result = process_embedding_backfill_batches(
             db,
             embedding_adapter(config.runtime),
-            max_batches=max_batches,
+            max_batches=bounded_batches,
         )
         if result.get("status") == "idle":
             update_process_run(
@@ -954,7 +956,7 @@ def embedding_profile_counts(db: Any, embedded_query: dict[str, Any]) -> list[di
 
 
 def embedding_backfill_batch_failure_reason(result: dict[str, Any]) -> str:
-    for batch in result.get("results") or []:
+    for batch in reversed(result.get("results") or []):
         batch_result = batch.get("result") or {}
         if batch_result.get("reason"):
             return batch_result["reason"]

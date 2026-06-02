@@ -194,6 +194,43 @@ def test_process_embedding_backfill_batches_stops_on_completed(monkeypatch) -> N
     assert result["updated_count"] == 2
 
 
+def test_process_embedding_backfill_batches_stops_on_blocked(monkeypatch) -> None:
+    results = [
+        {"ok": True, "status": "pending", "result": {"updated_count": 1}},
+        {"ok": False, "status": "blocked", "result": {"error_count": 2, "reason": "adapter_offline"}},
+        {"ok": True, "status": "pending", "result": {"updated_count": 1}},
+    ]
+
+    monkeypatch.setattr(
+        embedding_backfill,
+        "process_next_embedding_backfill_job",
+        lambda _db, _embedder: results.pop(0),
+    )
+
+    result = process_embedding_backfill_batches(FakeDb(), embedder="embedder", max_batches=3)
+
+    assert result["ok"] is False
+    assert result["status"] == "blocked"
+    assert result["processed_batches"] == 2
+    assert result["updated_count"] == 1
+    assert result["error_count"] == 2
+
+
+def test_process_embedding_backfill_batches_reports_idle_queue(monkeypatch) -> None:
+    monkeypatch.setattr(
+        embedding_backfill,
+        "process_next_embedding_backfill_job",
+        lambda _db, _embedder: {"ok": True, "status": "idle"},
+    )
+
+    result = process_embedding_backfill_batches(FakeDb(), embedder="embedder", max_batches=5)
+
+    assert result["ok"] is True
+    assert result["status"] == "idle"
+    assert result["processed_batches"] == 1
+    assert result["updated_count"] == 0
+
+
 def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:
     db = FakeDb()
     db.embedding_backfill_jobs.rows = [

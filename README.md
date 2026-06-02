@@ -132,7 +132,7 @@ Existing active nodes can be embedded in bounded batches without rebuilding docu
 .venv/bin/mnemosyne embedding-backfill-jobs --status pending
 ```
 
-`backfill-embeddings` performs one immediate bounded batch. `queue-embedding-backfill` creates a persistent resumable job, and `process-embedding-backfill --max-batches <n>` advances that job by up to `n` bounded batches while preserving cursor state, activity logs, and blocked/completed status.
+`backfill-embeddings` performs one immediate bounded batch. `queue-embedding-backfill` creates a persistent resumable job, and `process-embedding-backfill --max-batches <n>` advances the next queued job by up to `n` bounded batches while preserving cursor state, activity logs, and blocked/completed status. The web UI exposes the same job-batch control with a smaller synchronous-request cap.
 
 For the first memory-agent flow, pass `--retrieval-mode agentic` or choose `agentic` in the web UI. In this mode Mnemosyne calls the configured memory-agent model iteratively, feeding prior tool results back into the agent until it stops or reaches `retrieval.memory_agent_max_iterations`. The current allowed read-only tools are `search_nodes`, `compile_context`, and `list_documents`. The final answer call is separate and uses the final answer adapter/model. This is still a scaffold: it does not yet implement semantic graph traversal, source fallback, or the full compiled context corpus schema.
 

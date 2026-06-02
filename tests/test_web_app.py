@@ -310,7 +310,7 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
         json={"limit": 12, "label": "target", "document_id": "doc1", "force": True},
     )
     listed = client.get("/api/embedding-backfill-jobs", params={"status": "pending", "limit": 3})
-    processed = client.post("/api/process-embedding-backfill-job")
+    processed = client.post("/api/process-embedding-backfill-job", params={"max_batches": 4})
 
     assert created.status_code == 200
     assert created.json()["job"] == {
@@ -325,7 +325,7 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
     assert processed.json() == {
         "ok": True,
         "status": "completed",
-        "requested_batches": 1,
+        "requested_batches": 4,
         "processed_batches": 1,
         "updated_count": 1,
         "skipped_count": 0,
@@ -339,9 +339,47 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
 
 
 def test_embedding_backfill_batch_failure_reason_uses_batch_reason() -> None:
-    result = {"results": [{"result": {"reason": "adapter_offline"}}]}
+    result = {
+        "results": [
+            {"result": {"reason": "earlier_partial_issue"}},
+            {"result": {"reason": "terminal_adapter_offline"}},
+        ]
+    }
 
-    assert embedding_backfill_batch_failure_reason(result) == "adapter_offline"
+    assert embedding_backfill_batch_failure_reason(result) == "terminal_adapter_offline"
+
+
+def test_process_embedding_backfill_job_clamps_web_batch_count(monkeypatch) -> None:
+    client = TestClient(app)
+    calls = []
+
+    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", lambda _runtime: "embedder")
+    monkeypatch.setattr(
+        "mnemosyne.web.app.create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1", **kwargs},
+    )
+    monkeypatch.setattr("mnemosyne.web.app.update_process_run", lambda _db, run_id, **kwargs: None)
+
+    def fake_batches(_db, _embedder, max_batches=1):
+        calls.append(max_batches)
+        return {
+            "ok": True,
+            "status": "pending",
+            "requested_batches": max_batches,
+            "processed_batches": 1,
+            "updated_count": 1,
+            "skipped_count": 0,
+            "error_count": 0,
+            "results": [],
+        }
+
+    monkeypatch.setattr("mnemosyne.web.app.process_embedding_backfill_batches", fake_batches)
+
+    response = client.post("/api/process-embedding-backfill-job", params={"max_batches": 50})
+
+    assert response.status_code == 200
+    assert calls == [10]
+    assert response.json()["requested_batches"] == 10
 
 
 def test_list_ingestion_epochs_reports_dated_document_coverage() -> None:
