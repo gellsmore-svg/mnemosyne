@@ -6,6 +6,7 @@ from mnemosyne.sessions.interaction import (
     active_document_default_node_id,
     active_document_reference_query,
     active_document_vocabulary_values,
+    agentic_evidence_summary,
     answer_query,
     build_active_document_source_fallback_envelope,
     build_agentic_answer_envelope,
@@ -2363,6 +2364,7 @@ def test_evidence_summary_lines_render_source_documents_concisely() -> None:
             "tool_result_count": 4,
             "successful_tool_count": 3,
             "failed_tool_count": 1,
+            "vector_edge_evidence_count": 2,
             "source_documents": [
                 {"title": "Alpha"},
                 {"document_id": "doc-beta"},
@@ -2376,6 +2378,7 @@ def test_evidence_summary_lines_render_source_documents_concisely() -> None:
         "- Evidence summary: 2 repository node(s) included.",
         "- Evidence summary: source-file fallback was used.",
         "- Evidence summary: 4 memory-tool result(s), 3 successful and 1 failed.",
+        "- Evidence summary: 2 vector-derived reviewed edge(s) influenced retrieved context.",
         "- Evidence sources: Alpha, doc-beta, untitled source, plus 1 more.",
     ]
 
@@ -2393,6 +2396,49 @@ def test_evidence_summary_lines_can_suppress_direct_duplicates() -> None:
     )
 
     assert lines == []
+
+
+def test_agentic_evidence_summary_counts_vector_edge_evidence() -> None:
+    summary = agentic_evidence_summary(
+        [
+            {
+                "tool": "expand_proximity",
+                "ok": True,
+                "output": {
+                    "match_count": 1,
+                    "matches": [
+                        {
+                            "node_id": "near1",
+                            "edge": {
+                                "candidate_source": "embedding_similarity",
+                                "embedding_similarity": 0.91,
+                            },
+                        }
+                    ],
+                    "top_contexts": [],
+                },
+            },
+            {
+                "tool": "expand_graph_paths",
+                "ok": True,
+                "output": {
+                    "match_count": 1,
+                    "matches": [
+                        {
+                            "node_id": "near2",
+                            "path_edges": [
+                                {"candidate_source": "label_overlap"},
+                                {"candidate_source": "embedding_similarity"},
+                            ],
+                        }
+                    ],
+                    "top_contexts": [],
+                },
+            },
+        ]
+    )
+
+    assert summary["vector_edge_evidence_count"] == 2
 
 
 def test_document_tree_lookup_does_not_mark_tree_nodes_as_used() -> None:

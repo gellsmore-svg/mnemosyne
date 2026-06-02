@@ -2690,6 +2690,7 @@ def agentic_evidence_summary(tool_results: list[dict[str, Any]]) -> dict[str, An
     record_count = 0
     context_count = 0
     match_count = 0
+    vector_edge_evidence_count = 0
     successful_tools = 0
     failed_tools = 0
     for result in tool_results:
@@ -2701,6 +2702,7 @@ def agentic_evidence_summary(tool_results: list[dict[str, Any]]) -> dict[str, An
         if not isinstance(output, dict):
             continue
         match_count += int(output.get("match_count") or 0)
+        vector_edge_evidence_count += vector_edge_evidence_count_from_output(output)
         for context in output.get("top_contexts") or []:
             context_count += 1
             document = context.get("document") or {}
@@ -2714,7 +2716,7 @@ def agentic_evidence_summary(tool_results: list[dict[str, Any]]) -> dict[str, An
                 record_count += 1
                 if record.get("node_id"):
                     node_ids.add(str(record["node_id"]))
-    return {
+    summary = {
         "tool_result_count": len(tool_results),
         "successful_tool_count": successful_tools,
         "failed_tool_count": failed_tools,
@@ -2728,6 +2730,27 @@ def agentic_evidence_summary(tool_results: list[dict[str, Any]]) -> dict[str, An
             key=lambda item: (item.get("title") or "", item.get("document_id") or ""),
         ),
     }
+    if vector_edge_evidence_count:
+        summary["vector_edge_evidence_count"] = vector_edge_evidence_count
+    return summary
+
+
+def vector_edge_evidence_count_from_output(output: dict[str, Any]) -> int:
+    matches = output.get("matches")
+    if not isinstance(matches, list):
+        match = output.get("top_match")
+        matches = [match] if isinstance(match, dict) else []
+    count = 0
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        edge = match.get("edge")
+        if isinstance(edge, dict) and edge.get("candidate_source") == "embedding_similarity":
+            count += 1
+        for path_edge in match.get("path_edges") or []:
+            if isinstance(path_edge, dict) and path_edge.get("candidate_source") == "embedding_similarity":
+                count += 1
+    return count
 
 
 def agentic_context_controller_decision(

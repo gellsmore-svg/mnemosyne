@@ -127,6 +127,11 @@ def evidence_summary_lines(
             f"- Evidence summary: {tool_count} memory-tool result(s), "
             f"{successful} successful and {failed} failed."
         )
+    vector_edges = summary.get("vector_edge_evidence_count")
+    if vector_edges:
+        lines.append(
+            f"- Evidence summary: {vector_edges} vector-derived reviewed edge(s) influenced retrieved context."
+        )
     documents = summary.get("source_documents") or []
     if include_source_documents and documents:
         titles = [
