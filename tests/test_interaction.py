@@ -3298,6 +3298,16 @@ def test_render_tool_results_renders_graph_path_context_as_markdown() -> None:
                         "title": "Two Hop Node",
                         "path_score": 0.5184,
                         "path_depth": 2,
+                        "path_edges": [
+                            {
+                                "relation_type": "supports",
+                                "candidate_source": "embedding_similarity",
+                                "embedding_similarity": 0.91,
+                                "embedding_model": "mock",
+                                "embedding_dimensions": 16,
+                                "selection_min_similarity": 0.8,
+                            }
+                        ],
                     },
                     "top_contexts": [
                         {
@@ -3327,6 +3337,7 @@ def test_render_tool_results_renders_graph_path_context_as_markdown() -> None:
     assert "- Max depth: 2" in rendered
     assert "- Path score: 0.5184" in rendered
     assert "- Path depth: 2" in rendered
+    assert "- Path edge 1 evidence: embedding_similarity, similarity 0.91, threshold 0.8, mock 16 dims." in rendered
     assert "Two-hop context text." in rendered
 
 

@@ -3155,6 +3155,7 @@ def render_prepared_context_tool_result(
             lines.append(
                 f"- Shared labels: {format_list_for_prompt(top_match.get('shared_labels'))}"
             )
+        lines.extend(render_edge_evidence_lines(top_match))
     remaining_chars = ANSWER_CONTEXT_CHAR_BUDGET
     for index, context in enumerate(top_contexts, start=1):
         rendered = render_context_document(
@@ -3169,6 +3170,36 @@ def render_prepared_context_tool_result(
         if remaining_chars <= 0:
             break
     return lines
+
+
+def render_edge_evidence_lines(match: dict[str, Any]) -> list[str]:
+    lines = []
+    edge = match.get("edge")
+    if isinstance(edge, dict):
+        lines.extend(render_single_edge_evidence_lines(edge, "Edge evidence"))
+    for index, path_edge in enumerate(match.get("path_edges") or [], start=1):
+        if isinstance(path_edge, dict):
+            lines.extend(render_single_edge_evidence_lines(path_edge, f"Path edge {index} evidence"))
+    return lines
+
+
+def render_single_edge_evidence_lines(edge: dict[str, Any], label: str) -> list[str]:
+    if edge.get("candidate_source") != "embedding_similarity":
+        return []
+    details = [
+        f"similarity {edge.get('embedding_similarity')}"
+        if edge.get("embedding_similarity") is not None
+        else None,
+        f"threshold {edge.get('selection_min_similarity')}"
+        if edge.get("selection_min_similarity") is not None
+        else None,
+        f"{edge.get('embedding_model')} {edge.get('embedding_dimensions')} dims"
+        if edge.get("embedding_model") or edge.get("embedding_dimensions")
+        else None,
+    ]
+    compact_details = [item for item in details if item]
+    suffix = f", {', '.join(compact_details)}" if compact_details else ""
+    return [f"- {label}: embedding_similarity{suffix}."]
 
 
 def render_search_details_lines(details: dict[str, Any]) -> list[str]:
