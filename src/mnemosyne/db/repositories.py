@@ -478,6 +478,7 @@ def create_reviewed_semantic_edge(
     confidence: Any = 0.6,
     reviewer: str = "user",
     note: str | None = None,
+    candidate_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not hasattr(db, "graph_edges"):
         return {"ok": False, "reason": "graph_edges_unavailable"}
@@ -516,6 +517,23 @@ def create_reviewed_semantic_edge(
 
     now = datetime.now(timezone.utc)
     shared_labels = shared_semantic_labels(source, target)
+    provenance = {
+        "adapter": "user_review",
+        "source": "semantic_candidate_review",
+        "reviewer": reviewer,
+        "note": note,
+        "shared_labels": shared_labels,
+        "shared_label_count": len(shared_labels),
+    }
+    if candidate_context:
+        provenance["candidate_source"] = candidate_context.get("candidate_source")
+        provenance["selection_context"] = candidate_context.get("selection_context") or {}
+        if candidate_context.get("embedding_similarity") is not None:
+            provenance["embedding_similarity"] = candidate_context.get("embedding_similarity")
+        if candidate_context.get("embedding_model"):
+            provenance["embedding_model"] = candidate_context.get("embedding_model")
+        if candidate_context.get("embedding_dimensions"):
+            provenance["embedding_dimensions"] = candidate_context.get("embedding_dimensions")
     edge_doc = {
         "schema_version": SCHEMA_VERSION,
         "document_id": source.get("document_id"),
@@ -532,14 +550,7 @@ def create_reviewed_semantic_edge(
         "weight": bounded_edge_score(weight, default=0.7),
         "confidence": bounded_edge_score(confidence, default=0.6),
         "direction": "directed",
-        "provenance": {
-            "adapter": "user_review",
-            "source": "semantic_candidate_review",
-            "reviewer": reviewer,
-            "note": note,
-            "shared_labels": shared_labels,
-            "shared_label_count": len(shared_labels),
-        },
+        "provenance": provenance,
         "created_at": now,
         "updated_at": now,
     }
@@ -802,6 +813,13 @@ def review_semantic_edge_candidate(
         confidence=confidence,
         reviewer=reviewer,
         note=note,
+        candidate_context={
+            "candidate_source": candidate.get("candidate_source") or "label_overlap",
+            "selection_context": candidate.get("selection_context") or {},
+            "embedding_similarity": candidate.get("embedding_similarity"),
+            "embedding_model": candidate.get("embedding_model"),
+            "embedding_dimensions": candidate.get("embedding_dimensions"),
+        },
     )
     if not edge_result.get("ok"):
         return {

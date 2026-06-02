@@ -896,6 +896,16 @@ def test_review_semantic_edge_candidate_accepts_and_creates_edge() -> None:
             "source_node_id": source_id,
             "target_node_id": target_id,
             "relation_type": "related_to",
+            "candidate_source": "embedding_similarity",
+            "embedding_similarity": 0.91,
+            "embedding_model": "mock",
+            "embedding_dimensions": 16,
+            "selection_context": {
+                "candidate_source": "embedding_similarity",
+                "min_similarity": 0.8,
+                "embedding_model": "mock",
+                "embedding_dimensions": 16,
+            },
         }
     )
 
@@ -917,6 +927,16 @@ def test_review_semantic_edge_candidate_accepts_and_creates_edge() -> None:
     assert result["candidate"]["edge_id"] == result["edge"]["edge_id"]
     assert result["edge"]["weight"] == 0.8
     assert result["edge"]["confidence"] == 0.9
+    assert result["edge"]["provenance"]["candidate_source"] == "embedding_similarity"
+    assert result["edge"]["provenance"]["embedding_similarity"] == 0.91
+    assert result["edge"]["provenance"]["embedding_model"] == "mock"
+    assert result["edge"]["provenance"]["embedding_dimensions"] == 16
+    assert result["edge"]["provenance"]["selection_context"] == {
+        "candidate_source": "embedding_similarity",
+        "min_similarity": 0.8,
+        "embedding_model": "mock",
+        "embedding_dimensions": 16,
+    }
 
 
 def test_review_semantic_edge_candidate_rejects_pending_candidate() -> None:
