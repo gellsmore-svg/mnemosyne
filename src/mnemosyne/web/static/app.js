@@ -394,10 +394,13 @@ async function loadIngestionStatus() {
   const embeddingItem =
     `<div class="item">` +
     `<strong>${html(String(embedding.embedded_percent ?? 0))}% of active nodes embedded</strong>` +
+    `<div>${html(embedding.summary || "Embedding coverage has not been assessed.")}</div>` +
+    `<div class="muted">Recommended action: ${html(embedding.recommended_action || "Load status again after ingestion activity.")}</div>` +
     `<div class="muted">${html(String(embedding.embedded_active_nodes ?? 0))} embedded` +
     ` | ${html(String(embedding.missing_active_embeddings ?? 0))} missing` +
     ` | ${html(String(embedding.total_active_nodes ?? 0))} active nodes</div>` +
     `<div class="muted">Profiles: ${html(profiles)}</div>` +
+    `${Array.isArray(embedding.warnings) && embedding.warnings.length ? `<div class="muted">Warnings: ${html(embedding.warnings.join(" | "))}</div>` : ""}` +
     `</div>`;
   const epochItems = data.epochs.length
     ? data.epochs.map((epoch, index) => {

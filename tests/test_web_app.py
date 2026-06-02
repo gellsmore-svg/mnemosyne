@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.web.app import (
+    annotate_embedding_coverage,
     app,
     embedding_backfill_batch_failure_reason,
     embedding_backfill_batch_step_ids,
@@ -154,6 +155,10 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             "embedded_percent": 75.0,
             "profiles": [],
             "label": label,
+            "status": "incomplete",
+            "summary": "3 of 4 active node(s) have embeddings; 1 still need vectors.",
+            "recommended_action": "Continue processing embedding backfill job batches before relying on vector candidate review.",
+            "warnings": [],
         },
     )
 
@@ -177,6 +182,10 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             "embedded_percent": 75.0,
             "profiles": [],
             "label": None,
+            "status": "incomplete",
+            "summary": "3 of 4 active node(s) have embeddings; 1 still need vectors.",
+            "recommended_action": "Continue processing embedding backfill job batches before relying on vector candidate review.",
+            "warnings": [],
         },
         "runs": [{"run_id": "run1", "session_id": "ingestion", "status": None, "limit": 4}],
     }
@@ -489,6 +498,12 @@ def test_embedding_coverage_reports_active_embedding_readiness() -> None:
             },
         ],
         "label": None,
+        "status": "incomplete",
+        "summary": "2 of 3 active node(s) have embeddings; 1 still need vectors.",
+        "recommended_action": "Continue processing embedding backfill job batches before relying on vector candidate review.",
+        "warnings": [
+            "2 embedding profiles are present; compare models and dimensions before broad vector review."
+        ],
     }
     assert target_coverage == {
         "total_active_nodes": 2,
@@ -505,7 +520,63 @@ def test_embedding_coverage_reports_active_embedding_readiness() -> None:
             }
         ],
         "label": "target",
+        "status": "incomplete",
+        "summary": "1 of 2 active node(s) for label `target` have embeddings; 1 still need vectors.",
+        "recommended_action": "Continue processing embedding backfill job batches before relying on vector candidate review.",
+        "warnings": [],
     }
+
+
+def test_annotate_embedding_coverage_reports_operator_action_states() -> None:
+    empty = annotate_embedding_coverage(
+        {
+            "total_active_nodes": 0,
+            "embedded_active_nodes": 0,
+            "missing_active_embeddings": 0,
+            "embedded_percent": 0.0,
+            "profiles": [],
+            "label": None,
+        }
+    )
+    not_started = annotate_embedding_coverage(
+        {
+            "total_active_nodes": 3,
+            "embedded_active_nodes": 0,
+            "missing_active_embeddings": 3,
+            "embedded_percent": 0.0,
+            "profiles": [],
+            "label": None,
+        }
+    )
+    mock_ready = annotate_embedding_coverage(
+        {
+            "total_active_nodes": 2,
+            "embedded_active_nodes": 2,
+            "missing_active_embeddings": 0,
+            "embedded_percent": 100.0,
+            "profiles": [{"adapter": "mock_embedding", "count": 2, "is_mock": True}],
+            "label": None,
+        }
+    )
+    ready = annotate_embedding_coverage(
+        {
+            "total_active_nodes": 2,
+            "embedded_active_nodes": 2,
+            "missing_active_embeddings": 0,
+            "embedded_percent": 100.0,
+            "profiles": [{"adapter": "ollama_powershell_embedding", "count": 2, "is_mock": False}],
+            "label": None,
+        }
+    )
+
+    assert empty["status"] == "empty"
+    assert "Ingest source documents" in empty["recommended_action"]
+    assert not_started["status"] == "not_started"
+    assert "Queue a scoped embedding backfill job" in not_started["recommended_action"]
+    assert mock_ready["status"] == "mock_only"
+    assert "forced embedding backfill" in mock_ready["recommended_action"]
+    assert ready["status"] == "ready"
+    assert "Preview vector matches" in ready["recommended_action"]
 
 
 def test_index_serves_html() -> None:

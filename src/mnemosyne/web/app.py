@@ -936,14 +936,14 @@ def embedding_coverage(db: Any, label: str | None = None) -> dict[str, Any]:
     embedded = db.nodes.count_documents(embedded_query)
     missing = max(0, total - embedded)
     percent = round((embedded / total) * 100, 1) if total else 0.0
-    return {
+    return annotate_embedding_coverage({
         "total_active_nodes": total,
         "embedded_active_nodes": embedded,
         "missing_active_embeddings": missing,
         "embedded_percent": percent,
         "profiles": embedding_profile_counts(db, embedded_query),
         "label": label_filter,
-    }
+    })
 
 
 def embedding_profile_counts(db: Any, embedded_query: dict[str, Any]) -> list[dict[str, Any]]:
@@ -974,6 +974,52 @@ def embedding_profile_counts(db: Any, embedded_query: dict[str, Any]) -> list[di
         }
         for row in rows
     ]
+
+
+def annotate_embedding_coverage(coverage: dict[str, Any]) -> dict[str, Any]:
+    total = int(coverage.get("total_active_nodes") or 0)
+    embedded = int(coverage.get("embedded_active_nodes") or 0)
+    missing = int(coverage.get("missing_active_embeddings") or 0)
+    profiles = coverage.get("profiles") or []
+    mock_count = sum(int(profile.get("count") or 0) for profile in profiles if profile.get("is_mock"))
+    profile_count = len(profiles)
+    label = coverage.get("label")
+    scope = f" for label `{label}`" if label else ""
+
+    if total == 0:
+        status = "empty"
+        summary = f"No active nodes are available{scope}."
+        action = "Ingest source documents before running embedding backfill or vector review."
+    elif embedded == 0:
+        status = "not_started"
+        summary = f"{total} active node(s){scope} exist, but none have embeddings yet."
+        action = "Queue a scoped embedding backfill job, then process bounded batches until coverage begins to rise."
+    elif missing > 0:
+        status = "incomplete"
+        summary = f"{embedded} of {total} active node(s){scope} have embeddings; {missing} still need vectors."
+        action = "Continue processing embedding backfill job batches before relying on vector candidate review."
+    elif mock_count:
+        status = "mock_only" if mock_count == embedded else "mixed_mock"
+        summary = f"All active nodes{scope} have embeddings, but {mock_count} embedded node(s) use mock vectors."
+        action = "Re-run a forced embedding backfill with a real embedding adapter before treating vector relationships as semantic evidence."
+    else:
+        status = "ready"
+        summary = f"All {total} active node(s){scope} have real embeddings."
+        action = "Preview vector matches, enqueue promising semantic-edge candidates, and review them before answer use."
+
+    warnings = []
+    if profile_count > 1:
+        warnings.append(f"{profile_count} embedding profiles are present; compare models and dimensions before broad vector review.")
+    if mock_count and missing:
+        warnings.append("Some existing embeddings are mock vectors while other active nodes still have no embeddings.")
+
+    return {
+        **coverage,
+        "status": status,
+        "summary": summary,
+        "recommended_action": action,
+        "warnings": warnings,
+    }
 
 
 def embedding_backfill_batch_failure_reason(result: dict[str, Any]) -> str:
