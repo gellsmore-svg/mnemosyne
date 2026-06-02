@@ -287,15 +287,90 @@ def embedding_candidate_nodes(
     include_same_document: bool = False,
     min_similarity: float = 0.75,
 ) -> list[dict[str, Any]]:
+    return embedding_candidate_report(
+        db,
+        node_id=node_id,
+        limit=limit,
+        include_same_document=include_same_document,
+        min_similarity=min_similarity,
+    )["nodes"]
+
+
+def embedding_candidate_report(
+    db: Database,
+    node_id: str,
+    limit: int = 10,
+    include_same_document: bool = False,
+    min_similarity: float = 0.75,
+) -> dict[str, Any]:
+    try:
+        parsed_limit = int(limit)
+    except (TypeError, ValueError):
+        parsed_limit = 10
+    bounded_limit = max(1, min(parsed_limit, 100))
+    try:
+        threshold = float(min_similarity)
+    except (TypeError, ValueError):
+        threshold = 0.75
+    threshold = max(-1.0, min(threshold, 1.0))
+    base_diagnostics: dict[str, Any] = {
+        "node_id": node_id,
+        "limit": bounded_limit,
+        "include_same_document": include_same_document,
+        "min_similarity": threshold,
+        "candidate_scan_limit": max(bounded_limit * 10, 100),
+        "scanned_count": 0,
+        "returned_count": 0,
+        "exclusions": {
+            "source_root": 0,
+            "superseded": 0,
+            "invalid_embedding": 0,
+            "incompatible_embedding": 0,
+            "below_threshold": 0,
+        },
+    }
     node_object_id = parse_object_id(node_id)
     if not node_object_id:
-        return []
+        return {
+            "ok": False,
+            "reason": "invalid_node_id",
+            "nodes": [],
+            "diagnostics": base_diagnostics,
+        }
     focus = db.nodes.find_one({"_id": node_object_id})
     if not focus:
-        return []
+        return {
+            "ok": False,
+            "reason": "node_not_found",
+            "nodes": [],
+            "diagnostics": base_diagnostics,
+        }
     focus_embedding = valid_embedding_payload(focus.get("embedding"))
     if not focus_embedding:
-        return []
+        return {
+            "ok": False,
+            "reason": "focus_embedding_unavailable",
+            "nodes": [],
+            "diagnostics": {
+                **base_diagnostics,
+                "focus": {
+                    "node_id": str(focus.get("_id")),
+                    "title": focus.get("title"),
+                    "has_embedding": bool(focus.get("embedding")),
+                },
+            },
+        }
+
+    diagnostics = {
+        **base_diagnostics,
+        "focus": {
+            "node_id": str(focus.get("_id")),
+            "title": focus.get("title"),
+            "adapter": focus_embedding.get("adapter"),
+            "model": focus_embedding.get("model"),
+            "dimensions": focus_embedding.get("dimensions"),
+        },
+    }
 
     filters: dict[str, Any] = {
         "_id": {"$ne": focus["_id"]},
@@ -305,23 +380,28 @@ def embedding_candidate_nodes(
     if not include_same_document and focus.get("document_id"):
         filters["document_id"] = {"$ne": focus["document_id"]}
 
-    candidate_limit = max(limit * 10, 100)
     candidates = []
-    for candidate in db.nodes.find(filters).limit(candidate_limit):
+    for candidate in db.nodes.find(filters).limit(diagnostics["candidate_scan_limit"]):
+        diagnostics["scanned_count"] += 1
         if "source_root" in (candidate.get("labels") or []):
+            diagnostics["exclusions"]["source_root"] += 1
             continue
         if is_superseded_node(candidate):
+            diagnostics["exclusions"]["superseded"] += 1
             continue
         candidate_embedding = valid_embedding_payload(candidate.get("embedding"))
         if not candidate_embedding:
+            diagnostics["exclusions"]["invalid_embedding"] += 1
             continue
         if not comparable_embeddings(focus_embedding, candidate_embedding):
+            diagnostics["exclusions"]["incompatible_embedding"] += 1
             continue
         similarity = cosine_similarity(
             focus_embedding["vector"],
             candidate_embedding["vector"],
         )
-        if similarity < min_similarity:
+        if similarity < threshold:
+            diagnostics["exclusions"]["below_threshold"] += 1
             continue
         candidates.append(
             {
@@ -332,7 +412,15 @@ def embedding_candidate_nodes(
             }
         )
     candidates.sort(key=embedding_candidate_sort_tuple)
-    return candidates[:limit]
+    nodes = candidates[:bounded_limit]
+    diagnostics["returned_count"] = len(nodes)
+    diagnostics["candidate_count_before_limit"] = len(candidates)
+    return {
+        "ok": True,
+        "reason": None,
+        "nodes": nodes,
+        "diagnostics": diagnostics,
+    }
 
 
 def semantic_labels(labels: list[str]) -> list[str]:

@@ -672,8 +672,12 @@ def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
     monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.embedding_candidate_nodes",
-        lambda _db, node_id, **kwargs: [{"node_id": node_id, **kwargs}],
+        "mnemosyne.cli.embedding_candidate_report",
+        lambda _db, node_id, **kwargs: {
+            "ok": True,
+            "nodes": [{"node_id": node_id, **kwargs}],
+            "diagnostics": {"returned_count": 1, **kwargs},
+        },
     )
 
     main()
@@ -689,6 +693,12 @@ def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
                 "limit": 3,
             }
         ],
+        "diagnostics": {
+            "returned_count": 1,
+            "include_same_document": True,
+            "min_similarity": 0.82,
+            "limit": 3,
+        },
     }
 
 

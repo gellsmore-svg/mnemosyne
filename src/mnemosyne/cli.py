@@ -66,7 +66,7 @@ from mnemosyne.retrieval.queries import (
     parse_iso_datetime,
     render_context_document,
     search_nodes,
-    embedding_candidate_nodes,
+    embedding_candidate_report,
     semantic_candidate_nodes,
 )
 from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
@@ -1192,16 +1192,13 @@ def main() -> None:
         ensure_indexes(db)
         print(
             json.dumps(
-                {
-                    "ok": True,
-                    "nodes": embedding_candidate_nodes(
-                        db,
-                        args.node_id,
-                        include_same_document=args.include_same_document,
-                        min_similarity=args.min_similarity,
-                        limit=args.limit,
-                    ),
-                },
+                embedding_candidate_report(
+                    db,
+                    args.node_id,
+                    include_same_document=args.include_same_document,
+                    min_similarity=args.min_similarity,
+                    limit=args.limit,
+                ),
                 indent=2,
             )
         )

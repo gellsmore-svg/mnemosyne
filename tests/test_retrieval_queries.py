@@ -8,6 +8,7 @@ from mnemosyne.retrieval.queries import (
     context_record,
     default_no_context_system_instruction,
     embedding_candidate_nodes,
+    embedding_candidate_report,
     estimate_tokens,
     expand_graph_paths,
     expand_proximity,
@@ -680,6 +681,99 @@ def test_embedding_candidate_nodes_requires_matching_model_metadata() -> None:
     )
 
     assert embedding_candidate_nodes(db, str(focus_id), min_similarity=0.5) == []
+
+
+def test_embedding_candidate_report_explains_scan_and_exclusions() -> None:
+    document_id = ObjectId()
+    other_document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+                "embedding": {
+                    "adapter": "mock",
+                    "model": "mock",
+                    "dimensions": 2,
+                    "vector": [1.0, 0.0],
+                },
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Strong",
+                "text": "Strong text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [0.99, 0.01]},
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Below threshold",
+                "text": "Weak text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [0.2, 0.8]},
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "Wrong model",
+                "text": "Wrong model text",
+                "embedding": {"model": "other", "dimensions": 2, "vector": [1.0, 0.0]},
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": other_document_id,
+                "tree_id": tree_id,
+                "title": "No vector",
+                "text": "No vector text",
+                "embedding": {"model": "mock", "dimensions": 2},
+            },
+        ]
+    )
+
+    report = embedding_candidate_report(db, str(focus_id), min_similarity=0.75, limit=3)
+
+    assert report["ok"] is True
+    assert [node["title"] for node in report["nodes"]] == ["Strong"]
+    assert report["diagnostics"]["focus"] == {
+        "node_id": str(focus_id),
+        "title": "Focus",
+        "adapter": "mock",
+        "model": "mock",
+        "dimensions": 2,
+    }
+    assert report["diagnostics"]["scanned_count"] == 4
+    assert report["diagnostics"]["returned_count"] == 1
+    assert report["diagnostics"]["exclusions"]["below_threshold"] == 1
+    assert report["diagnostics"]["exclusions"]["incompatible_embedding"] == 1
+    assert report["diagnostics"]["exclusions"]["invalid_embedding"] == 1
+
+
+def test_embedding_candidate_report_reports_missing_focus_embedding() -> None:
+    focus_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "title": "Focus",
+                "text": "Focus text",
+            },
+        ]
+    )
+
+    report = embedding_candidate_report(db, str(focus_id))
+
+    assert report["ok"] is False
+    assert report["reason"] == "focus_embedding_unavailable"
+    assert report["nodes"] == []
+    assert report["diagnostics"]["focus"]["has_embedding"] is False
 
 
 def test_nearby_siblings_uses_sibling_position_not_order_delta() -> None:
