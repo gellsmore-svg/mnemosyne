@@ -243,6 +243,8 @@ def test_backfill_node_embeddings_updates_missing_embeddings_only() -> None:
     assert result["updated_count"] == 1
     assert result["skipped_count"] == 0
     assert result["last_node_id"] == str(missing_id)
+    assert result["activity_log"].startswith("Embedding Backfill Activity Log")
+    assert "1 node(s) embedded" in result["activity_log"]
     assert result["adapter"] == "fake_embedding"
     assert result["model"] == "fake-model"
     assert result["dimensions"] == 2
@@ -292,6 +294,7 @@ def test_backfill_node_embeddings_collects_node_errors() -> None:
 
     assert result["ok"] is False
     assert result["reason"] == "all_embedding_updates_failed"
+    assert "needs attention" in result["activity_log"]
     assert result["updated_count"] == 0
     assert result["skipped_count"] == 3
     assert result["error_count"] == 3

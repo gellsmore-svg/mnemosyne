@@ -932,10 +932,12 @@ def backfill_node_embeddings(
     bounded_limit = bounded_candidate_limit(limit, maximum=1000)
     document_object_id = parse_object_id(document_id) if document_id else None
     if document_id and document_object_id is None:
-        return {"ok": False, "reason": "invalid_document_id", "document_id": document_id}
+        result = {"ok": False, "reason": "invalid_document_id", "document_id": document_id}
+        return {**result, "activity_log": embedding_backfill_activity_log(result)}
     after_object_id = parse_object_id(after_node_id) if after_node_id else None
     if after_node_id and after_object_id is None:
-        return {"ok": False, "reason": "invalid_after_node_id", "after_node_id": after_node_id}
+        result = {"ok": False, "reason": "invalid_after_node_id", "after_node_id": after_node_id}
+        return {**result, "activity_log": embedding_backfill_activity_log(result)}
 
     query: dict[str, Any] = {"status": {"$ne": "superseded"}}
     if after_object_id is not None:
@@ -990,7 +992,7 @@ def backfill_node_embeddings(
         last_dimensions = embedding.get("dimensions")
 
     all_attempted_updates_failed = matched > 0 and updated == 0 and error_count == matched
-    return {
+    result = {
         "ok": not all_attempted_updates_failed,
         **({"reason": "all_embedding_updates_failed"} if all_attempted_updates_failed else {}),
         "scanned_count": scanned,
@@ -1014,6 +1016,53 @@ def backfill_node_embeddings(
             "missing_embedding_only": not force,
         },
     }
+    return {**result, "activity_log": embedding_backfill_activity_log(result)}
+
+
+def embedding_backfill_activity_log(result: dict[str, Any]) -> str:
+    lines = ["Embedding Backfill Activity Log"]
+    if not result.get("ok"):
+        lines.append(f"- Status: needs attention ({result.get('reason') or 'unknown reason'}).")
+    else:
+        lines.append("- Status: batch completed.")
+    adapter = result.get("adapter")
+    model = result.get("model")
+    dimensions = result.get("dimensions")
+    if adapter or model or dimensions:
+        lines.append(
+            f"- Embedding model: {adapter or 'unknown adapter'} / "
+            f"{model or 'unknown model'} ({dimensions or 'unknown'} dimensions)."
+        )
+    if "updated_count" in result:
+        lines.append(
+            f"- Repository action: {result.get('updated_count', 0)} node(s) embedded, "
+            f"{result.get('skipped_count', 0)} skipped, {result.get('error_count', 0)} error(s)."
+        )
+    filters = result.get("filters") or {}
+    if filters:
+        scope_parts = [
+            f"limit {result.get('limit')}",
+            f"label {filters.get('label') or 'any'}",
+            f"document {filters.get('document_id') or 'any'}",
+            f"after node {filters.get('after_node_id') or 'start'}",
+            "force replace" if filters.get("force") else "missing embeddings only",
+        ]
+        lines.append(f"- Scope: {', '.join(scope_parts)}.")
+    if result.get("last_node_id"):
+        lines.append(f"- Continuation point: next batch continues after node {result['last_node_id']}.")
+    errors = result.get("errors") or []
+    if errors:
+        lines.append("- Sample errors:")
+        for error in errors:
+            title = error.get("title") or error.get("node_id") or "unknown node"
+            lines.append(
+                f"  - {title}: {error.get('error_type') or 'Error'} - {error.get('error') or ''}"
+            )
+    if result.get("reason") == "invalid_document_id":
+        lines.append(f"- Correction: provide a valid Mongo document ObjectId. Received {result.get('document_id')}.")
+    if result.get("reason") == "invalid_after_node_id":
+        lines.append(f"- Correction: provide a valid Mongo node ObjectId. Received {result.get('after_node_id')}.")
+    return "\n".join(lines)
 
 
 def backfill_schema_metadata(db: Database) -> dict[str, int]:

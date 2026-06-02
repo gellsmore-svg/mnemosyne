@@ -44,6 +44,7 @@ def test_process_next_embedding_backfill_job_keeps_full_batch_pending(monkeypatc
             "skipped_count": 0,
             "error_count": 0,
             "last_node_id": "node2",
+            "activity_log": "Embedding Backfill Activity Log\n- Status: batch completed.",
         },
     )
 
@@ -55,6 +56,7 @@ def test_process_next_embedding_backfill_job_keeps_full_batch_pending(monkeypatc
     assert row["batch_count"] == 1
     assert row["updated_count"] == 2
     assert row["last_node_id"] == "node2"
+    assert row["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
 
 
 def test_process_next_embedding_backfill_job_completes_partial_batch(monkeypatch) -> None:
@@ -146,6 +148,7 @@ def test_process_next_embedding_backfill_job_blocks_on_exception(monkeypatch) ->
     assert row["status"] == "blocked"
     assert row["reason"] == "embedding_backfill_exception"
     assert row["error_count"] == 1
+    assert row["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
 
 
 def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:

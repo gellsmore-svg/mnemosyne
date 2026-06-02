@@ -6,7 +6,11 @@ from typing import Any
 from pymongo import ReturnDocument
 from pymongo.database import Database
 
-from mnemosyne.db.repositories import backfill_node_embeddings, bounded_candidate_limit
+from mnemosyne.db.repositories import (
+    backfill_node_embeddings,
+    bounded_candidate_limit,
+    embedding_backfill_activity_log,
+)
 
 
 EMBEDDING_BACKFILL_SCHEMA_VERSION = 1
@@ -101,6 +105,7 @@ def process_next_embedding_backfill_job(db: Database, embedder: Any) -> dict[str
             "skipped_count": 0,
             "error_count": 1,
         }
+        result["activity_log"] = embedding_backfill_activity_log(result)
         block_embedding_backfill_job(db, job, result)
         return {
             "ok": False,

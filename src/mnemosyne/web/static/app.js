@@ -730,6 +730,9 @@ async function loadEmbeddingBackfillJobs() {
 }
 
 function embeddingBackfillSummary(data, jobStatus = null) {
+  if (data.activity_log) {
+    return jobStatus ? `Job status: ${jobStatus}\n\n${data.activity_log}` : data.activity_log;
+  }
   const lines = [
     `Status: ${jobStatus || (data.ok ? "completed" : "needs attention")}`,
     data.reason ? `Reason: ${data.reason}` : null,
