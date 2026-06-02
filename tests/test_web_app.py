@@ -1100,6 +1100,42 @@ def test_enqueue_vector_semantic_edge_candidates_endpoint(monkeypatch) -> None:
     }
 
 
+def test_vector_semantic_candidates_preview_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.embedding_candidate_report",
+        lambda _db, **kwargs: {
+            "ok": True,
+            "nodes": [{"node_id": kwargs["node_id"], "title": "Target"}],
+            "diagnostics": {"returned_count": 1, **kwargs},
+        },
+    )
+
+    response = client.get(
+        "/api/review/vector-semantic-candidates",
+        params={
+            "node_id": "node1",
+            "include_same_document": True,
+            "min_similarity": 0.82,
+            "limit": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "nodes": [{"node_id": "node1", "title": "Target"}],
+        "diagnostics": {
+            "returned_count": 1,
+            "node_id": "node1",
+            "include_same_document": True,
+            "min_similarity": 0.82,
+            "limit": 3,
+        },
+    }
+
+
 def test_enqueue_semantic_edge_candidates_endpoint_rejects_unknown_source() -> None:
     client = TestClient(app)
 

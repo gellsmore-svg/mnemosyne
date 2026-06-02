@@ -46,7 +46,7 @@ from mnemosyne.ingestion.embedding_backfill import (
 from mnemosyne.ingestion.files import move_request_file, sha256_file
 from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
 from mnemosyne.ingestion.worker import discover_sources, process_next
-from mnemosyne.retrieval.queries import list_documents, search_nodes
+from mnemosyne.retrieval.queries import embedding_candidate_report, list_documents, search_nodes
 from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
 from mnemosyne.sessions.exchanges import recent_exchanges
 from mnemosyne.sessions.interaction import answer_query
@@ -360,6 +360,21 @@ def create_app() -> FastAPI:
                 limit=limit,
             ),
         }
+
+    @app.get("/api/review/vector-semantic-candidates")
+    def vector_semantic_candidates(
+        node_id: str,
+        limit: int = 10,
+        include_same_document: bool = False,
+        min_similarity: float = 0.75,
+    ) -> dict[str, Any]:
+        return embedding_candidate_report(
+            db,
+            node_id=node_id,
+            limit=limit,
+            include_same_document=include_same_document,
+            min_similarity=min_similarity,
+        )
 
     @app.post("/api/review/enqueue-semantic-edge-candidates")
     def enqueue_semantic_edge_review_candidates(

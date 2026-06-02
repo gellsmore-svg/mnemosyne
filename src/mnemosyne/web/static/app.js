@@ -505,6 +505,26 @@ async function reviewSemanticCandidate(candidateId, action) {
   await loadSemanticCandidates();
 }
 
+async function previewVectorSemanticCandidates() {
+  const nodeId = $("semanticSourceNodeId").value.trim();
+  if (!nodeId) {
+    $("semanticCandidateStatus").textContent = "Enter a source node ID first.";
+    return;
+  }
+  const params = new URLSearchParams({
+    node_id: nodeId,
+    include_same_document: String($("semanticIncludeSameDocument").checked),
+    min_similarity: String(Number($("semanticMinSimilarity").value || 0.75)),
+    limit: String(Number($("semanticLimit").value || 10)),
+  });
+  $("semanticCandidateStatus").textContent = "Previewing vector matches";
+  const data = await api(`/api/review/vector-semantic-candidates?${params.toString()}`);
+  $("semanticCandidateStatus").textContent = data.ok
+    ? `Preview: ${data.diagnostics?.returned_count || 0} vector match(es)`
+    : `Preview failed: ${data.reason || "unknown"}`;
+  $("semanticCandidatePreview").textContent = vectorCandidatePreviewSummary(data);
+}
+
 async function enqueueSemanticCandidates(candidateSource) {
   const nodeId = $("semanticSourceNodeId").value.trim();
   if (!nodeId) {
@@ -528,6 +548,30 @@ async function enqueueSemanticCandidates(candidateSource) {
     ? `${data.enqueued_count} queued from ${data.candidate_source}; ${data.skipped_existing_count} existing`
     : `Queue failed: ${data.reason || "unknown"}`;
   await loadSemanticCandidates();
+}
+
+function vectorCandidatePreviewSummary(data) {
+  const diagnostics = data.diagnostics || {};
+  const exclusions = diagnostics.exclusions || {};
+  const focus = diagnostics.focus || {};
+  const lines = [
+    `Status: ${data.ok ? "ready" : "needs attention"}`,
+    data.reason ? `Reason: ${data.reason}` : null,
+    focus.title ? `Focus: ${text(focus.title)} (${text(focus.model)}, ${text(focus.dimensions)} dims)` : null,
+    `Threshold: ${text(diagnostics.min_similarity)}`,
+    `Scan: ${text(diagnostics.scanned_count)} scanned of ${text(diagnostics.candidate_scan_limit)} candidate limit`,
+    `Returned: ${text(diagnostics.returned_count)} shown from ${text(diagnostics.candidate_count_before_limit)} above threshold`,
+    `Excluded: ${text(exclusions.invalid_embedding)} invalid, ${text(exclusions.incompatible_embedding)} incompatible, ${text(exclusions.below_threshold)} below threshold, ${text(exclusions.source_root)} root, ${text(exclusions.superseded)} superseded`,
+  ].filter(Boolean);
+  const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+  if (nodes.length) {
+    lines.push("");
+    lines.push("Matches:");
+    nodes.forEach((node, index) => {
+      lines.push(`${index + 1}. ${text(node.title || node.node_id)} | similarity ${text(node.embedding_similarity)} | ${text(node.embedding_model)} ${text(node.embedding_dimensions)} dims`);
+    });
+  }
+  return lines.join("\n");
 }
 
 async function searchNodes() {
@@ -844,6 +888,7 @@ $("loadHistory").addEventListener("click", loadHistory);
 $("loadJobs").addEventListener("click", loadJobs);
 $("loadSemanticCandidates").addEventListener("click", loadSemanticCandidates);
 $("enqueueLabelCandidates").addEventListener("click", () => enqueueSemanticCandidates("label_overlap"));
+$("previewVectorCandidates").addEventListener("click", previewVectorSemanticCandidates);
 $("enqueueVectorCandidates").addEventListener("click", () => enqueueSemanticCandidates("embedding_similarity"));
 document.querySelectorAll(".tab-button").forEach((button) => {
   button.addEventListener("click", () => switchTab(button.dataset.tab));
