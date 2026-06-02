@@ -138,6 +138,40 @@ def process_next_embedding_backfill_job(db: Database, embedder: Any) -> dict[str
     }
 
 
+def process_embedding_backfill_batches(
+    db: Database,
+    embedder: Any,
+    *,
+    max_batches: int = 1,
+) -> dict[str, Any]:
+    bounded_batches = bounded_candidate_limit(max_batches, maximum=100)
+    results = []
+    aggregate = {
+        "updated_count": 0,
+        "skipped_count": 0,
+        "error_count": 0,
+    }
+    final_status = "idle"
+    for _ in range(bounded_batches):
+        result = process_next_embedding_backfill_job(db, embedder)
+        final_status = result.get("status") or "unknown"
+        results.append(result)
+        batch_result = result.get("result") or {}
+        aggregate["updated_count"] += int(batch_result.get("updated_count") or 0)
+        aggregate["skipped_count"] += int(batch_result.get("skipped_count") or 0)
+        aggregate["error_count"] += int(batch_result.get("error_count") or 0)
+        if final_status in {"idle", "completed", "blocked"}:
+            break
+    return {
+        "ok": all(result.get("ok", False) for result in results) if results else True,
+        "status": final_status,
+        "requested_batches": bounded_batches,
+        "processed_batches": len(results),
+        **aggregate,
+        "results": results,
+    }
+
+
 def next_embedding_backfill_status(job: dict[str, Any], result: dict[str, Any]) -> str:
     if not result.get("ok"):
         return "blocked"

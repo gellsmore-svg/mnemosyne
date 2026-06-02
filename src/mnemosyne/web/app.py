@@ -41,7 +41,7 @@ from mnemosyne.ingestion.dates import analyze_source_dates
 from mnemosyne.ingestion.embedding_backfill import (
     create_embedding_backfill_job,
     list_embedding_backfill_jobs,
-    process_next_embedding_backfill_job,
+    process_embedding_backfill_batches,
 )
 from mnemosyne.ingestion.files import move_request_file, sha256_file
 from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
@@ -499,7 +499,7 @@ def create_app() -> FastAPI:
         }
 
     @app.post("/api/process-embedding-backfill-job")
-    def process_embedding_backfill_job() -> dict[str, Any]:
+    def process_embedding_backfill_job(max_batches: int = 1) -> dict[str, Any]:
         process_run = create_process_run(
             db,
             process_id="embedding_backfill_job_batch",
@@ -507,7 +507,11 @@ def create_app() -> FastAPI:
             current_step_id="embedding_backfill_job_batch_running",
             status="active",
         )
-        result = process_next_embedding_backfill_job(db, embedding_adapter(config.runtime))
+        result = process_embedding_backfill_batches(
+            db,
+            embedding_adapter(config.runtime),
+            max_batches=max_batches,
+        )
         if result.get("status") == "idle":
             update_process_run(
                 db,
@@ -529,9 +533,9 @@ def create_app() -> FastAPI:
             exception=None
             if process_status == "completed"
             else {
-                "reason": (result.get("result") or {}).get("reason") or "embedding_backfill_job_failed",
+                "reason": embedding_backfill_batch_failure_reason(result),
                 "proposal": "Inspect the embedding backfill job result, fix the adapter or scope, then queue a new job if appropriate.",
-                "details": result.get("result") or {},
+                "details": result,
             },
         )
         return {**result, "process_run_id": process_run["run_id"], "process_status": process_status}
@@ -947,6 +951,14 @@ def embedding_profile_counts(db: Any, embedded_query: dict[str, Any]) -> list[di
         }
         for row in rows
     ]
+
+
+def embedding_backfill_batch_failure_reason(result: dict[str, Any]) -> str:
+    for batch in result.get("results") or []:
+        batch_result = batch.get("result") or {}
+        if batch_result.get("reason"):
+            return batch_result["reason"]
+    return "embedding_backfill_job_failed"
 
 
 def serialize_web_value(value: Any) -> Any:

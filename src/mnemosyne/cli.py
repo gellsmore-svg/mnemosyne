@@ -49,7 +49,7 @@ from mnemosyne.ingestion.dates import analyze_source_dates, annotate_source_date
 from mnemosyne.ingestion.embedding_backfill import (
     create_embedding_backfill_job,
     list_embedding_backfill_jobs,
-    process_next_embedding_backfill_job,
+    process_embedding_backfill_batches,
 )
 from mnemosyne.ingestion.files import archive_source, move_request_file, sha256_file
 from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
@@ -338,7 +338,8 @@ def main() -> None:
     queue_embedding_job.add_argument("--document-id", default=None)
     queue_embedding_job.add_argument("--force", action="store_true")
     queue_embedding_job.add_argument("--created-by", default="cli")
-    subcommands.add_parser("process-embedding-backfill")
+    process_embedding_job = subcommands.add_parser("process-embedding-backfill")
+    process_embedding_job.add_argument("--max-batches", type=int, default=1)
     subcommands.add_parser("enqueue-inbox")
     subcommands.add_parser("process-next")
     subcommands.add_parser("process-inbox")
@@ -764,9 +765,10 @@ def main() -> None:
         ensure_indexes(db)
         print(
             json.dumps(
-                process_next_embedding_backfill_job(
+                process_embedding_backfill_batches(
                     db,
                     embedding_adapter(config.runtime),
+                    max_batches=args.max_batches,
                 ),
                 indent=2,
             )

@@ -8,6 +8,7 @@ from mnemosyne.config import load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.web.app import (
     app,
+    embedding_backfill_batch_failure_reason,
     embedding_coverage,
     list_ingestion_epochs,
     parse_ollama_model_list,
@@ -291,8 +292,17 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
         lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.process_next_embedding_backfill_job",
-        lambda _db, embedder: {"ok": True, "status": "completed", "embedder": embedder},
+        "mnemosyne.web.app.process_embedding_backfill_batches",
+        lambda _db, embedder, max_batches=1: {
+            "ok": True,
+            "status": "completed",
+            "requested_batches": max_batches,
+            "processed_batches": 1,
+            "updated_count": 1,
+            "skipped_count": 0,
+            "error_count": 0,
+            "results": [{"ok": True, "status": "completed", "embedder": embedder}],
+        },
     )
 
     created = client.post(
@@ -315,12 +325,23 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
     assert processed.json() == {
         "ok": True,
         "status": "completed",
-        "embedder": "embedder",
+        "requested_batches": 1,
+        "processed_batches": 1,
+        "updated_count": 1,
+        "skipped_count": 0,
+        "error_count": 0,
+        "results": [{"ok": True, "status": "completed", "embedder": "embedder"}],
         "process_run_id": "run1",
         "process_status": "completed",
     }
     assert updates[0]["status"] == "completed"
     assert updates[0]["current_step_id"] == "embedding_backfill_job_batch_processed"
+
+
+def test_embedding_backfill_batch_failure_reason_uses_batch_reason() -> None:
+    result = {"results": [{"result": {"reason": "adapter_offline"}}]}
+
+    assert embedding_backfill_batch_failure_reason(result) == "adapter_offline"
 
 
 def test_list_ingestion_epochs_reports_dated_document_coverage() -> None:

@@ -706,10 +706,8 @@ async function processEmbeddingBackfillJob() {
   const data = await api("/api/process-embedding-backfill-job", { method: "POST" });
   $("embeddingBackfillStatus").textContent = data.status === "idle"
     ? "Embedding backfill: no pending jobs"
-    : `Embedding backfill: job ${data.job_id} is ${data.status}`;
-  $("embeddingBackfillResult").textContent = data.result
-    ? embeddingBackfillSummary(data.result, data.status)
-    : JSON.stringify(data, null, 2);
+    : `Embedding backfill: ${data.processed_batches || 0} batch(es), status ${data.status}`;
+  $("embeddingBackfillResult").textContent = embeddingBackfillBatchRunSummary(data);
   await Promise.all([loadEmbeddingBackfillJobs(), loadIngestionStatus()]);
 }
 
@@ -747,6 +745,24 @@ function embeddingBackfillSummary(data, jobStatus = null) {
     data.errors.forEach((error) => {
       lines.push(`- ${text(error.title || error.node_id)}: ${text(error.error_type)} - ${text(error.error)}`);
     });
+  }
+  return lines.join("\n");
+}
+
+function embeddingBackfillBatchRunSummary(data) {
+  const lines = [
+    `Status: ${text(data.status)}`,
+    `Batches: ${text(data.processed_batches)} processed of ${text(data.requested_batches)} requested`,
+    `Repository action: ${text(data.updated_count)} embedded, ${text(data.skipped_count)} skipped, ${text(data.error_count)} error(s)`,
+    data.process_run_id ? `Process run: ${data.process_run_id} (${text(data.process_status)})` : null,
+  ].filter(Boolean);
+  const last = Array.isArray(data.results) && data.results.length
+    ? data.results[data.results.length - 1]
+    : null;
+  if (last?.result?.activity_log) {
+    lines.push("");
+    lines.push("Last batch:");
+    lines.push(last.result.activity_log);
   }
   return lines.join("\n");
 }

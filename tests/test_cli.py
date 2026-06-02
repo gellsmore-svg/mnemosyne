@@ -309,7 +309,7 @@ def test_cli_queue_embedding_backfill_command(monkeypatch, capsys) -> None:
 
 
 def test_cli_process_embedding_backfill_command(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(sys, "argv", ["mnemosyne", "process-embedding-backfill"])
+    monkeypatch.setattr(sys, "argv", ["mnemosyne", "process-embedding-backfill", "--max-batches", "4"])
     config = SimpleNamespace(mongo=SimpleNamespace(), runtime=SimpleNamespace())
     embedder = SimpleNamespace(name="fake_embedding")
     monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
@@ -317,8 +317,12 @@ def test_cli_process_embedding_backfill_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr("mnemosyne.cli.embedding_adapter", lambda _runtime: embedder)
     monkeypatch.setattr(
-        "mnemosyne.cli.process_next_embedding_backfill_job",
-        lambda _db, used_embedder: {"ok": True, "embedder": used_embedder.name},
+        "mnemosyne.cli.process_embedding_backfill_batches",
+        lambda _db, used_embedder, max_batches=1: {
+            "ok": True,
+            "embedder": used_embedder.name,
+            "max_batches": max_batches,
+        },
     )
 
     main()
@@ -326,6 +330,7 @@ def test_cli_process_embedding_backfill_command(monkeypatch, capsys) -> None:
     assert json.loads(capsys.readouterr().out) == {
         "ok": True,
         "embedder": "fake_embedding",
+        "max_batches": 4,
     }
 
 

@@ -6,6 +6,7 @@ import mnemosyne.ingestion.embedding_backfill as embedding_backfill
 from mnemosyne.ingestion.embedding_backfill import (
     create_embedding_backfill_job,
     list_embedding_backfill_jobs,
+    process_embedding_backfill_batches,
     process_next_embedding_backfill_job,
 )
 
@@ -149,6 +150,48 @@ def test_process_next_embedding_backfill_job_blocks_on_exception(monkeypatch) ->
     assert row["reason"] == "embedding_backfill_exception"
     assert row["error_count"] == 1
     assert row["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
+
+
+def test_process_embedding_backfill_batches_runs_until_requested_limit(monkeypatch) -> None:
+    calls = []
+
+    def fake_process(_db, _embedder):
+        calls.append(len(calls))
+        return {
+            "ok": True,
+            "status": "pending",
+            "job_id": "job1",
+            "result": {"updated_count": 2, "skipped_count": 1, "error_count": 0},
+        }
+
+    monkeypatch.setattr(embedding_backfill, "process_next_embedding_backfill_job", fake_process)
+
+    result = process_embedding_backfill_batches(FakeDb(), embedder="embedder", max_batches=3)
+
+    assert result["status"] == "pending"
+    assert result["processed_batches"] == 3
+    assert result["updated_count"] == 6
+    assert result["skipped_count"] == 3
+
+
+def test_process_embedding_backfill_batches_stops_on_completed(monkeypatch) -> None:
+    results = [
+        {"ok": True, "status": "pending", "result": {"updated_count": 1}},
+        {"ok": True, "status": "completed", "result": {"updated_count": 1}},
+        {"ok": True, "status": "pending", "result": {"updated_count": 1}},
+    ]
+
+    monkeypatch.setattr(
+        embedding_backfill,
+        "process_next_embedding_backfill_job",
+        lambda _db, _embedder: results.pop(0),
+    )
+
+    result = process_embedding_backfill_batches(FakeDb(), embedder="embedder", max_batches=3)
+
+    assert result["status"] == "completed"
+    assert result["processed_batches"] == 2
+    assert result["updated_count"] == 2
 
 
 def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:
