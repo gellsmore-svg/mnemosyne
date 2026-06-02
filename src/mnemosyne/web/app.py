@@ -524,6 +524,12 @@ def create_app() -> FastAPI:
             )
             return {**result, "process_run_id": process_run["run_id"], "process_status": "completed"}
         process_status = "blocked" if result.get("status") == "blocked" else "completed"
+        for step_id in embedding_backfill_batch_step_ids(result):
+            update_process_run(
+                db,
+                process_run["run_id"],
+                completed_step_id=step_id,
+            )
         update_process_run(
             db,
             process_run["run_id"],
@@ -531,7 +537,7 @@ def create_app() -> FastAPI:
             current_step_id="embedding_backfill_job_batch_blocked"
             if process_status == "blocked"
             else "embedding_backfill_job_batch_processed",
-            completed_step_id="embedding_backfill_job_batch",
+            completed_step_id="embedding_backfill_job_run",
             exception=None
             if process_status == "completed"
             else {
@@ -961,6 +967,14 @@ def embedding_backfill_batch_failure_reason(result: dict[str, Any]) -> str:
         if batch_result.get("reason"):
             return batch_result["reason"]
     return "embedding_backfill_job_failed"
+
+
+def embedding_backfill_batch_step_ids(result: dict[str, Any]) -> list[str]:
+    steps = []
+    for index, batch in enumerate(result.get("results") or [], start=1):
+        status = batch.get("status") or "unknown"
+        steps.append(f"embedding_backfill_job_batch_{index}_{status}")
+    return steps
 
 
 def serialize_web_value(value: Any) -> Any:

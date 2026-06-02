@@ -702,7 +702,8 @@ async function queueEmbeddingBackfillJob() {
 }
 
 async function processEmbeddingBackfillJob() {
-  const maxBatches = Number($("embeddingBackfillJobBatches").value || 1);
+  const maxBatches = Math.max(1, Math.min(Number($("embeddingBackfillJobBatches").value || 1), 10));
+  $("embeddingBackfillJobBatches").value = String(maxBatches);
   const params = new URLSearchParams({ max_batches: String(maxBatches) });
   $("embeddingBackfillStatus").textContent = `Embedding backfill: processing up to ${maxBatches} queued batch(es)`;
   const data = await api(`/api/process-embedding-backfill-job?${params.toString()}`, { method: "POST" });

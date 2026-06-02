@@ -9,6 +9,7 @@ from mnemosyne.db.client import get_database
 from mnemosyne.web.app import (
     app,
     embedding_backfill_batch_failure_reason,
+    embedding_backfill_batch_step_ids,
     embedding_coverage,
     list_ingestion_epochs,
     parse_ollama_model_list,
@@ -297,11 +298,14 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
             "ok": True,
             "status": "completed",
             "requested_batches": max_batches,
-            "processed_batches": 1,
-            "updated_count": 1,
+            "processed_batches": 2,
+            "updated_count": 2,
             "skipped_count": 0,
             "error_count": 0,
-            "results": [{"ok": True, "status": "completed", "embedder": embedder}],
+            "results": [
+                {"ok": True, "status": "pending", "embedder": embedder},
+                {"ok": True, "status": "completed", "embedder": embedder},
+            ],
         },
     )
 
@@ -326,16 +330,24 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
         "ok": True,
         "status": "completed",
         "requested_batches": 4,
-        "processed_batches": 1,
-        "updated_count": 1,
+        "processed_batches": 2,
+        "updated_count": 2,
         "skipped_count": 0,
         "error_count": 0,
-        "results": [{"ok": True, "status": "completed", "embedder": "embedder"}],
+        "results": [
+            {"ok": True, "status": "pending", "embedder": "embedder"},
+            {"ok": True, "status": "completed", "embedder": "embedder"},
+        ],
         "process_run_id": "run1",
         "process_status": "completed",
     }
-    assert updates[0]["status"] == "completed"
-    assert updates[0]["current_step_id"] == "embedding_backfill_job_batch_processed"
+    assert [update["completed_step_id"] for update in updates] == [
+        "embedding_backfill_job_batch_1_pending",
+        "embedding_backfill_job_batch_2_completed",
+        "embedding_backfill_job_run",
+    ]
+    assert updates[-1]["status"] == "completed"
+    assert updates[-1]["current_step_id"] == "embedding_backfill_job_batch_processed"
 
 
 def test_embedding_backfill_batch_failure_reason_uses_batch_reason() -> None:
@@ -347,6 +359,20 @@ def test_embedding_backfill_batch_failure_reason_uses_batch_reason() -> None:
     }
 
     assert embedding_backfill_batch_failure_reason(result) == "terminal_adapter_offline"
+
+
+def test_embedding_backfill_batch_step_ids_include_status_and_position() -> None:
+    assert embedding_backfill_batch_step_ids(
+        {
+            "results": [
+                {"status": "pending"},
+                {"status": "blocked"},
+            ]
+        }
+    ) == [
+        "embedding_backfill_job_batch_1_pending",
+        "embedding_backfill_job_batch_2_blocked",
+    ]
 
 
 def test_process_embedding_backfill_job_clamps_web_batch_count(monkeypatch) -> None:
