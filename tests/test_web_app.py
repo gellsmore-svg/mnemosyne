@@ -173,6 +173,7 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
                 "batch_limit": 1,
                 "force": False,
                 "missing_embedding_only": True,
+                "requires_real_adapter": False,
                 "estimated_total_batches": 1,
                 "recommended_web_batches": 1,
                 "estimated_nodes_per_web_run": 1,
@@ -217,6 +218,7 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
                 "batch_limit": 1,
                 "force": False,
                 "missing_embedding_only": True,
+                "requires_real_adapter": False,
                 "estimated_total_batches": 1,
                 "recommended_web_batches": 1,
                 "estimated_nodes_per_web_run": 1,
@@ -716,6 +718,26 @@ def test_embedding_backfill_status_reports_not_needed_when_coverage_complete(mon
     assert "vector-match preview" in status["recommended_action"]
 
 
+def test_embedding_backfill_status_reports_real_backfill_needed_for_mock_coverage(monkeypatch) -> None:
+    monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+
+    status = embedding_backfill_status(
+        None,
+        {
+            "status": "mock_only",
+            "total_active_nodes": 25,
+            "embedded_active_nodes": 25,
+            "missing_active_embeddings": 0,
+        },
+    )
+
+    assert status["status"] == "real_backfill_needed"
+    assert status["recommended_job"]["force"] is True
+    assert status["recommended_job"]["missing_embedding_only"] is False
+    assert status["recommended_job"]["requires_real_adapter"] is True
+    assert "real embedding adapter" in status["recommended_action"]
+
+
 def test_recommended_embedding_backfill_job_estimates_large_corpus() -> None:
     recommendation = recommended_embedding_backfill_job({"missing_active_embeddings": 176428})
 
@@ -723,6 +745,7 @@ def test_recommended_embedding_backfill_job_estimates_large_corpus() -> None:
         "batch_limit": 1000,
         "force": False,
         "missing_embedding_only": True,
+        "requires_real_adapter": False,
         "estimated_total_batches": 177,
         "recommended_web_batches": 10,
         "estimated_nodes_per_web_run": 10000,
@@ -732,6 +755,28 @@ def test_recommended_embedding_backfill_job_estimates_large_corpus() -> None:
 
 def test_recommended_embedding_backfill_job_skips_complete_coverage() -> None:
     assert recommended_embedding_backfill_job({"missing_active_embeddings": 0}) is None
+
+
+def test_recommended_embedding_backfill_job_handles_mock_only_coverage() -> None:
+    recommendation = recommended_embedding_backfill_job(
+        {
+            "status": "mock_only",
+            "total_active_nodes": 2500,
+            "embedded_active_nodes": 2500,
+            "missing_active_embeddings": 0,
+        }
+    )
+
+    assert recommendation == {
+        "batch_limit": 1000,
+        "force": True,
+        "missing_embedding_only": False,
+        "requires_real_adapter": True,
+        "estimated_total_batches": 3,
+        "recommended_web_batches": 3,
+        "estimated_nodes_per_web_run": 3000,
+        "summary": "After configuring a real embedding adapter, queue a forced backfill with batch limit 1000; process up to 3 batch(es) per web run. Current coverage needs about 3 total forced batch(es).",
+    }
 
 
 def test_index_serves_html() -> None:

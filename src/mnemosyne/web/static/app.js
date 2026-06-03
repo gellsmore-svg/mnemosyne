@@ -809,9 +809,13 @@ function applyEmbeddingBackfillRecommendation() {
     `Job batches per web run: ${text(recommendation.recommended_web_batches)}`,
     `Estimated nodes per web run: ${text(recommendation.estimated_nodes_per_web_run)}`,
     `Estimated total batches: ${text(recommendation.estimated_total_batches)}`,
+    recommendation.requires_real_adapter ? "Adapter: configure a real embedding adapter before queueing this forced backfill." : null,
+    recommendation.missing_embedding_only
+      ? "Scope: all active nodes missing embeddings. Label and document filters were cleared."
+      : "Scope: all active nodes in the repository. Label and document filters were cleared.",
     "",
     "Next step: queue a backfill job, then process queued job batches.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 async function processEmbeddingBackfillJob() {

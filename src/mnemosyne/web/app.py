@@ -1071,6 +1071,10 @@ def embedding_backfill_status(db: Any, coverage: dict[str, Any], limit: int = 20
         status = "blocked"
         summary = f"{counts['blocked']} recent embedding backfill job(s) are blocked."
         action = "Open the latest job log, resolve the recorded error, then queue a new scoped backfill if needed."
+    elif coverage.get("status") in {"mock_only", "mixed_mock"}:
+        status = "real_backfill_needed"
+        summary = "Active nodes have embeddings, but at least some are mock vectors."
+        action = "Configure a real embedding adapter, then queue a forced embedding backfill before vector review."
     elif missing > 0:
         status = "needed"
         summary = "No recent active backfill job is queued, but active nodes still lack embeddings."
@@ -1093,6 +1097,28 @@ def embedding_backfill_status(db: Any, coverage: dict[str, Any], limit: int = 20
 
 def recommended_embedding_backfill_job(coverage: dict[str, Any]) -> dict[str, Any] | None:
     missing = int(coverage.get("missing_active_embeddings") or 0)
+    coverage_status = coverage.get("status")
+    if coverage_status in {"mock_only", "mixed_mock"}:
+        target_count = int(coverage.get("total_active_nodes") or coverage.get("embedded_active_nodes") or 0)
+        if target_count <= 0:
+            return None
+        batch_limit = min(WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT, target_count)
+        total_batches = ceil(target_count / batch_limit) if batch_limit else 0
+        recommended_web_batches = min(WEB_EMBEDDING_BACKFILL_MAX_BATCHES, total_batches)
+        return {
+            "batch_limit": batch_limit,
+            "force": True,
+            "missing_embedding_only": False,
+            "requires_real_adapter": True,
+            "estimated_total_batches": total_batches,
+            "recommended_web_batches": recommended_web_batches,
+            "estimated_nodes_per_web_run": batch_limit * recommended_web_batches,
+            "summary": (
+                f"After configuring a real embedding adapter, queue a forced backfill with batch limit {batch_limit}; "
+                f"process up to {recommended_web_batches} batch(es) per web run. "
+                f"Current coverage needs about {total_batches} total forced batch(es)."
+            ),
+        }
     if missing <= 0:
         return None
     batch_limit = min(WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT, missing)
@@ -1102,6 +1128,7 @@ def recommended_embedding_backfill_job(coverage: dict[str, Any]) -> dict[str, An
         "batch_limit": batch_limit,
         "force": False,
         "missing_embedding_only": True,
+        "requires_real_adapter": False,
         "estimated_total_batches": total_batches,
         "recommended_web_batches": recommended_web_batches,
         "estimated_nodes_per_web_run": batch_limit * recommended_web_batches,
