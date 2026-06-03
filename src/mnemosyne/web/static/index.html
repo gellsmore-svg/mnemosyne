@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mnemosyne</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260601-embedding-jobs" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260603-backfill-settings" />
   </head>
   <body>
     <main id="appShell" class="shell ask-mode">
@@ -106,6 +106,7 @@
               <input id="embeddingBackfillJobBatches" type="number" min="1" max="10" value="1" placeholder="Job batches" />
               <label class="check-row"><input id="embeddingBackfillForce" type="checkbox" /> Force replace</label>
               <button id="runEmbeddingBackfill">Run Backfill Batch</button>
+              <button id="applyEmbeddingBackfillRecommendation" class="secondary">Apply Suggested Settings</button>
               <button id="queueEmbeddingBackfill" class="secondary">Queue Backfill Job</button>
               <button id="processEmbeddingBackfillJob" class="secondary">Process Next Job Batch</button>
               <div id="embeddingBackfillStatus" class="status">Embedding backfill: idle</div>
@@ -188,6 +189,6 @@
       </aside>
     </main>
 
-    <script src="/static/app.js?v=20260601-embedding-jobs"></script>
+    <script src="/static/app.js?v=20260603-backfill-settings"></script>
   </body>
 </html>

@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const DISPLAY_MODE_KEY = "mnemosyne.displayMode";
+let latestEmbeddingBackfillRecommendation = null;
 
 async function api(path, options = {}) {
   const res = await fetch(path, options);
@@ -409,6 +410,7 @@ async function loadIngestionStatus() {
   const nextJob = backfill.next_job || {};
   const nextJobProgress = embeddingBackfillJobProgress(nextJob);
   const recommendedJob = backfill.recommended_job || {};
+  latestEmbeddingBackfillRecommendation = recommendedJob.summary ? recommendedJob : null;
   const backfillItem =
     `<div class="item">` +
     `<strong>Backfill jobs: ${html(backfill.status || "unknown")}</strong>` +
@@ -788,6 +790,30 @@ async function queueEmbeddingBackfillJob() {
   await Promise.all([loadEmbeddingBackfillJobs(), loadIngestionStatus()]);
 }
 
+function applyEmbeddingBackfillRecommendation() {
+  const recommendation = latestEmbeddingBackfillRecommendation;
+  if (!recommendation) {
+    $("embeddingBackfillStatus").textContent = "Embedding backfill: load status for suggested settings";
+    $("embeddingBackfillResult").textContent = "No suggested backfill job is available. Load ingestion status first, or queue a scoped job manually.";
+    return;
+  }
+  $("embeddingBackfillLimit").value = String(recommendation.batch_limit || 50);
+  $("embeddingBackfillJobBatches").value = String(recommendation.recommended_web_batches || 1);
+  $("embeddingBackfillLabel").value = "";
+  $("embeddingBackfillDocumentId").value = "";
+  $("embeddingBackfillForce").checked = Boolean(recommendation.force);
+  $("embeddingBackfillStatus").textContent = "Embedding backfill: suggested settings applied";
+  $("embeddingBackfillResult").textContent = [
+    "Suggested settings applied.",
+    `Batch limit: ${text(recommendation.batch_limit)}`,
+    `Job batches per web run: ${text(recommendation.recommended_web_batches)}`,
+    `Estimated nodes per web run: ${text(recommendation.estimated_nodes_per_web_run)}`,
+    `Estimated total batches: ${text(recommendation.estimated_total_batches)}`,
+    "",
+    "Next step: queue a backfill job, then process queued job batches.",
+  ].join("\n");
+}
+
 async function processEmbeddingBackfillJob() {
   const maxBatches = Math.max(1, Math.min(Number($("embeddingBackfillJobBatches").value || 1), 10));
   $("embeddingBackfillJobBatches").value = String(maxBatches);
@@ -991,6 +1017,7 @@ $("uploadSource").addEventListener("click", uploadSourceFiles);
 $("browseIngest").addEventListener("click", browseIngestFolder);
 $("processInbox").addEventListener("click", processInbox);
 $("runEmbeddingBackfill").addEventListener("click", runEmbeddingBackfill);
+$("applyEmbeddingBackfillRecommendation").addEventListener("click", applyEmbeddingBackfillRecommendation);
 $("queueEmbeddingBackfill").addEventListener("click", queueEmbeddingBackfillJob);
 $("processEmbeddingBackfillJob").addEventListener("click", processEmbeddingBackfillJob);
 $("loadIngestionStatus").addEventListener("click", loadIngestionStatus);
