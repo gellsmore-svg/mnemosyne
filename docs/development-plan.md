@@ -162,7 +162,7 @@ Status: Phase A implemented (mockable embedding substrate); Phase B partially im
 Phase A implemented behavior:
 
 - A dependency-free embedding adapter boundary lives in `mnemosyne.adapters.embedding`, with a deterministic `MockEmbeddingAdapter` and an `embedding_adapter(config)` factory selected by `runtime.embedding_adapter` / `runtime.embedding_dimensions`.
-- Real local `ollama_http` and `ollama_powershell` embedding adapters are available behind the same factory. Both call the local Ollama `/api/embed` endpoint using `runtime.embedding_model`, `runtime.ollama_base_url`, and `runtime.ollama_timeout_seconds`, validate that a vector was returned, normalize it, and record the model and returned dimensions in each stored node embedding. Use `ollama_powershell` when running Mnemosyne in WSL against Windows Ollama. The default remains `mock`.
+- HTTP-backed `ollama_http` and `ollama_powershell` embedding adapters were built as temporary diagnostics, but they are not compliant for ingestion or retrieval memory operations. The default remains `mock`; the real embedding milestone now requires a local non-HTTP embedding execution path behind the same adapter boundary.
 - The mock adapter derives a bounded, unit-norm vector from a SHA-256 expansion of the node text, so the same text always produces the same vector without any external model or network call.
 - During direct CLI ingestion and queued worker ingestion (both via `commit_ingestion`), and during maintenance rebuilds (`rebuild_document`), each node is annotated before commit with an `embedding` field holding adapter/model name, dimensions, vector, and the source text hash.
 - Ingestion activity reports/logs now surface the embedded node count, embedding model, and dimensions.
@@ -171,7 +171,7 @@ Phase A implemented behavior:
 
 Phase A remaining work:
 
-- Wire a real local embedding adapter behind the same boundary.
+- Wire a real local, non-HTTP embedding adapter behind the same boundary.
 - Only then consider any retrieval/ranking use of embeddings, kept candidate/review based.
 
 ## Slice 7: LLM-Assisted Ingestion

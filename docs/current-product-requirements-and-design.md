@@ -77,6 +77,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
 ### LLM Transparency
 
 - LLM calls are product-visible events, not hidden implementation details.
+- HTTP is allowed for the human web interface and may be used for an optional final hosted answer-model call. It must not be used for ingestion, retrieval, memory-agent tool orchestration, Python memory tools, or repository embedding generation.
 - Each answer should expose:
   - memory-agent planner calls, if agentic mode is used;
   - final answer model call;

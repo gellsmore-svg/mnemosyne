@@ -165,7 +165,7 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "mnemosyne.web.app.embedding_backfill_status",
-        lambda _db, coverage: {
+        lambda _db, coverage, **_kwargs: {
             "status": "pending",
             "summary": "1 recent embedding backfill job(s) are queued.",
             "recommended_action": "Process the next bounded backfill batches and refresh ingestion status.",
@@ -504,6 +504,64 @@ def test_process_embedding_backfill_job_clamps_web_batch_count(monkeypatch) -> N
     assert response.json()["requested_batches"] == 10
 
 
+def test_backfill_embeddings_endpoint_blocks_disallowed_embedding_adapter(monkeypatch) -> None:
+    client = TestClient(app)
+    updates = []
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1", **kwargs},
+    )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+
+    def disallowed_adapter(_runtime):
+        raise ValueError("HTTP-backed embedding adapter is not allowed.")
+
+    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", disallowed_adapter)
+
+    response = client.post("/api/backfill-embeddings", json={"limit": 2})
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is False
+    assert response.json()["reason"] == "embedding_adapter_not_allowed"
+    assert response.json()["process_status"] == "blocked"
+    assert updates[0]["status"] == "blocked"
+    assert updates[0]["exception"]["reason"] == "embedding_adapter_not_allowed"
+
+
+def test_process_embedding_backfill_job_blocks_disallowed_embedding_adapter(monkeypatch) -> None:
+    client = TestClient(app)
+    updates = []
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.create_process_run",
+        lambda _db, **kwargs: {"run_id": "run1", **kwargs},
+    )
+    monkeypatch.setattr(
+        "mnemosyne.web.app.update_process_run",
+        lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
+    )
+
+    def disallowed_adapter(_runtime):
+        raise ValueError("HTTP-backed embedding adapter is not allowed.")
+
+    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", disallowed_adapter)
+
+    response = client.post("/api/process-embedding-backfill-job", params={"max_batches": 2})
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is False
+    assert response.json()["status"] == "blocked"
+    assert response.json()["reason"] == "embedding_adapter_not_allowed"
+    assert response.json()["requested_batches"] == 2
+    assert response.json()["processed_batches"] == 0
+    assert updates[0]["status"] == "blocked"
+    assert updates[0]["exception"]["reason"] == "embedding_adapter_not_allowed"
+
+
 def test_list_ingestion_epochs_reports_dated_document_coverage() -> None:
     db = SimpleEpochDb(
         [
@@ -708,6 +766,22 @@ def test_embedding_backfill_status_reports_needed_when_no_job_exists(monkeypatch
     assert "Queue an embedding backfill job" in status["recommended_action"]
 
 
+def test_embedding_backfill_status_blocks_recommendation_for_disallowed_adapter(monkeypatch) -> None:
+    monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+
+    status = embedding_backfill_status(
+        None,
+        {"missing_active_embeddings": 5},
+        embedding_adapter_allowed=False,
+        configured_embedding_adapter="ollama_powershell",
+    )
+
+    assert status["status"] == "embedding_adapter_blocked"
+    assert status["recommended_job"] is None
+    assert "local non-HTTP embedding adapter" in status["recommended_action"]
+    assert "ollama_powershell" in status["summary"]
+
+
 def test_embedding_backfill_status_reports_not_needed_when_coverage_complete(monkeypatch) -> None:
     monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
@@ -806,8 +880,11 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     data = response.json()
     assert data["ok"] is True
     assert "ollama_cli" in data["available_adapters"]
-    assert "ollama_http" in data["available_embedding_adapters"]
-    assert "ollama_powershell" in data["available_embedding_adapters"]
+    assert data["available_embedding_adapters"] == ["mock"]
+    assert "ollama_http" in data["non_compliant_embedding_adapters"]
+    assert "ollama_powershell" in data["non_compliant_embedding_adapters"]
+    assert data["embedding_adapter_policy"] == "ingestion_and_retrieval_no_http"
+    assert data["memory_agent_adapter_policy"] == "local_only_no_http"
     assert data["default_model"]
     assert data["default_embedding_adapter"]
     assert data["default_embedding_model"]

@@ -22,6 +22,7 @@ class RuntimeConfig(BaseModel):
     model_adapter: str = "mock"
     answer_adapter: str = "ollama_cli"
     embedding_adapter: str = "mock"
+    allow_http_ingestion_adapters: bool = False
     embedding_model: str = "nomic-embed-text:latest"
     embedding_dimensions: int = 16
     memory_agent_adapter: str | None = None

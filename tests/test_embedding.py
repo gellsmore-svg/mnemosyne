@@ -65,7 +65,7 @@ def test_embedding_adapter_factory_honors_runtime_config_dimensions() -> None:
 
 
 def test_embedding_adapter_factory_can_create_ollama_http_adapter() -> None:
-    config = RuntimeConfig(embedding_adapter="ollama_http")
+    config = RuntimeConfig(embedding_adapter="ollama_http", allow_http_ingestion_adapters=True)
     adapter = embedding_adapter(config)
 
     assert isinstance(adapter, OllamaHttpEmbeddingAdapter)
@@ -74,12 +74,24 @@ def test_embedding_adapter_factory_can_create_ollama_http_adapter() -> None:
 
 
 def test_embedding_adapter_factory_can_create_ollama_powershell_adapter() -> None:
-    config = RuntimeConfig(embedding_adapter="ollama_powershell")
+    config = RuntimeConfig(embedding_adapter="ollama_powershell", allow_http_ingestion_adapters=True)
     adapter = embedding_adapter(config)
 
     assert isinstance(adapter, OllamaPowerShellEmbeddingAdapter)
     assert adapter.model == "nomic-embed-text:latest"
     assert adapter.dimensions is None
+
+
+def test_embedding_adapter_factory_rejects_http_backed_adapters_by_default() -> None:
+    config = RuntimeConfig(embedding_adapter="ollama_http")
+
+    try:
+        embedding_adapter(config)
+    except ValueError as error:
+        assert "HTTP-backed" in str(error)
+        assert "ingestion or retrieval" in str(error)
+    else:
+        raise AssertionError("Expected HTTP-backed embedding adapter to be rejected.")
 
 
 def test_embedding_adapter_factory_defaults_without_config() -> None:

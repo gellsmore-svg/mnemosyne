@@ -1519,19 +1519,47 @@ def test_memory_agent_runtime_can_differ_from_answer_runtime() -> None:
     runtime = RuntimeConfig(
         answer_adapter="ollama_cli",
         ollama_model="final",
-        memory_agent_adapter="ollama_http",
+        memory_agent_adapter="ollama_cli",
         memory_agent_model="memory",
         memory_agent_ollama_format="json",
     )
 
     memory_runtime = memory_agent_runtime_config(runtime)
 
-    assert memory_runtime.answer_adapter == "ollama_http"
+    assert memory_runtime.answer_adapter == "ollama_cli"
     assert memory_runtime.ollama_model == "memory"
     assert memory_runtime.ollama_format == "json"
     assert runtime.answer_adapter == "ollama_cli"
     assert runtime.ollama_model == "final"
     assert runtime.ollama_format is None
+
+
+def test_memory_agent_runtime_rejects_explicit_http_adapter() -> None:
+    runtime = RuntimeConfig(
+        answer_adapter="ollama_cli",
+        memory_agent_adapter="ollama_http",
+    )
+
+    try:
+        memory_agent_runtime_config(runtime)
+    except ValueError as error:
+        assert "HTTP model adapters are not allowed" in str(error)
+    else:
+        raise AssertionError("Expected HTTP memory-agent adapter to be rejected.")
+
+
+def test_memory_agent_runtime_does_not_inherit_http_answer_adapter() -> None:
+    runtime = RuntimeConfig(
+        answer_adapter="ollama_http",
+        memory_agent_adapter=None,
+        ollama_model="final",
+        memory_agent_model="memory",
+    )
+
+    memory_runtime = memory_agent_runtime_config(runtime)
+
+    assert memory_runtime.answer_adapter == "ollama_cli"
+    assert memory_runtime.ollama_model == "memory"
 
 
 def test_memory_agent_trace_records_runtime_json_controls(monkeypatch) -> None:

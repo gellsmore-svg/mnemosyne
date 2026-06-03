@@ -210,7 +210,16 @@ def ingest_source_path(
 
 
 def embedding_smoke_payload(config, text: str) -> dict:
-    adapter = embedding_adapter(config.runtime)
+    try:
+        adapter = embedding_adapter(config.runtime)
+    except Exception as error:
+        return {
+            "ok": False,
+            "adapter": getattr(config.runtime, "embedding_adapter", None),
+            "model": getattr(config.runtime, "embedding_model", None),
+            "error": str(error),
+            "error_type": error.__class__.__name__,
+        }
     try:
         embedding = adapter.embed(text)
     except Exception as error:
@@ -354,6 +363,7 @@ def main() -> None:
         default=None,
     )
     embedding_smoke.add_argument("--model", default=None)
+    embedding_smoke.add_argument("--allow-http-diagnostic", action="store_true")
 
     agent_identities = subcommands.add_parser("agent-identities")
     agent_identities.add_argument("--limit", type=int, default=20)
@@ -966,6 +976,8 @@ def main() -> None:
     if args.command == "embedding-smoke":
         if args.adapter:
             config.runtime.embedding_adapter = args.adapter
+        if args.allow_http_diagnostic:
+            config.runtime.allow_http_ingestion_adapters = True
         if args.model:
             config.runtime.embedding_model = args.model
         print(json.dumps(embedding_smoke_payload(config, args.text), indent=2))

@@ -108,6 +108,8 @@ LOW_INTENT_QUERIES = {
     "good evening",
 }
 ANSWER_PROCESS_ID = "answer_query"
+HTTP_MODEL_ADAPTERS = {"ollama_http"}
+DEFAULT_LOCAL_MEMORY_AGENT_ADAPTER = "ollama_cli"
 
 
 class ToolUsageError(ValueError):
@@ -1377,7 +1379,17 @@ def run_memory_agent_loop(
 
 def memory_agent_runtime_config(runtime_config):
     memory_runtime = runtime_config.model_copy()
-    memory_runtime.answer_adapter = runtime_config.memory_agent_adapter or runtime_config.answer_adapter
+    if runtime_config.memory_agent_adapter in HTTP_MODEL_ADAPTERS:
+        raise ValueError(
+            "HTTP model adapters are not allowed for memory-agent retrieval planning. "
+            "Use a local adapter such as ollama_cli."
+        )
+    if runtime_config.memory_agent_adapter:
+        memory_runtime.answer_adapter = runtime_config.memory_agent_adapter
+    elif runtime_config.answer_adapter in HTTP_MODEL_ADAPTERS:
+        memory_runtime.answer_adapter = DEFAULT_LOCAL_MEMORY_AGENT_ADAPTER
+    else:
+        memory_runtime.answer_adapter = runtime_config.answer_adapter
     memory_runtime.ollama_model = runtime_config.memory_agent_model or runtime_config.ollama_model
     memory_runtime.ollama_format = runtime_config.memory_agent_ollama_format
     return memory_runtime

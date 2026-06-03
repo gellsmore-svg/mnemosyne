@@ -11,7 +11,7 @@ Mnemosyne currently separates two LLM-facing roles:
 - Memory-agent LLM: plans retrieval. It must not answer the user. It returns JSON tool calls or a done decision.
 - Final answer LLM: answers the user from the Mnemosyne tool results and rendered source context.
 
-Both roles are called through the adapter boundary in `mnemosyne.adapters.answer`, so the concrete backend can be `mock`, `ollama_cli`, or `ollama_http`.
+Both roles are called through the adapter boundary in `mnemosyne.adapters.answer`. The final answer role may use `mock`, `ollama_cli`, or `ollama_http`; the memory-agent retrieval planner must use a local non-HTTP adapter such as `mock` or `ollama_cli`.
 
 ## Entry Point
 
@@ -102,6 +102,8 @@ For each iteration, Python:
 8. Stops or continues, depending on the planner decision and configured iteration limit.
 
 The trace input records the planner adapter, model, requested response format, thinking controls, prompt text, and allowed tool specs. This is diagnostic metadata only; Python still validates the returned JSON and executes tools itself.
+
+The memory-agent planner/retrieval loop must use local non-HTTP model/tool execution. HTTP is acceptable for the human web interface and may be acceptable for a final hosted answer-model call, but it is not an allowed transport for retrieval orchestration or Python memory tools.
 
 If the planner does not return parseable JSON, Python creates a conservative fallback decision:
 

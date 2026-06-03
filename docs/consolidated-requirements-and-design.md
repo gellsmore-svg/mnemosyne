@@ -62,6 +62,12 @@ For the foreseeable future, quality is more important than performance. The syst
 
 Optimization comes after the high-quality baseline is understood.
 
+### Local Memory Interface Boundary
+
+HTTP is allowed for the human web interface and may be used for an optional final hosted answer-model call. HTTP must not be used for ingestion, retrieval, memory-agent tool orchestration, Python memory tools, or embedding generation for repository memory.
+
+Python remains the stateful orchestrator for memory work. The memory-agent LLM may request tool calls, but Python validates those requests and executes local Python functions directly. Ingestion and retrieval model/tool calls must use local non-HTTP execution paths.
+
 ## User-Facing Requirements
 
 ### Ask Workspace

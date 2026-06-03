@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from mnemosyne.config import RuntimeConfig, load_config
-from mnemosyne.adapters.embedding import embedding_adapter
+from mnemosyne.adapters.embedding import HTTP_BACKED_EMBEDDING_ADAPTERS, embedding_adapter
 from mnemosyne.db.client import get_database
 from mnemosyne.db.governance import (
     PROCESS_RUN_STATUSES,
@@ -176,12 +176,15 @@ def create_app() -> FastAPI:
             "default_model": config.runtime.ollama_model,
             "default_embedding_adapter": config.runtime.embedding_adapter,
             "default_embedding_model": config.runtime.embedding_model,
-            "memory_agent_adapter": config.runtime.memory_agent_adapter or config.runtime.answer_adapter,
+            "memory_agent_adapter": runtime_memory_agent_adapter_name(config.runtime),
+            "memory_agent_adapter_policy": "local_only_no_http",
             "memory_agent_model": config.runtime.memory_agent_model or config.runtime.ollama_model,
             "retrieval_mode": config.runtime.retrieval_mode,
             "available_retrieval_modes": ["direct", "agentic"],
             "available_adapters": ["mock", "ollama_cli", "ollama_http"],
-            "available_embedding_adapters": ["mock", "ollama_http", "ollama_powershell"],
+            "available_embedding_adapters": ["mock"],
+            "non_compliant_embedding_adapters": ["ollama_http", "ollama_powershell"],
+            "embedding_adapter_policy": "ingestion_and_retrieval_no_http",
             "known_models": [model["name"] for model in model_options],
             "discovered_models": [model["name"] for model in discovered_models],
             "model_options": model_options,
@@ -454,7 +457,12 @@ def create_app() -> FastAPI:
             "ok": True,
             "epochs": list_ingestion_epochs(db, limit=limit),
             "embedding": embedding,
-            "embedding_backfill": embedding_backfill_status(db, embedding),
+            "embedding_backfill": embedding_backfill_status(
+                db,
+                embedding,
+                embedding_adapter_allowed=runtime_embedding_adapter_allowed(config.runtime),
+                configured_embedding_adapter=config.runtime.embedding_adapter,
+            ),
             "runs": list_process_runs(
                 db,
                 session_id="ingestion",
@@ -471,9 +479,30 @@ def create_app() -> FastAPI:
             current_step_id="embedding_backfill_running",
             status="active",
         )
+        try:
+            embedder = embedding_adapter(config.runtime)
+        except ValueError as error:
+            result = {
+                "ok": False,
+                "reason": "embedding_adapter_not_allowed",
+                "message": str(error),
+            }
+            update_process_run(
+                db,
+                process_run["run_id"],
+                status="blocked",
+                current_step_id="embedding_backfill_blocked",
+                completed_step_id="embedding_backfill_adapter_check",
+                exception={
+                    "reason": result["reason"],
+                    "proposal": "Configure a local non-HTTP embedding adapter before ingestion/backfill.",
+                    "details": result,
+                },
+            )
+            return {**result, "process_run_id": process_run["run_id"], "process_status": "blocked"}
         result = backfill_node_embeddings(
             db,
-            embedding_adapter(config.runtime),
+            embedder,
             limit=request.limit,
             label=request.label,
             document_id=request.document_id,
@@ -549,9 +578,37 @@ def create_app() -> FastAPI:
             current_step_id="embedding_backfill_job_batch_running",
             status="active",
         )
+        try:
+            embedder = embedding_adapter(config.runtime)
+        except ValueError as error:
+            result = {
+                "ok": False,
+                "status": "blocked",
+                "reason": "embedding_adapter_not_allowed",
+                "message": str(error),
+                "requested_batches": bounded_batches,
+                "processed_batches": 0,
+                "updated_count": 0,
+                "skipped_count": 0,
+                "error_count": 0,
+                "results": [],
+            }
+            update_process_run(
+                db,
+                process_run["run_id"],
+                status="blocked",
+                current_step_id="embedding_backfill_job_batch_blocked",
+                completed_step_id="embedding_backfill_job_adapter_check",
+                exception={
+                    "reason": result["reason"],
+                    "proposal": "Configure a local non-HTTP embedding adapter before processing embedding jobs.",
+                    "details": result,
+                },
+            )
+            return {**result, "process_run_id": process_run["run_id"], "process_status": "blocked"}
         result = process_embedding_backfill_batches(
             db,
-            embedding_adapter(config.runtime),
+            embedder,
             max_batches=bounded_batches,
         )
         if result.get("status") == "idle":
@@ -1047,7 +1104,13 @@ def annotate_embedding_coverage(coverage: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def embedding_backfill_status(db: Any, coverage: dict[str, Any], limit: int = 20) -> dict[str, Any]:
+def embedding_backfill_status(
+    db: Any,
+    coverage: dict[str, Any],
+    limit: int = 20,
+    embedding_adapter_allowed: bool = True,
+    configured_embedding_adapter: str | None = None,
+) -> dict[str, Any]:
     jobs = list_embedding_backfill_jobs(db, limit=limit)
     counts: dict[str, int] = {}
     for job in jobs:
@@ -1059,7 +1122,17 @@ def embedding_backfill_status(db: Any, coverage: dict[str, Any], limit: int = 20
         None,
     )
     missing = int(coverage.get("missing_active_embeddings") or 0)
-    if counts.get("pending"):
+    adapter_blocked = not embedding_adapter_allowed and (
+        missing > 0 or coverage.get("status") in {"mock_only", "mixed_mock"}
+    )
+    if adapter_blocked:
+        status = "embedding_adapter_blocked"
+        summary = (
+            f"Configured embedding adapter `{configured_embedding_adapter or 'unknown'}` is not allowed "
+            "for ingestion or retrieval memory operations."
+        )
+        action = "Configure a local non-HTTP embedding adapter before queueing or processing embedding backfill."
+    elif counts.get("pending"):
         status = "pending"
         summary = f"{counts['pending']} recent embedding backfill job(s) are queued."
         action = "Process the next bounded backfill batches and refresh ingestion status."
@@ -1088,7 +1161,7 @@ def embedding_backfill_status(db: Any, coverage: dict[str, Any], limit: int = 20
         "status": status,
         "summary": summary,
         "recommended_action": action,
-        "recommended_job": recommended_embedding_backfill_job(coverage),
+        "recommended_job": None if adapter_blocked else recommended_embedding_backfill_job(coverage),
         "recent_status_counts": counts,
         "recent_jobs_checked": len(jobs),
         "next_job": next_job,
@@ -1138,6 +1211,20 @@ def recommended_embedding_backfill_job(coverage: dict[str, Any]) -> dict[str, An
             f"Current coverage needs about {total_batches} total batch(es)."
         ),
     }
+
+
+def runtime_memory_agent_adapter_name(runtime: RuntimeConfig) -> str:
+    if runtime.memory_agent_adapter:
+        return runtime.memory_agent_adapter
+    if runtime.answer_adapter == "ollama_http":
+        return "ollama_cli"
+    return runtime.answer_adapter
+
+
+def runtime_embedding_adapter_allowed(runtime: RuntimeConfig) -> bool:
+    if getattr(runtime, "allow_http_ingestion_adapters", False):
+        return True
+    return runtime.embedding_adapter not in HTTP_BACKED_EMBEDDING_ADAPTERS
 
 
 def embedding_backfill_batch_failure_reason(result: dict[str, Any]) -> str:

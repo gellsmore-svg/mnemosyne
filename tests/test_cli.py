@@ -595,6 +595,7 @@ def test_cli_embedding_smoke_command(monkeypatch, capsys) -> None:
             "ollama_http",
             "--model",
             "embed-model",
+            "--allow-http-diagnostic",
         ],
     )
     monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
@@ -648,6 +649,26 @@ def test_embedding_smoke_payload_returns_structured_adapter_errors() -> None:
         "error": "model unavailable",
         "error_type": "RuntimeError",
     }
+
+
+def test_embedding_smoke_payload_reports_disallowed_http_adapter() -> None:
+    from mnemosyne.cli import embedding_smoke_payload
+
+    config = SimpleNamespace(
+        runtime=SimpleNamespace(
+            embedding_adapter="ollama_http",
+            embedding_model="nomic-embed-text:latest",
+            allow_http_ingestion_adapters=False,
+        )
+    )
+
+    output = embedding_smoke_payload(config, "text")
+
+    assert output["ok"] is False
+    assert output["adapter"] == "ollama_http"
+    assert output["model"] == "nomic-embed-text:latest"
+    assert output["error_type"] == "ValueError"
+    assert "HTTP-backed" in output["error"]
 
 
 def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
