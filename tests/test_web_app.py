@@ -4,7 +4,7 @@ from pathlib import Path
 from bson import ObjectId
 from fastapi.testclient import TestClient
 
-from mnemosyne.config import load_config
+from mnemosyne.config import RuntimeConfig, load_config
 from mnemosyne.db.client import get_database
 from mnemosyne.web.app import (
     annotate_embedding_coverage,
@@ -16,6 +16,7 @@ from mnemosyne.web.app import (
     list_ingestion_epochs,
     parse_ollama_model_list,
     parse_ollama_model_rows,
+    profile_adapter_status,
     process_inbox_activity_log,
     recommended_embedding_backfill_job,
 )
@@ -782,6 +783,22 @@ def test_embedding_backfill_status_blocks_recommendation_for_disallowed_adapter(
     assert "ollama_powershell" in status["summary"]
 
 
+def test_embedding_backfill_status_blocks_missing_local_profile_command(monkeypatch) -> None:
+    monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+
+    status = embedding_backfill_status(
+        None,
+        {"missing_active_embeddings": 5},
+        embedding_adapter_allowed=True,
+        configured_embedding_adapter="local_command",
+        profile_adapter_status={"status": "missing_profile_command", "ready": False},
+    )
+
+    assert status["status"] == "profile_command_missing"
+    assert status["recommended_job"] is None
+    assert "runtime.profile_command" in status["recommended_action"]
+
+
 def test_embedding_backfill_status_reports_not_needed_when_coverage_complete(monkeypatch) -> None:
     monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
@@ -897,6 +914,12 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     assert "ollama_http" in data["non_compliant_embedding_adapters"]
     assert "ollama_powershell" in data["non_compliant_embedding_adapters"]
     assert data["embedding_adapter_policy"] == "ingestion_and_retrieval_no_http"
+    assert data["profile_adapter_status"]["status"] in {
+        "stub_profile_adapter",
+        "http_adapter_blocked",
+        "missing_profile_command",
+        "ready",
+    }
     assert data["memory_agent_adapter_policy"] == "local_only_no_http"
     assert data["default_model"]
     assert data["default_embedding_adapter"]
@@ -906,6 +929,26 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     assert data["memory_agent_model"]
     assert "gemma4:latest" in data["known_models"]
     assert data["model_options"]
+
+
+def test_profile_adapter_status_reports_ready_and_blocked_states() -> None:
+    assert profile_adapter_status(RuntimeConfig(embedding_adapter="mock"))["status"] == "stub_profile_adapter"
+    assert (
+        profile_adapter_status(RuntimeConfig(embedding_adapter="ollama_powershell"))["status"]
+        == "http_adapter_blocked"
+    )
+    assert (
+        profile_adapter_status(RuntimeConfig(embedding_adapter="local_command"))["status"]
+        == "missing_profile_command"
+    )
+    ready = profile_adapter_status(
+        RuntimeConfig(
+            embedding_adapter="local_command",
+            profile_command=["profile-tool"],
+        )
+    )
+    assert ready["status"] == "ready"
+    assert ready["command_configured"] is True
 
 
 def test_parse_ollama_model_list_returns_model_names() -> None:

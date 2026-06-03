@@ -671,6 +671,27 @@ def test_embedding_smoke_payload_reports_disallowed_http_adapter() -> None:
     assert "HTTP-backed" in output["error"]
 
 
+def test_embedding_smoke_payload_reports_missing_local_profile_command() -> None:
+    from mnemosyne.cli import embedding_smoke_payload
+
+    config = SimpleNamespace(
+        runtime=SimpleNamespace(
+            embedding_adapter="local_command",
+            embedding_model="local-profile",
+            profile_command=[],
+            allow_http_ingestion_adapters=False,
+        )
+    )
+
+    output = embedding_smoke_payload(config, "text")
+
+    assert output["ok"] is False
+    assert output["adapter"] == "local_command"
+    assert output["model"] == "local-profile"
+    assert output["error_type"] == "ValueError"
+    assert "runtime.profile_command" in output["error"]
+
+
 def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

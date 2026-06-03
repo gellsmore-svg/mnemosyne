@@ -12,7 +12,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from mnemosyne.config import RuntimeConfig, load_config
-from mnemosyne.adapters.embedding import HTTP_BACKED_EMBEDDING_ADAPTERS, embedding_adapter
+from mnemosyne.adapters.embedding import (
+    HTTP_BACKED_EMBEDDING_ADAPTERS,
+    embedding_adapter,
+    local_profile_command,
+)
 from mnemosyne.db.client import get_database
 from mnemosyne.db.governance import (
     PROCESS_RUN_STATUSES,
@@ -187,6 +191,7 @@ def create_app() -> FastAPI:
             "available_embedding_adapters": ["mock", "local_command"],
             "non_compliant_embedding_adapters": ["ollama_http", "ollama_powershell"],
             "embedding_adapter_policy": "ingestion_and_retrieval_no_http",
+            "profile_adapter_status": profile_adapter_status(config.runtime),
             "known_models": [model["name"] for model in model_options],
             "discovered_models": [model["name"] for model in discovered_models],
             "model_options": model_options,
@@ -464,6 +469,7 @@ def create_app() -> FastAPI:
                 embedding,
                 embedding_adapter_allowed=runtime_embedding_adapter_allowed(config.runtime),
                 configured_embedding_adapter=config.runtime.embedding_adapter,
+                profile_adapter_status=profile_adapter_status(config.runtime),
                 recommended_batch_limit=config.runtime.profile_backfill_recommended_batch_limit,
                 web_max_batches=config.runtime.profile_backfill_web_max_batches,
             ),
@@ -1114,6 +1120,7 @@ def embedding_backfill_status(
     limit: int = 20,
     embedding_adapter_allowed: bool = True,
     configured_embedding_adapter: str | None = None,
+    profile_adapter_status: dict[str, Any] | None = None,
     recommended_batch_limit: int = WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT,
     web_max_batches: int = WEB_EMBEDDING_BACKFILL_MAX_BATCHES,
 ) -> dict[str, Any]:
@@ -1131,6 +1138,10 @@ def embedding_backfill_status(
     adapter_blocked = not embedding_adapter_allowed and (
         missing > 0 or coverage.get("status") in {"mock_only", "mixed_mock"}
     )
+    adapter_status = profile_adapter_status or {}
+    local_command_missing = adapter_status.get("status") == "missing_profile_command" and (
+        missing > 0 or coverage.get("status") in {"mock_only", "mixed_mock"}
+    )
     if adapter_blocked:
         status = "embedding_adapter_blocked"
         summary = (
@@ -1138,6 +1149,10 @@ def embedding_backfill_status(
             "for ingestion or retrieval memory operations."
         )
         action = "Configure a local non-HTTP profile adapter before queueing or processing profile backfill."
+    elif local_command_missing:
+        status = "profile_command_missing"
+        summary = "The local command profile adapter is selected, but no profile command is configured."
+        action = "Configure runtime.profile_command before queueing or processing profile backfill."
     elif counts.get("pending"):
         status = "pending"
         summary = f"{counts['pending']} recent profile backfill job(s) are queued."
@@ -1168,7 +1183,7 @@ def embedding_backfill_status(
         "summary": summary,
         "recommended_action": action,
         "recommended_job": None
-        if adapter_blocked
+        if adapter_blocked or local_command_missing
         else recommended_embedding_backfill_job(
             coverage,
             recommended_batch_limit=recommended_batch_limit,
@@ -1244,6 +1259,43 @@ def runtime_embedding_adapter_allowed(runtime: RuntimeConfig) -> bool:
     if getattr(runtime, "allow_http_ingestion_adapters", False):
         return True
     return runtime.embedding_adapter not in HTTP_BACKED_EMBEDDING_ADAPTERS
+
+
+def profile_adapter_status(runtime: RuntimeConfig) -> dict[str, Any]:
+    adapter = runtime.embedding_adapter
+    if adapter in HTTP_BACKED_EMBEDDING_ADAPTERS and not runtime.allow_http_ingestion_adapters:
+        return {
+            "status": "http_adapter_blocked",
+            "adapter": adapter,
+            "ready": False,
+            "message": "Configured profile adapter is HTTP-backed and blocked for ingestion/retrieval memory operations.",
+        }
+    if adapter == "local_command":
+        command = local_profile_command(runtime.profile_command)
+        return {
+            "status": "ready" if command else "missing_profile_command",
+            "adapter": adapter,
+            "ready": bool(command),
+            "command_configured": bool(command),
+            "message": (
+                "Local command profile adapter is configured."
+                if command
+                else "Configure runtime.profile_command before profile generation."
+            ),
+        }
+    if adapter == "mock":
+        return {
+            "status": "stub_profile_adapter",
+            "adapter": adapter,
+            "ready": True,
+            "message": "Deterministic stub profile adapter is available for diagnostics.",
+        }
+    return {
+        "status": "unknown_profile_adapter",
+        "adapter": adapter,
+        "ready": False,
+        "message": "Configured profile adapter is not recognized.",
+    }
 
 
 def embedding_backfill_batch_failure_reason(result: dict[str, Any]) -> str:

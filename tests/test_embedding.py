@@ -98,6 +98,17 @@ def test_embedding_adapter_factory_can_create_local_command_adapter() -> None:
     assert adapter.dimensions is None
 
 
+def test_embedding_adapter_factory_rejects_local_command_without_command() -> None:
+    config = RuntimeConfig(embedding_adapter="local_command")
+
+    try:
+        embedding_adapter(config)
+    except ValueError as error:
+        assert "runtime.profile_command" in str(error)
+    else:
+        raise AssertionError("Expected local command adapter to require runtime.profile_command.")
+
+
 def test_embedding_adapter_factory_rejects_http_backed_adapters_by_default() -> None:
     config = RuntimeConfig(embedding_adapter="ollama_http")
 

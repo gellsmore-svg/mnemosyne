@@ -255,6 +255,11 @@ def embedding_adapter(
     if name == "mock":
         return MockEmbeddingAdapter(dimensions=dimensions)
     if name == "local_command":
+        if not local_profile_command(getattr(config, "profile_command", None)):
+            raise ValueError(
+                "Local command profile adapter requires runtime.profile_command. "
+                "Configure a local executable that reads JSON from stdin and returns a vector JSON object."
+            )
         return LocalCommandEmbeddingAdapter(config)
     if name == "ollama_http":
         return OllamaHttpEmbeddingAdapter(config)
