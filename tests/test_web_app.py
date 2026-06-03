@@ -827,6 +827,19 @@ def test_recommended_embedding_backfill_job_estimates_large_corpus() -> None:
     }
 
 
+def test_recommended_embedding_backfill_job_uses_configured_limits() -> None:
+    recommendation = recommended_embedding_backfill_job(
+        {"missing_active_embeddings": 90},
+        recommended_batch_limit=30,
+        web_max_batches=2,
+    )
+
+    assert recommendation["batch_limit"] == 30
+    assert recommendation["recommended_web_batches"] == 2
+    assert recommendation["estimated_nodes_per_web_run"] == 60
+    assert recommendation["estimated_total_batches"] == 3
+
+
 def test_recommended_embedding_backfill_job_skips_complete_coverage() -> None:
     assert recommended_embedding_backfill_job({"missing_active_embeddings": 0}) is None
 
@@ -888,6 +901,8 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     assert data["default_model"]
     assert data["default_embedding_adapter"]
     assert data["default_embedding_model"]
+    assert data["profile_backfill_recommended_batch_limit"] == 25
+    assert data["profile_backfill_web_max_batches"] == 10
     assert data["memory_agent_model"]
     assert "gemma4:latest" in data["known_models"]
     assert data["model_options"]

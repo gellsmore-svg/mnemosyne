@@ -168,6 +168,8 @@ Phase A implemented behavior:
 - Ingestion activity reports/logs now surface the profiled node count, profile model, and dimensions.
 - This phase intentionally does not change search ranking, answer behavior, or memory-agent write authority.
 - Stored text similarity profiles can now be read by operator CLI/API/web controls to propose pending semantic-edge candidates, distinguished from label-overlap candidates by `candidate_source: embedding_similarity` and similarity/model/dimension metadata.
+- Profile backfill recommendations are operator-configurable through `runtime.profile_backfill_recommended_batch_limit` and `runtime.profile_backfill_web_max_batches`, defaulting to 25 nodes and 10 web batches per run.
+- Profile backfill jobs expose their recovery behavior: node writes are saved individually, but the job cursor is saved after a completed batch. If interrupted mid-batch, requeue the job; missing-profile jobs skip profiles already written during replay, while forced jobs may rebuild the interrupted batch.
 
 Phase A remaining work:
 

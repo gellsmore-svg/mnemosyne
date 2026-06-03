@@ -243,8 +243,9 @@ def test_backfill_node_embeddings_updates_missing_embeddings_only() -> None:
     assert result["updated_count"] == 1
     assert result["skipped_count"] == 0
     assert result["last_node_id"] == str(missing_id)
-    assert result["activity_log"].startswith("Embedding Backfill Activity Log")
-    assert "1 node(s) embedded" in result["activity_log"]
+    assert result["activity_log"].startswith("Text Similarity Profile Backfill Activity Log")
+    assert "1 node(s) given text similarity profiles" in result["activity_log"]
+    assert "Interruption behavior" in result["activity_log"]
     assert result["adapter"] == "fake_embedding"
     assert result["model"] == "fake-model"
     assert result["dimensions"] == 2

@@ -86,6 +86,14 @@ def test_embedding_backfill_job_zero_scope_has_no_progress_percent() -> None:
     assert job["batches_remaining_estimate"] == 0
 
 
+def test_embedding_backfill_job_force_recovery_notes_rebuild_risk() -> None:
+    db = FakeDb(nodes=[{"status": "active", "labels": ["target"], "embedding": {"vector": [1.0]}}])
+
+    job = create_embedding_backfill_job(db, batch_limit=2, label="target", force=True)
+
+    assert "force replace is enabled" in job["interruption_recovery"]
+
+
 def test_process_next_embedding_backfill_job_keeps_full_batch_pending(monkeypatch) -> None:
     db = FakeDb()
     create_embedding_backfill_job(db, batch_limit=2)
@@ -100,7 +108,7 @@ def test_process_next_embedding_backfill_job_keeps_full_batch_pending(monkeypatc
             "skipped_count": 0,
             "error_count": 0,
             "last_node_id": "node2",
-            "activity_log": "Embedding Backfill Activity Log\n- Status: batch completed.",
+            "activity_log": "Text Similarity Profile Backfill Activity Log\n- Status: batch completed.",
         },
     )
 
@@ -113,7 +121,12 @@ def test_process_next_embedding_backfill_job_keeps_full_batch_pending(monkeypatc
     assert row["updated_count"] == 2
     assert serialize_first_job(db)["progress_percent"] is None
     assert row["last_node_id"] == "node2"
-    assert row["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
+    assert row["last_result"]["activity_log"].startswith("Text Similarity Profile Backfill Activity Log")
+    serialized = serialize_first_job(db)
+    assert serialized["resume_after_node_id"] == "node2"
+    assert serialized["transaction_boundary"] == "batch_cursor_after_completed_batch"
+    assert serialized["node_write_boundary"] == "individual_node_update"
+    assert "nodes already given profiles are skipped" in serialized["interruption_recovery"]
 
 
 def test_process_next_embedding_backfill_job_completes_partial_batch(monkeypatch) -> None:
@@ -205,7 +218,7 @@ def test_process_next_embedding_backfill_job_blocks_on_exception(monkeypatch) ->
     assert row["status"] == "blocked"
     assert row["reason"] == "embedding_backfill_exception"
     assert row["error_count"] == 1
-    assert row["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
+    assert row["last_result"]["activity_log"].startswith("Text Similarity Profile Backfill Activity Log")
 
 
 def test_process_embedding_backfill_batches_runs_until_requested_limit(monkeypatch) -> None:
@@ -295,7 +308,7 @@ def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:
             "_id": ObjectId(),
             "status": "pending",
             "updated_at": datetime(2026, 1, 2, tzinfo=timezone.utc),
-            "last_result": {"activity_log": "Embedding Backfill Activity Log\n- Status: pending."},
+            "last_result": {"activity_log": "Text Similarity Profile Backfill Activity Log\n- Status: pending."},
         },
     ]
 
@@ -308,7 +321,9 @@ def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:
     assert jobs[0]["remaining_estimate"] is None
     assert jobs[0]["progress_percent"] is None
     assert jobs[0]["batches_remaining_estimate"] is None
-    assert jobs[0]["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
+    assert jobs[0]["last_result"]["activity_log"].startswith("Text Similarity Profile Backfill Activity Log")
+    assert jobs[0]["resume_after_node_id"] is None
+    assert "nodes already given profiles are skipped" in jobs[0]["interruption_recovery"]
 
 
 def test_requeue_processing_embedding_backfill_job_marks_pending() -> None:
@@ -336,6 +351,7 @@ def test_requeue_processing_embedding_backfill_job_marks_pending() -> None:
     assert result["job"]["reason"] == "worker_restart"
     assert result["job"]["requeued_by"] == "tester"
     assert result["job"]["progress_percent"] == 50.0
+    assert result["job"]["resume_after_node_id"] is None
     assert db.embedding_backfill_jobs.rows[0]["status"] == "pending"
 
 

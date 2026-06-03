@@ -55,6 +55,8 @@ def create_embedding_backfill_job(
         "error_count": 0,
         "last_node_id": None,
         "last_result": None,
+        "transaction_boundary": "batch_cursor_after_completed_batch",
+        "node_write_boundary": "individual_node_update",
         "reason": None,
         "created_at": now,
         "updated_at": now,
@@ -312,6 +314,10 @@ def serialize_embedding_backfill_job(row: dict[str, Any]) -> dict[str, Any]:
         "skipped_count": row.get("skipped_count", 0),
         "error_count": row.get("error_count", 0),
         "last_node_id": row.get("last_node_id"),
+        "resume_after_node_id": row.get("last_node_id"),
+        "transaction_boundary": row.get("transaction_boundary") or "batch_cursor_after_completed_batch",
+        "node_write_boundary": row.get("node_write_boundary") or "individual_node_update",
+        "interruption_recovery": interruption_recovery_summary(row),
         "reason": row.get("reason"),
         "requeued_at": row.get("requeued_at").isoformat() if row.get("requeued_at") else None,
         "requeued_by": row.get("requeued_by"),
@@ -320,3 +326,15 @@ def serialize_embedding_backfill_job(row: dict[str, Any]) -> dict[str, Any]:
         "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
         "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
     }
+
+
+def interruption_recovery_summary(row: dict[str, Any]) -> str:
+    if row.get("force"):
+        return (
+            "If interrupted during a batch, requeue the processing job. The job resumes from the last "
+            "completed batch cursor; the interrupted batch may be rebuilt because force replace is enabled."
+        )
+    return (
+        "If interrupted during a batch, requeue the processing job. The job resumes from the last "
+        "completed batch cursor; nodes already given profiles are skipped on replay."
+    )

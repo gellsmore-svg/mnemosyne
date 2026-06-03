@@ -1090,7 +1090,7 @@ def backfill_node_embeddings(
 
 
 def embedding_backfill_activity_log(result: dict[str, Any]) -> str:
-    lines = ["Embedding Backfill Activity Log"]
+    lines = ["Text Similarity Profile Backfill Activity Log"]
     if not result.get("ok"):
         lines.append(f"- Status: needs attention ({result.get('reason') or 'unknown reason'}).")
     else:
@@ -1100,12 +1100,12 @@ def embedding_backfill_activity_log(result: dict[str, Any]) -> str:
     dimensions = result.get("dimensions")
     if adapter or model or dimensions:
         lines.append(
-            f"- Embedding model: {adapter or 'unknown adapter'} / "
+            f"- Profile adapter: {adapter or 'unknown adapter'} / "
             f"{model or 'unknown model'} ({dimensions or 'unknown'} dimensions)."
         )
     if "updated_count" in result:
         lines.append(
-            f"- Repository action: {result.get('updated_count', 0)} node(s) embedded, "
+            f"- Repository action: {result.get('updated_count', 0)} node(s) given text similarity profiles, "
             f"{result.get('skipped_count', 0)} skipped, {result.get('error_count', 0)} error(s)."
         )
     filters = result.get("filters") or {}
@@ -1115,11 +1115,16 @@ def embedding_backfill_activity_log(result: dict[str, Any]) -> str:
             f"label {filters.get('label') or 'any'}",
             f"document {filters.get('document_id') or 'any'}",
             f"after node {filters.get('after_node_id') or 'start'}",
-            "force replace" if filters.get("force") else "missing embeddings only",
+            "force replace" if filters.get("force") else "missing profiles only",
         ]
         lines.append(f"- Scope: {', '.join(scope_parts)}.")
     if result.get("last_node_id"):
         lines.append(f"- Continuation point: next batch continues after node {result['last_node_id']}.")
+        lines.append(
+            "- Interruption behavior: node writes are saved one at a time; the job cursor is saved after a "
+            "completed batch. If a run stops mid-batch, requeue the job. Missing-profile jobs skip profiles "
+            "already written during the replay; forced jobs may rebuild the interrupted batch."
+        )
     errors = result.get("errors") or []
     if errors:
         lines.append("- Sample errors:")

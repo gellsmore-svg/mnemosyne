@@ -160,7 +160,7 @@ def test_process_next_persists_embeddings_through_worker_ingestion(monkeypatch, 
         assert embedding["dimensions"] == 16
         assert len(embedding["vector"]) == 16
         assert embedding["source_text_hash"].startswith("sha256:")
-    assert "node(s) embedded" in result["activity_log"]
+    assert "node(s) profiled" in result["activity_log"]
 
 
 class FakeDb:

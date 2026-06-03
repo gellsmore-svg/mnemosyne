@@ -840,9 +840,16 @@ async function loadEmbeddingBackfillJobs() {
         `<div class="muted">batch ${html(String(job.batch_limit))}` +
         ` | ${html(embeddingBackfillJobProgress(job) || `${text(job.updated_count)} updated`)}` +
         ` | ${html(String(job.error_count))} error(s)` +
+        ` | resume after ${html(text(job.resume_after_node_id || "batch start"))}` +
         ` | label ${html(text(job.label))}` +
         ` | force ${html(String(job.force))}</div>`
       );
+      if (job.interruption_recovery) {
+        const recovery = document.createElement("div");
+        recovery.className = "muted";
+        recovery.textContent = job.interruption_recovery;
+        el.appendChild(recovery);
+      }
       const log = job.last_result?.activity_log || "";
       if (log) {
         const details = document.createElement("details");
@@ -912,6 +919,9 @@ function embeddingBackfillJobSummary(job) {
     `Repository action: queue a persistent text similarity profile backfill job`,
     `Scope: batch limit ${text(job.batch_limit)}, label ${text(job.label)}, document ${text(job.document_id)}, force ${text(job.force)}`,
     progress ? `Progress estimate: ${progress}` : null,
+    `Resume point: ${text(job.resume_after_node_id || "start of scope")}`,
+    `Transaction boundary: ${text(job.transaction_boundary || "batch cursor after completed batch")}; node writes are ${text(job.node_write_boundary || "individual node updates")}.`,
+    job.interruption_recovery ? `Interrupted run: ${text(job.interruption_recovery)}` : null,
     `Next step: process queued job batches, then refresh ingestion status to watch profile coverage increase.`,
   ].filter(Boolean);
   if (job.created_at || job.updated_at) {

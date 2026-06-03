@@ -132,8 +132,8 @@ def ingestion_activity_log(report: dict[str, Any]) -> str:
         )
     if repo.get("embedded_node_count"):
         lines.append(
-            "- Embeddings: "
-            f"{repo['embedded_node_count']} node(s) embedded with "
+            "- Text similarity profiles: "
+            f"{repo['embedded_node_count']} node(s) profiled with "
             f"{repo.get('embedding_model') or 'unknown model'} "
             f"({repo.get('embedding_dimensions') or 0} dims)."
         )

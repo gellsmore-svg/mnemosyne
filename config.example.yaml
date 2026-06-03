@@ -16,6 +16,8 @@ runtime:
   allow_http_ingestion_adapters: false
   embedding_model: nomic-embed-text:latest
   embedding_dimensions: 16
+  profile_backfill_recommended_batch_limit: 25
+  profile_backfill_web_max_batches: 10
   memory_agent_adapter:
   retrieval_mode: direct
   ollama_model: gemma3:1b

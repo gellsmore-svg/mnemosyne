@@ -176,6 +176,8 @@ def create_app() -> FastAPI:
             "default_model": config.runtime.ollama_model,
             "default_embedding_adapter": config.runtime.embedding_adapter,
             "default_embedding_model": config.runtime.embedding_model,
+            "profile_backfill_recommended_batch_limit": config.runtime.profile_backfill_recommended_batch_limit,
+            "profile_backfill_web_max_batches": config.runtime.profile_backfill_web_max_batches,
             "memory_agent_adapter": runtime_memory_agent_adapter_name(config.runtime),
             "memory_agent_adapter_policy": "local_only_no_http",
             "memory_agent_model": config.runtime.memory_agent_model or config.runtime.ollama_model,
@@ -462,6 +464,8 @@ def create_app() -> FastAPI:
                 embedding,
                 embedding_adapter_allowed=runtime_embedding_adapter_allowed(config.runtime),
                 configured_embedding_adapter=config.runtime.embedding_adapter,
+                recommended_batch_limit=config.runtime.profile_backfill_recommended_batch_limit,
+                web_max_batches=config.runtime.profile_backfill_web_max_batches,
             ),
             "runs": list_process_runs(
                 db,
@@ -570,7 +574,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/process-embedding-backfill-job")
     def process_embedding_backfill_job(max_batches: int = 1) -> dict[str, Any]:
-        bounded_batches = max(1, min(max_batches, WEB_EMBEDDING_BACKFILL_MAX_BATCHES))
+        bounded_batches = max(1, min(max_batches, config.runtime.profile_backfill_web_max_batches))
         process_run = create_process_run(
             db,
             process_id="embedding_backfill_job_batch",
@@ -1110,6 +1114,8 @@ def embedding_backfill_status(
     limit: int = 20,
     embedding_adapter_allowed: bool = True,
     configured_embedding_adapter: str | None = None,
+    recommended_batch_limit: int = WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT,
+    web_max_batches: int = WEB_EMBEDDING_BACKFILL_MAX_BATCHES,
 ) -> dict[str, Any]:
     jobs = list_embedding_backfill_jobs(db, limit=limit)
     counts: dict[str, int] = {}
@@ -1161,23 +1167,36 @@ def embedding_backfill_status(
         "status": status,
         "summary": summary,
         "recommended_action": action,
-        "recommended_job": None if adapter_blocked else recommended_embedding_backfill_job(coverage),
+        "recommended_job": None
+        if adapter_blocked
+        else recommended_embedding_backfill_job(
+            coverage,
+            recommended_batch_limit=recommended_batch_limit,
+            web_max_batches=web_max_batches,
+        ),
         "recent_status_counts": counts,
         "recent_jobs_checked": len(jobs),
         "next_job": next_job,
     }
 
 
-def recommended_embedding_backfill_job(coverage: dict[str, Any]) -> dict[str, Any] | None:
+def recommended_embedding_backfill_job(
+    coverage: dict[str, Any],
+    *,
+    recommended_batch_limit: int = WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT,
+    web_max_batches: int = WEB_EMBEDDING_BACKFILL_MAX_BATCHES,
+) -> dict[str, Any] | None:
+    configured_batch_limit = max(1, min(int(recommended_batch_limit or 1), 1000))
+    configured_web_batches = max(1, min(int(web_max_batches or 1), 100))
     missing = int(coverage.get("missing_active_embeddings") or 0)
     coverage_status = coverage.get("status")
     if coverage_status in {"mock_only", "mixed_mock"}:
         target_count = int(coverage.get("total_active_nodes") or coverage.get("embedded_active_nodes") or 0)
         if target_count <= 0:
             return None
-        batch_limit = min(WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT, target_count)
+        batch_limit = min(configured_batch_limit, target_count)
         total_batches = ceil(target_count / batch_limit) if batch_limit else 0
-        recommended_web_batches = min(WEB_EMBEDDING_BACKFILL_MAX_BATCHES, total_batches)
+        recommended_web_batches = min(configured_web_batches, total_batches)
         return {
             "batch_limit": batch_limit,
             "force": True,
@@ -1194,9 +1213,9 @@ def recommended_embedding_backfill_job(coverage: dict[str, Any]) -> dict[str, An
         }
     if missing <= 0:
         return None
-    batch_limit = min(WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT, missing)
+    batch_limit = min(configured_batch_limit, missing)
     total_batches = ceil(missing / batch_limit) if batch_limit else 0
-    recommended_web_batches = min(WEB_EMBEDDING_BACKFILL_MAX_BATCHES, total_batches)
+    recommended_web_batches = min(configured_web_batches, total_batches)
     return {
         "batch_limit": batch_limit,
         "force": False,
