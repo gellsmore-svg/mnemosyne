@@ -66,7 +66,7 @@ from mnemosyne.sessions.registry import create_session, list_sessions
 
 FALLBACK_KNOWN_MODELS = ["gemma4:latest", "gemma3:1b"]
 WEB_EMBEDDING_BACKFILL_MAX_BATCHES = 10
-WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT = 1000
+WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT = 25
 
 
 class AskRequest(BaseModel):
@@ -495,7 +495,7 @@ def create_app() -> FastAPI:
                 completed_step_id="embedding_backfill_adapter_check",
                 exception={
                     "reason": result["reason"],
-                    "proposal": "Configure a local non-HTTP embedding adapter before ingestion/backfill.",
+                    "proposal": "Configure a local non-HTTP text similarity profile adapter before ingestion/backfill.",
                     "details": result,
                 },
             )
@@ -519,7 +519,7 @@ def create_app() -> FastAPI:
             if result.get("ok")
             else {
                 "reason": result.get("reason") or "embedding_backfill_failed",
-                "proposal": "Inspect sampled embedding errors, reduce scope, or verify the embedding adapter.",
+                "proposal": "Inspect sampled profile-building errors, reduce scope, or verify the profile adapter.",
                 "details": {
                     "error_count": result.get("error_count"),
                     "errors": result.get("errors", []),
@@ -601,7 +601,7 @@ def create_app() -> FastAPI:
                 completed_step_id="embedding_backfill_job_adapter_check",
                 exception={
                     "reason": result["reason"],
-                    "proposal": "Configure a local non-HTTP embedding adapter before processing embedding jobs.",
+                    "proposal": "Configure a local non-HTTP text similarity profile adapter before processing profile jobs.",
                     "details": result,
                 },
             )
@@ -639,7 +639,7 @@ def create_app() -> FastAPI:
             if process_status == "completed"
             else {
                 "reason": embedding_backfill_batch_failure_reason(result),
-                "proposal": "Inspect the embedding backfill job result, fix the adapter or scope, then queue a new job if appropriate.",
+                "proposal": "Inspect the profile backfill job result, fix the adapter or scope, then queue a new job if appropriate.",
                 "details": result,
             },
         )
@@ -1071,29 +1071,29 @@ def annotate_embedding_coverage(coverage: dict[str, Any]) -> dict[str, Any]:
     if total == 0:
         status = "empty"
         summary = f"No active nodes are available{scope}."
-        action = "Ingest source documents before running embedding backfill or vector review."
+        action = "Ingest source documents before building text similarity profiles or reviewing profile-based semantic candidates."
     elif embedded == 0:
         status = "not_started"
-        summary = f"{total} active node(s){scope} exist, but none have embeddings yet."
-        action = "Queue a scoped embedding backfill job, then process bounded batches until coverage begins to rise."
+        summary = f"{total} active node(s){scope} exist, but none have text similarity profiles yet."
+        action = "Queue a scoped profile backfill job, then process bounded batches until coverage begins to rise."
     elif missing > 0:
         status = "incomplete"
-        summary = f"{embedded} of {total} active node(s){scope} have embeddings; {missing} still need vectors."
-        action = "Continue processing embedding backfill job batches before relying on vector candidate review."
+        summary = f"{embedded} of {total} active node(s){scope} have text similarity profiles; {missing} still need profiles."
+        action = "Continue processing profile backfill job batches before relying on profile-based candidate review."
     elif mock_count:
         status = "mock_only" if mock_count == embedded else "mixed_mock"
-        summary = f"All active nodes{scope} have embeddings, but {mock_count} embedded node(s) use mock vectors."
-        action = "Re-run a forced embedding backfill with a real embedding adapter before treating vector relationships as semantic evidence."
+        summary = f"All active nodes{scope} have text similarity profiles, but {mock_count} node(s) use stub profiles."
+        action = "Re-run a forced profile backfill with a local model-backed profile adapter before treating profile-based relationships as semantic evidence."
     else:
         status = "ready"
-        summary = f"All {total} active node(s){scope} have real embeddings."
-        action = "Preview vector matches, enqueue promising semantic-edge candidates, and review them before answer use."
+        summary = f"All {total} active node(s){scope} have model-backed text similarity profiles."
+        action = "Preview profile matches, enqueue promising semantic-edge candidates, and review them before answer use."
 
     warnings = []
     if profile_count > 1:
-        warnings.append(f"{profile_count} embedding profiles are present; compare models and dimensions before broad vector review.")
+        warnings.append(f"{profile_count} profile representations are present; compare models and dimensions before broad profile-based review.")
     if mock_count and missing:
-        warnings.append("Some existing embeddings are mock vectors while other active nodes still have no embeddings.")
+        warnings.append("Some existing text similarity profiles are stubs while other active nodes still have no profiles.")
 
     return {
         **coverage,
@@ -1128,34 +1128,34 @@ def embedding_backfill_status(
     if adapter_blocked:
         status = "embedding_adapter_blocked"
         summary = (
-            f"Configured embedding adapter `{configured_embedding_adapter or 'unknown'}` is not allowed "
+            f"Configured profile adapter `{configured_embedding_adapter or 'unknown'}` is not allowed "
             "for ingestion or retrieval memory operations."
         )
-        action = "Configure a local non-HTTP embedding adapter before queueing or processing embedding backfill."
+        action = "Configure a local non-HTTP profile adapter before queueing or processing profile backfill."
     elif counts.get("pending"):
         status = "pending"
-        summary = f"{counts['pending']} recent embedding backfill job(s) are queued."
+        summary = f"{counts['pending']} recent profile backfill job(s) are queued."
         action = "Process the next bounded backfill batches and refresh ingestion status."
     elif counts.get("processing"):
         status = "processing"
-        summary = f"{counts['processing']} recent embedding backfill job(s) are marked processing."
+        summary = f"{counts['processing']} recent profile backfill job(s) are marked processing."
         action = "Refresh status after the current worker finishes; if this persists, inspect the job for a stuck processing state."
     elif counts.get("blocked"):
         status = "blocked"
-        summary = f"{counts['blocked']} recent embedding backfill job(s) are blocked."
+        summary = f"{counts['blocked']} recent profile backfill job(s) are blocked."
         action = "Open the latest job log, resolve the recorded error, then queue a new scoped backfill if needed."
     elif coverage.get("status") in {"mock_only", "mixed_mock"}:
         status = "real_backfill_needed"
-        summary = "Active nodes have embeddings, but at least some are mock vectors."
-        action = "Configure a real embedding adapter, then queue a forced embedding backfill before vector review."
+        summary = "Active nodes have text similarity profiles, but at least some are stubs."
+        action = "Configure a local model-backed profile adapter, then queue a forced profile backfill before profile-based review."
     elif missing > 0:
         status = "needed"
-        summary = "No recent active backfill job is queued, but active nodes still lack embeddings."
-        action = "Queue an embedding backfill job with a conservative batch size."
+        summary = "No recent active backfill job is queued, but active nodes still lack text similarity profiles."
+        action = "Queue a profile backfill job with a conservative batch size."
     else:
         status = "not_needed"
-        summary = "No embedding backfill job is currently needed for active-node coverage."
-        action = "Move to vector-match preview and reviewed semantic-edge candidate work."
+        summary = "No profile backfill job is currently needed for active-node coverage."
+        action = "Move to profile-match preview and reviewed semantic-edge candidate work."
 
     return {
         "status": status,
@@ -1187,7 +1187,7 @@ def recommended_embedding_backfill_job(coverage: dict[str, Any]) -> dict[str, An
             "recommended_web_batches": recommended_web_batches,
             "estimated_nodes_per_web_run": batch_limit * recommended_web_batches,
             "summary": (
-                f"After configuring a real embedding adapter, queue a forced backfill with batch limit {batch_limit}; "
+                f"After configuring a local model-backed profile adapter, queue a forced backfill with batch limit {batch_limit}; "
                 f"process up to {recommended_web_batches} batch(es) per web run. "
                 f"Current coverage needs about {total_batches} total forced batch(es)."
             ),
@@ -1206,7 +1206,7 @@ def recommended_embedding_backfill_job(coverage: dict[str, Any]) -> dict[str, An
         "recommended_web_batches": recommended_web_batches,
         "estimated_nodes_per_web_run": batch_limit * recommended_web_batches,
         "summary": (
-            f"Queue a missing-embedding job with batch limit {batch_limit}; "
+            f"Queue a missing-profile job with batch limit {batch_limit}; "
             f"process up to {recommended_web_batches} batch(es) per web run. "
             f"Current coverage needs about {total_batches} total batch(es)."
         ),

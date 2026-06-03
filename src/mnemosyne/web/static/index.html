@@ -98,7 +98,7 @@
           </section>
 
           <section class="operator">
-            <h2>Embedding Backfill</h2>
+            <h2>Text Similarity Profile Backfill</h2>
             <div class="operator-grid">
               <input id="embeddingBackfillLabel" placeholder="Label filter (optional)" />
               <input id="embeddingBackfillDocumentId" placeholder="Document ID (optional)" />
@@ -109,7 +109,7 @@
               <button id="applyEmbeddingBackfillRecommendation" class="secondary">Apply Suggested Settings</button>
               <button id="queueEmbeddingBackfill" class="secondary">Queue Backfill Job</button>
               <button id="processEmbeddingBackfillJob" class="secondary">Process Next Job Batch</button>
-              <div id="embeddingBackfillStatus" class="status">Embedding backfill: idle</div>
+              <div id="embeddingBackfillStatus" class="status">Profile backfill: idle</div>
             </div>
             <pre id="embeddingBackfillResult">Run a bounded batch after checking coverage.</pre>
             <div id="embeddingBackfillJobs" class="list"></div>
@@ -123,12 +123,12 @@
               <input id="semanticMinSimilarity" type="number" min="-1" max="1" step="0.01" value="0.75" />
               <label class="check-row"><input id="semanticIncludeSameDocument" type="checkbox" /> Same document</label>
               <button id="enqueueLabelCandidates">Queue Label Matches</button>
-              <button id="previewVectorCandidates" class="secondary">Preview Vector Matches</button>
-              <button id="enqueueVectorCandidates">Queue Vector Matches</button>
+              <button id="previewVectorCandidates" class="secondary">Preview Profile Matches</button>
+              <button id="enqueueVectorCandidates">Queue Profile Matches</button>
               <button id="loadSemanticCandidates">Load Pending</button>
               <div id="semanticCandidateStatus" class="status">Candidates: unknown</div>
             </div>
-            <pre id="semanticCandidatePreview">Preview vector matches before queueing them for review.</pre>
+            <pre id="semanticCandidatePreview">Preview text similarity profile matches before queueing them for review.</pre>
             <div id="semanticCandidates" class="list"></div>
           </section>
 

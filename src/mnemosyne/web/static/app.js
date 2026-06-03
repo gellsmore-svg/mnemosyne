@@ -388,19 +388,19 @@ async function loadIngestionStatus() {
   const embedding = data.embedding || {};
   const profiles = Array.isArray(embedding.profiles) && embedding.profiles.length
     ? embedding.profiles.slice(0, 3).map((profile) => {
-        const marker = profile.is_mock ? " mock" : "";
+        const marker = profile.is_mock ? " stub" : "";
         return `${profile.count} ${profile.model || "unknown model"} (${profile.dimensions || "unknown"} dims${marker})`;
       }).join(" | ")
-    : "no embedded profiles";
+    : "no text similarity profiles";
   const embeddingItem =
     `<div class="item">` +
-    `<strong>${html(String(embedding.embedded_percent ?? 0))}% of active nodes embedded</strong>` +
-    `<div>${html(embedding.summary || "Embedding coverage has not been assessed.")}</div>` +
+    `<strong>${html(String(embedding.embedded_percent ?? 0))}% of active nodes profiled</strong>` +
+    `<div>${html(embedding.summary || "Text similarity profile coverage has not been assessed.")}</div>` +
     `<div class="muted">Recommended action: ${html(embedding.recommended_action || "Load status again after ingestion activity.")}</div>` +
-    `<div class="muted">${html(String(embedding.embedded_active_nodes ?? 0))} embedded` +
+    `<div class="muted">${html(String(embedding.embedded_active_nodes ?? 0))} profiled` +
     ` | ${html(String(embedding.missing_active_embeddings ?? 0))} missing` +
     ` | ${html(String(embedding.total_active_nodes ?? 0))} active nodes</div>` +
-    `<div class="muted">Profiles: ${html(profiles)}</div>` +
+    `<div class="muted">Text similarity profiles: ${html(profiles)}</div>` +
     `${Array.isArray(embedding.warnings) && embedding.warnings.length ? `<div class="muted">Warnings: ${html(embedding.warnings.join(" | "))}</div>` : ""}` +
     `</div>`;
   const backfill = data.embedding_backfill || {};
@@ -414,7 +414,7 @@ async function loadIngestionStatus() {
   const backfillItem =
     `<div class="item">` +
     `<strong>Backfill jobs: ${html(backfill.status || "unknown")}</strong>` +
-    `<div>${html(backfill.summary || "Embedding backfill job status has not been assessed.")}</div>` +
+    `<div>${html(backfill.summary || "Text similarity profile backfill job status has not been assessed.")}</div>` +
     `<div class="muted">Recommended action: ${html(backfill.recommended_action || "Refresh ingestion status.")}</div>` +
     `${recommendedJob.summary ? `<div class="muted">Suggested job: ${html(recommendedJob.summary)}</div>` : ""}` +
     `<div class="muted">Recent jobs checked: ${html(String(backfill.recent_jobs_checked ?? 0))}` +
@@ -464,7 +464,7 @@ async function loadIngestionStatus() {
       })
     : [`<div class="item">No ingestion process runs recorded yet.</div>`];
   $("ingestionStatus").innerHTML =
-    `<h3>Embedding Coverage</h3>${embeddingItem}${backfillItem}<h3>Epochs</h3>${epochItems.join("")}<h3>Recent Ingestion Runs</h3>${runItems.join("")}`;
+    `<h3>Text Similarity Profile Coverage</h3>${embeddingItem}${backfillItem}<h3>Epochs</h3>${epochItems.join("")}<h3>Recent Ingestion Runs</h3>${runItems.join("")}`;
 }
 
 async function loadJobs() {
@@ -506,7 +506,7 @@ async function loadSemanticCandidates() {
   $("semanticCandidates").replaceChildren(
     ...data.candidates.map((candidate) => {
       const evidence = candidate.candidate_source === "embedding_similarity"
-        ? `vector ${candidate.embedding_similarity ?? "n/a"}`
+        ? `profile similarity ${candidate.embedding_similarity ?? "n/a"}`
         : `labels ${(candidate.shared_labels || []).join(", ")}`;
       const context = candidate.selection_context || {};
       const selection = candidate.candidate_source === "embedding_similarity" && context.min_similarity !== undefined
@@ -562,10 +562,10 @@ async function previewVectorSemanticCandidates() {
     min_similarity: String(Number($("semanticMinSimilarity").value || 0.75)),
     limit: String(Number($("semanticLimit").value || 10)),
   });
-  $("semanticCandidateStatus").textContent = "Previewing vector matches";
+  $("semanticCandidateStatus").textContent = "Previewing text similarity profile matches";
   const data = await api(`/api/review/vector-semantic-candidates?${params.toString()}`);
   $("semanticCandidateStatus").textContent = data.ok
-    ? `Preview: ${data.diagnostics?.returned_count || 0} vector match(es)`
+    ? `Preview: ${data.diagnostics?.returned_count || 0} profile match(es)`
     : `Preview failed: ${data.reason || "unknown"}`;
   $("semanticCandidatePreview").textContent = vectorCandidatePreviewSummary(data);
 }
@@ -602,18 +602,18 @@ function vectorCandidatePreviewSummary(data) {
   const lines = [
     `Status: ${data.ok ? "ready" : "needs attention"}`,
     data.reason ? `Reason: ${data.reason}` : null,
-    focus.title ? `Focus: ${text(focus.title)} (${text(focus.model)}, ${text(focus.dimensions)} dims)` : null,
+    focus.title ? `Focus: ${text(focus.title)} (${text(focus.model)}, ${text(focus.dimensions)} dims representation)` : null,
     `Threshold: ${text(diagnostics.min_similarity)}`,
     `Scan: ${text(diagnostics.scanned_count)} scanned of ${text(diagnostics.candidate_scan_limit)} candidate limit`,
     `Returned: ${text(diagnostics.returned_count)} shown from ${text(diagnostics.candidate_count_before_limit)} above threshold`,
-    `Excluded: ${text(exclusions.invalid_embedding)} invalid, ${text(exclusions.incompatible_embedding)} incompatible, ${text(exclusions.below_threshold)} below threshold, ${text(exclusions.source_root)} root, ${text(exclusions.superseded)} superseded`,
+    `Excluded: ${text(exclusions.invalid_embedding)} invalid profile, ${text(exclusions.incompatible_embedding)} incompatible profile, ${text(exclusions.below_threshold)} below threshold, ${text(exclusions.source_root)} root, ${text(exclusions.superseded)} superseded`,
   ].filter(Boolean);
   const nodes = Array.isArray(data.nodes) ? data.nodes : [];
   if (nodes.length) {
     lines.push("");
     lines.push("Matches:");
     nodes.forEach((node, index) => {
-      lines.push(`${index + 1}. ${text(node.title || node.node_id)} | similarity ${text(node.embedding_similarity)} | ${text(node.embedding_model)} ${text(node.embedding_dimensions)} dims`);
+      lines.push(`${index + 1}. ${text(node.title || node.node_id)} | profile similarity ${text(node.embedding_similarity)} | ${text(node.embedding_model)} ${text(node.embedding_dimensions)} dims representation`);
     });
   }
   return lines.join("\n");
@@ -748,8 +748,8 @@ async function runEmbeddingBackfill() {
     force: $("embeddingBackfillForce").checked,
   };
   button.disabled = true;
-  $("embeddingBackfillStatus").textContent = "Embedding backfill: running";
-  $("embeddingBackfillResult").textContent = "Embedding nodes...";
+  $("embeddingBackfillStatus").textContent = "Profile backfill: running";
+  $("embeddingBackfillResult").textContent = "Building text similarity profiles...";
   try {
     const data = await api("/api/backfill-embeddings", {
       method: "POST",
@@ -757,12 +757,12 @@ async function runEmbeddingBackfill() {
       body: JSON.stringify(payload),
     });
     $("embeddingBackfillStatus").textContent = data.ok
-      ? `Embedding backfill: ${data.updated_count} updated, ${data.skipped_count} skipped`
-      : `Embedding backfill: ${data.reason || "failed"}`;
+      ? `Profile backfill: ${data.updated_count} updated, ${data.skipped_count} skipped`
+      : `Profile backfill: ${data.reason || "failed"}`;
     $("embeddingBackfillResult").textContent = embeddingBackfillSummary(data);
     await loadIngestionStatus();
   } catch (error) {
-    $("embeddingBackfillStatus").textContent = "Embedding backfill: failed";
+    $("embeddingBackfillStatus").textContent = "Profile backfill: failed";
     $("embeddingBackfillResult").textContent = error.message;
   } finally {
     button.disabled = false;
@@ -779,13 +779,13 @@ function embeddingBackfillPayload() {
 }
 
 async function queueEmbeddingBackfillJob() {
-  $("embeddingBackfillStatus").textContent = "Embedding backfill: queueing job";
+  $("embeddingBackfillStatus").textContent = "Profile backfill: queueing job";
   const data = await api("/api/embedding-backfill-jobs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(embeddingBackfillPayload()),
   });
-  $("embeddingBackfillStatus").textContent = `Embedding backfill: queued ${data.job.job_id}`;
+  $("embeddingBackfillStatus").textContent = `Profile backfill: queued ${data.job.job_id}`;
   $("embeddingBackfillResult").textContent = embeddingBackfillJobSummary(data.job);
   await Promise.all([loadEmbeddingBackfillJobs(), loadIngestionStatus()]);
 }
@@ -793,7 +793,7 @@ async function queueEmbeddingBackfillJob() {
 function applyEmbeddingBackfillRecommendation() {
   const recommendation = latestEmbeddingBackfillRecommendation;
   if (!recommendation) {
-    $("embeddingBackfillStatus").textContent = "Embedding backfill: load status for suggested settings";
+    $("embeddingBackfillStatus").textContent = "Profile backfill: load status for suggested settings";
     $("embeddingBackfillResult").textContent = "No suggested backfill job is available. Load ingestion status first, or queue a scoped job manually.";
     return;
   }
@@ -802,16 +802,16 @@ function applyEmbeddingBackfillRecommendation() {
   $("embeddingBackfillLabel").value = "";
   $("embeddingBackfillDocumentId").value = "";
   $("embeddingBackfillForce").checked = Boolean(recommendation.force);
-  $("embeddingBackfillStatus").textContent = "Embedding backfill: suggested settings applied";
+  $("embeddingBackfillStatus").textContent = "Profile backfill: suggested settings applied";
   $("embeddingBackfillResult").textContent = [
     "Suggested settings applied.",
     `Batch limit: ${text(recommendation.batch_limit)}`,
     `Job batches per web run: ${text(recommendation.recommended_web_batches)}`,
     `Estimated nodes per web run: ${text(recommendation.estimated_nodes_per_web_run)}`,
     `Estimated total batches: ${text(recommendation.estimated_total_batches)}`,
-    recommendation.requires_real_adapter ? "Adapter: configure a real embedding adapter before queueing this forced backfill." : null,
+    recommendation.requires_real_adapter ? "Adapter: configure a local model-backed profile adapter before queueing this forced backfill." : null,
     recommendation.missing_embedding_only
-      ? "Scope: all active nodes missing embeddings. Label and document filters were cleared."
+      ? "Scope: all active nodes missing text similarity profiles. Label and document filters were cleared."
       : "Scope: all active nodes in the repository. Label and document filters were cleared.",
     "",
     "Next step: queue a backfill job, then process queued job batches.",
@@ -822,11 +822,11 @@ async function processEmbeddingBackfillJob() {
   const maxBatches = Math.max(1, Math.min(Number($("embeddingBackfillJobBatches").value || 1), 10));
   $("embeddingBackfillJobBatches").value = String(maxBatches);
   const params = new URLSearchParams({ max_batches: String(maxBatches) });
-  $("embeddingBackfillStatus").textContent = `Embedding backfill: processing up to ${maxBatches} queued batch(es)`;
+  $("embeddingBackfillStatus").textContent = `Profile backfill: processing up to ${maxBatches} queued batch(es)`;
   const data = await api(`/api/process-embedding-backfill-job?${params.toString()}`, { method: "POST" });
   $("embeddingBackfillStatus").textContent = data.status === "idle"
-    ? "Embedding backfill: no pending jobs"
-    : `Embedding backfill: ${data.processed_batches || 0} batch(es), status ${data.status}`;
+    ? "Profile backfill: no pending jobs"
+    : `Profile backfill: ${data.processed_batches || 0} batch(es), status ${data.status}`;
   $("embeddingBackfillResult").textContent = embeddingBackfillBatchRunSummary(data);
   await Promise.all([loadEmbeddingBackfillJobs(), loadIngestionStatus()]);
 }
@@ -863,7 +863,7 @@ async function loadEmbeddingBackfillJobs() {
 }
 
 async function requeueEmbeddingBackfillJob(jobId) {
-  $("embeddingBackfillStatus").textContent = `Embedding backfill: requeueing ${jobId}`;
+  $("embeddingBackfillStatus").textContent = `Profile backfill: requeueing ${jobId}`;
   try {
     const data = await api(`/api/embedding-backfill-jobs/${encodeURIComponent(jobId)}/requeue`, {
       method: "POST",
@@ -873,11 +873,11 @@ async function requeueEmbeddingBackfillJob(jobId) {
         actor: "web",
       }),
     });
-    $("embeddingBackfillStatus").textContent = `Embedding backfill: requeued ${data.job.job_id}`;
+    $("embeddingBackfillStatus").textContent = `Profile backfill: requeued ${data.job.job_id}`;
     $("embeddingBackfillResult").textContent = embeddingBackfillJobSummary(data.job);
     await Promise.all([loadEmbeddingBackfillJobs(), loadIngestionStatus()]);
   } catch (error) {
-    $("embeddingBackfillStatus").textContent = "Embedding backfill: requeue failed";
+    $("embeddingBackfillStatus").textContent = "Profile backfill: requeue failed";
     $("embeddingBackfillResult").textContent = error.message;
   }
 }
@@ -890,7 +890,7 @@ function embeddingBackfillSummary(data, jobStatus = null) {
     `Status: ${jobStatus || (data.ok ? "completed" : "needs attention")}`,
     data.reason ? `Reason: ${data.reason}` : null,
     data.process_run_id ? `Process run: ${data.process_run_id} (${text(data.process_status)})` : null,
-    `Adapter: ${text(data.adapter)} / ${text(data.model)} (${text(data.dimensions)} dims)`,
+    `Profile adapter: ${text(data.adapter)} / ${text(data.model)} (${text(data.dimensions)} dims representation)`,
     `Batch: ${text(data.updated_count)} updated, ${text(data.skipped_count)} skipped, ${text(data.error_count)} error(s)`,
     `Scope: limit ${text(data.limit)}, label ${text(data.filters?.label)}, document ${text(data.filters?.document_id)}, force ${text(data.filters?.force)}`,
   ].filter(Boolean);
@@ -909,10 +909,10 @@ function embeddingBackfillJobSummary(job) {
   const lines = [
     `Status: ${text(job.status || "queued")}`,
     `Job: ${text(job.job_id)}`,
-    `Repository action: queue a persistent embedding backfill job`,
+    `Repository action: queue a persistent text similarity profile backfill job`,
     `Scope: batch limit ${text(job.batch_limit)}, label ${text(job.label)}, document ${text(job.document_id)}, force ${text(job.force)}`,
     progress ? `Progress estimate: ${progress}` : null,
-    `Next step: process queued job batches, then refresh ingestion status to watch coverage increase.`,
+    `Next step: process queued job batches, then refresh ingestion status to watch profile coverage increase.`,
   ].filter(Boolean);
   if (job.created_at || job.updated_at) {
     lines.push(`Timeline: created ${text(job.created_at)}, updated ${text(job.updated_at)}`);
@@ -940,7 +940,7 @@ function embeddingBackfillBatchRunSummary(data) {
   const lines = [
     `Status: ${text(data.status)}`,
     `Batches: ${text(data.processed_batches)} processed of ${text(data.requested_batches)} requested`,
-    `Repository action: ${text(data.updated_count)} embedded, ${text(data.skipped_count)} skipped, ${text(data.error_count)} error(s)`,
+    `Repository action: ${text(data.updated_count)} profiled, ${text(data.skipped_count)} skipped, ${text(data.error_count)} error(s)`,
     data.process_run_id ? `Process run: ${data.process_run_id} (${text(data.process_status)})` : null,
   ].filter(Boolean);
   const batches = Array.isArray(data.results) ? data.results : [];

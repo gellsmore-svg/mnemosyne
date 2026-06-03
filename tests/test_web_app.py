@@ -158,8 +158,8 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             "profiles": [],
             "label": label,
             "status": "incomplete",
-            "summary": "3 of 4 active node(s) have embeddings; 1 still need vectors.",
-            "recommended_action": "Continue processing embedding backfill job batches before relying on vector candidate review.",
+            "summary": "3 of 4 active node(s) have text similarity profiles; 1 still need profiles.",
+            "recommended_action": "Continue processing profile backfill job batches before relying on profile-based candidate review.",
             "warnings": [],
         },
     )
@@ -167,7 +167,7 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
         "mnemosyne.web.app.embedding_backfill_status",
         lambda _db, coverage, **_kwargs: {
             "status": "pending",
-            "summary": "1 recent embedding backfill job(s) are queued.",
+            "summary": "1 recent profile backfill job(s) are queued.",
             "recommended_action": "Process the next bounded backfill batches and refresh ingestion status.",
             "recommended_job": {
                 "batch_limit": 1,
@@ -177,7 +177,7 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
                 "estimated_total_batches": 1,
                 "recommended_web_batches": 1,
                 "estimated_nodes_per_web_run": 1,
-                "summary": "Queue a missing-embedding job with batch limit 1; process up to 1 batch(es) per web run. Current coverage needs about 1 total batch(es).",
+                "summary": "Queue a missing-profile job with batch limit 1; process up to 1 batch(es) per web run. Current coverage needs about 1 total batch(es).",
             },
             "recent_status_counts": {"pending": 1},
             "recent_jobs_checked": 1,
@@ -206,13 +206,13 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             "profiles": [],
             "label": None,
             "status": "incomplete",
-            "summary": "3 of 4 active node(s) have embeddings; 1 still need vectors.",
-            "recommended_action": "Continue processing embedding backfill job batches before relying on vector candidate review.",
+            "summary": "3 of 4 active node(s) have text similarity profiles; 1 still need profiles.",
+            "recommended_action": "Continue processing profile backfill job batches before relying on profile-based candidate review.",
             "warnings": [],
         },
         "embedding_backfill": {
             "status": "pending",
-            "summary": "1 recent embedding backfill job(s) are queued.",
+            "summary": "1 recent profile backfill job(s) are queued.",
             "recommended_action": "Process the next bounded backfill batches and refresh ingestion status.",
             "recommended_job": {
                 "batch_limit": 1,
@@ -222,7 +222,7 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
                 "estimated_total_batches": 1,
                 "recommended_web_batches": 1,
                 "estimated_nodes_per_web_run": 1,
-                "summary": "Queue a missing-embedding job with batch limit 1; process up to 1 batch(es) per web run. Current coverage needs about 1 total batch(es).",
+                "summary": "Queue a missing-profile job with batch limit 1; process up to 1 batch(es) per web run. Current coverage needs about 1 total batch(es).",
             },
             "recent_status_counts": {"pending": 1},
             "recent_jobs_checked": 1,
@@ -644,10 +644,10 @@ def test_embedding_coverage_reports_active_embedding_readiness() -> None:
         ],
         "label": None,
         "status": "incomplete",
-        "summary": "2 of 3 active node(s) have embeddings; 1 still need vectors.",
-        "recommended_action": "Continue processing embedding backfill job batches before relying on vector candidate review.",
+        "summary": "2 of 3 active node(s) have text similarity profiles; 1 still need profiles.",
+        "recommended_action": "Continue processing profile backfill job batches before relying on profile-based candidate review.",
         "warnings": [
-            "2 embedding profiles are present; compare models and dimensions before broad vector review."
+            "2 profile representations are present; compare models and dimensions before broad profile-based review."
         ],
     }
     assert target_coverage == {
@@ -666,8 +666,8 @@ def test_embedding_coverage_reports_active_embedding_readiness() -> None:
         ],
         "label": "target",
         "status": "incomplete",
-        "summary": "1 of 2 active node(s) for label `target` have embeddings; 1 still need vectors.",
-        "recommended_action": "Continue processing embedding backfill job batches before relying on vector candidate review.",
+        "summary": "1 of 2 active node(s) for label `target` have text similarity profiles; 1 still need profiles.",
+        "recommended_action": "Continue processing profile backfill job batches before relying on profile-based candidate review.",
         "warnings": [],
     }
 
@@ -717,11 +717,11 @@ def test_annotate_embedding_coverage_reports_operator_action_states() -> None:
     assert empty["status"] == "empty"
     assert "Ingest source documents" in empty["recommended_action"]
     assert not_started["status"] == "not_started"
-    assert "Queue a scoped embedding backfill job" in not_started["recommended_action"]
+    assert "Queue a scoped profile backfill job" in not_started["recommended_action"]
     assert mock_ready["status"] == "mock_only"
-    assert "forced embedding backfill" in mock_ready["recommended_action"]
+    assert "forced profile backfill" in mock_ready["recommended_action"]
     assert ready["status"] == "ready"
-    assert "Preview vector matches" in ready["recommended_action"]
+    assert "Preview profile matches" in ready["recommended_action"]
 
 
 def test_embedding_backfill_status_reports_pending_jobs(monkeypatch) -> None:
@@ -763,7 +763,7 @@ def test_embedding_backfill_status_reports_needed_when_no_job_exists(monkeypatch
     assert status["next_job"] is None
     assert status["recommended_job"]["batch_limit"] == 5
     assert status["recommended_job"]["recommended_web_batches"] == 1
-    assert "Queue an embedding backfill job" in status["recommended_action"]
+    assert "Queue a profile backfill job" in status["recommended_action"]
 
 
 def test_embedding_backfill_status_blocks_recommendation_for_disallowed_adapter(monkeypatch) -> None:
@@ -778,7 +778,7 @@ def test_embedding_backfill_status_blocks_recommendation_for_disallowed_adapter(
 
     assert status["status"] == "embedding_adapter_blocked"
     assert status["recommended_job"] is None
-    assert "local non-HTTP embedding adapter" in status["recommended_action"]
+    assert "local non-HTTP profile adapter" in status["recommended_action"]
     assert "ollama_powershell" in status["summary"]
 
 
@@ -789,7 +789,7 @@ def test_embedding_backfill_status_reports_not_needed_when_coverage_complete(mon
 
     assert status["status"] == "not_needed"
     assert status["recommended_job"] is None
-    assert "vector-match preview" in status["recommended_action"]
+    assert "profile-match preview" in status["recommended_action"]
 
 
 def test_embedding_backfill_status_reports_real_backfill_needed_for_mock_coverage(monkeypatch) -> None:
@@ -809,21 +809,21 @@ def test_embedding_backfill_status_reports_real_backfill_needed_for_mock_coverag
     assert status["recommended_job"]["force"] is True
     assert status["recommended_job"]["missing_embedding_only"] is False
     assert status["recommended_job"]["requires_real_adapter"] is True
-    assert "real embedding adapter" in status["recommended_action"]
+    assert "model-backed profile adapter" in status["recommended_action"]
 
 
 def test_recommended_embedding_backfill_job_estimates_large_corpus() -> None:
     recommendation = recommended_embedding_backfill_job({"missing_active_embeddings": 176428})
 
     assert recommendation == {
-        "batch_limit": 1000,
+        "batch_limit": 25,
         "force": False,
         "missing_embedding_only": True,
         "requires_real_adapter": False,
-        "estimated_total_batches": 177,
+        "estimated_total_batches": 7058,
         "recommended_web_batches": 10,
-        "estimated_nodes_per_web_run": 10000,
-        "summary": "Queue a missing-embedding job with batch limit 1000; process up to 10 batch(es) per web run. Current coverage needs about 177 total batch(es).",
+        "estimated_nodes_per_web_run": 250,
+        "summary": "Queue a missing-profile job with batch limit 25; process up to 10 batch(es) per web run. Current coverage needs about 7058 total batch(es).",
     }
 
 
@@ -842,14 +842,14 @@ def test_recommended_embedding_backfill_job_handles_mock_only_coverage() -> None
     )
 
     assert recommendation == {
-        "batch_limit": 1000,
+        "batch_limit": 25,
         "force": True,
         "missing_embedding_only": False,
         "requires_real_adapter": True,
-        "estimated_total_batches": 3,
-        "recommended_web_batches": 3,
-        "estimated_nodes_per_web_run": 3000,
-        "summary": "After configuring a real embedding adapter, queue a forced backfill with batch limit 1000; process up to 3 batch(es) per web run. Current coverage needs about 3 total forced batch(es).",
+        "estimated_total_batches": 100,
+        "recommended_web_batches": 10,
+        "estimated_nodes_per_web_run": 250,
+        "summary": "After configuring a local model-backed profile adapter, queue a forced backfill with batch limit 25; process up to 10 batch(es) per web run. Current coverage needs about 100 total forced batch(es).",
     }
 
 

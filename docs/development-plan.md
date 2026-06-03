@@ -20,7 +20,7 @@ The system should move in this order:
 2. Chronological source-date extraction.
 3. Human-readable ingestion activity logs.
 4. UI support for ingestion runs, epochs, and log inspection.
-5. Embedding interface and semantic candidate substrate.
+5. Text similarity profile interface and semantic candidate substrate.
 6. LLM-assisted ingestion adapter.
 7. Reviewed semantic relationship promotion.
 8. Ranking, trust, and temporal integration.
@@ -149,30 +149,30 @@ Implemented behavior:
 
 Goal:
 
-- Add an embedding interface behind a mockable adapter boundary.
-- Store vectors without immediately changing ranking behavior.
+- Add a text similarity profile interface behind a stub-capable adapter boundary.
+- Store the current embedding vector representation without immediately changing ranking behavior.
 - Generate semantic candidates into the existing review queue.
 
 Constraint:
 
 - Semantic writes remain candidate/review based. The memory-agent should not gain autonomous write authority.
 
-Status: Phase A implemented (mockable embedding substrate); Phase B partially implemented (stored-vector semantic candidate diagnostics and review-queue enqueueing).
+Status: Phase A implemented (stub-capable text similarity profile substrate); Phase B partially implemented (profile-based semantic candidate diagnostics and review-queue enqueueing).
 
 Phase A implemented behavior:
 
-- A dependency-free embedding adapter boundary lives in `mnemosyne.adapters.embedding`, with a deterministic `MockEmbeddingAdapter` and an `embedding_adapter(config)` factory selected by `runtime.embedding_adapter` / `runtime.embedding_dimensions`.
-- HTTP-backed `ollama_http` and `ollama_powershell` embedding adapters were built as temporary diagnostics, but they are not compliant for ingestion or retrieval memory operations. The default remains `mock`; the real embedding milestone now requires a local non-HTTP embedding execution path behind the same adapter boundary.
-- The mock adapter derives a bounded, unit-norm vector from a SHA-256 expansion of the node text, so the same text always produces the same vector without any external model or network call.
-- During direct CLI ingestion and queued worker ingestion (both via `commit_ingestion`), and during maintenance rebuilds (`rebuild_document`), each node is annotated before commit with an `embedding` field holding adapter/model name, dimensions, vector, and the source text hash.
-- Ingestion activity reports/logs now surface the embedded node count, embedding model, and dimensions.
+- A dependency-free profile adapter boundary lives in `mnemosyne.adapters.embedding`, with a deterministic `MockEmbeddingAdapter` and an `embedding_adapter(config)` factory selected by `runtime.embedding_adapter` / `runtime.embedding_dimensions`.
+- HTTP-backed `ollama_http` and `ollama_powershell` profile adapters were built as temporary diagnostics, but they are not compliant for ingestion or retrieval memory operations. The default remains `mock`; the model-backed profile milestone now requires a local non-HTTP execution path behind the same adapter boundary.
+- The stub adapter derives a bounded, unit-norm embedding vector representation from a SHA-256 expansion of the node text, so the same text always produces the same profile representation without any external model or network call.
+- During direct CLI ingestion and queued worker ingestion (both via `commit_ingestion`), and during maintenance rebuilds (`rebuild_document`), each node is annotated before commit with an `embedding` field holding adapter/model name, dimensions, embedding vector representation, and the source text hash.
+- Ingestion activity reports/logs now surface the profiled node count, profile model, and dimensions.
 - This phase intentionally does not change search ranking, answer behavior, or memory-agent write authority.
-- Stored vectors can now be read by operator CLI/API/web controls to propose pending semantic-edge candidates, distinguished from label-overlap candidates by `candidate_source: embedding_similarity` and similarity/model/dimension metadata.
+- Stored text similarity profiles can now be read by operator CLI/API/web controls to propose pending semantic-edge candidates, distinguished from label-overlap candidates by `candidate_source: embedding_similarity` and similarity/model/dimension metadata.
 
 Phase A remaining work:
 
-- Wire a real local, non-HTTP embedding adapter behind the same boundary.
-- Only then consider any retrieval/ranking use of embeddings, kept candidate/review based.
+- Wire a local, non-HTTP model-backed profile adapter behind the same boundary.
+- Only then consider any retrieval/ranking use of text similarity profiles, kept candidate/review based.
 
 ## Slice 7: LLM-Assisted Ingestion
 

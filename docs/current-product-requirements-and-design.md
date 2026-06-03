@@ -59,7 +59,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
 
 ### Retrieval And Context Construction
 
-- Retrieval must evolve beyond flat lexical or vector search into graph-aware, identity-aware, governed context construction.
+- Retrieval must evolve beyond flat lexical search or profile-based similarity search into graph-aware, identity-aware, governed context construction.
 - The current deterministic lexical/fuzzy sidecar is an interim aid for predictable tests, typo tolerance, and cold-start behavior.
 - Query assembly should remain a shared contract between deterministic Python retrieval and LLM planner calls.
 - Retrieval should support:
@@ -74,10 +74,22 @@ The system is not intended to be a single closed chatbot. It should become a mem
 - Retrieval traces should expose enough detail for the user to understand why context was chosen.
 - If an LLM calls the Python tool interface incorrectly, Python should return an instructional error that explains how to repair the call, allowing the LLM to recover in the next iteration.
 
+### Product Vocabulary And Implementation Detail
+
+- User-facing language must name the product element before naming the current implementation detail.
+- A text similarity profile is a product element. An embedding vector is the current technical representation used to describe that profile.
+- A source document is not the same thing as a parsed text chunk.
+- A semantic relationship is not the same thing as a graph edge row.
+- An agent identity is not the same thing as prompt text.
+- A process obligation is not the same thing as a checklist item.
+- A memory state is not the same thing as chat history.
+- A trust assessment is not the same thing as a numeric score.
+- UI labels, reports, requirements, and design notes should use the product element name first. Technical names are acceptable when the implementation detail itself is being discussed.
+
 ### LLM Transparency
 
 - LLM calls are product-visible events, not hidden implementation details.
-- HTTP is allowed for the human web interface and may be used for an optional final hosted answer-model call. It must not be used for ingestion, retrieval, memory-agent tool orchestration, Python memory tools, or repository embedding generation.
+- HTTP is allowed for the human web interface and may be used for an optional final hosted answer-model call. It must not be used for ingestion, retrieval, memory-agent tool orchestration, Python memory tools, or repository text similarity profile generation.
 - Each answer should expose:
   - memory-agent planner calls, if agentic mode is used;
   - final answer model call;
@@ -113,7 +125,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
 - FastAPI backend.
 - Static HTML/CSS/JS web UI.
 - CLI commands for ingestion, retrieval, graph inspection, governance lookup, sessions, and process runs.
-- Local answer adapters, including mock and Ollama CLI.
+- Local answer adapters, including stub and Ollama CLI.
 
 ### Ask Flow
 
