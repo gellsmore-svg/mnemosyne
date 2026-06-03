@@ -898,7 +898,10 @@ function embeddingBackfillJobProgress(job) {
   const percent = job.progress_percent === null || job.progress_percent === undefined
     ? "unknown"
     : `${job.progress_percent}%`;
-  return `${updated} / ${total} updated (${percent}, about ${remaining} remaining)`;
+  const batches = job.batches_remaining_estimate === null || job.batches_remaining_estimate === undefined
+    ? ""
+    : `, about ${job.batches_remaining_estimate} batch(es)`;
+  return `${updated} / ${total} updated (${percent}, about ${remaining} remaining${batches})`;
 }
 
 function embeddingBackfillBatchRunSummary(data) {

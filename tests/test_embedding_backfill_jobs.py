@@ -32,6 +32,7 @@ def test_create_embedding_backfill_job_persists_scope() -> None:
     assert job["scope_total"] is None
     assert job["remaining_estimate"] is None
     assert job["progress_percent"] is None
+    assert job["batches_remaining_estimate"] is None
     assert job["created_by"] == "test"
 
 
@@ -50,6 +51,39 @@ def test_create_embedding_backfill_job_counts_scope_total() -> None:
     assert job["scope_total"] == 1
     assert job["remaining_estimate"] == 1
     assert job["progress_percent"] == 0.0
+    assert job["batches_remaining_estimate"] == 1
+
+
+def test_embedding_backfill_job_progress_estimates_remaining_batches() -> None:
+    db = FakeDb(
+        nodes=[
+            {"status": "active", "labels": ["target"]},
+            {"status": "active", "labels": ["target"]},
+            {"status": "active", "labels": ["target"]},
+            {"status": "active", "labels": ["target"]},
+            {"status": "active", "labels": ["target"]},
+        ]
+    )
+    job = create_embedding_backfill_job(db, batch_limit=2, label="target")
+    db.embedding_backfill_jobs.rows[0]["updated_count"] = 1
+
+    serialized = list_embedding_backfill_jobs(db)[0]
+
+    assert job["scope_total"] == 5
+    assert serialized["remaining_estimate"] == 4
+    assert serialized["progress_percent"] == 20.0
+    assert serialized["batches_remaining_estimate"] == 2
+
+
+def test_embedding_backfill_job_zero_scope_has_no_progress_percent() -> None:
+    db = FakeDb(nodes=[{"status": "superseded", "labels": ["target"]}])
+
+    job = create_embedding_backfill_job(db, batch_limit=2, label="target")
+
+    assert job["scope_total"] == 0
+    assert job["remaining_estimate"] == 0
+    assert job["progress_percent"] is None
+    assert job["batches_remaining_estimate"] == 0
 
 
 def test_process_next_embedding_backfill_job_keeps_full_batch_pending(monkeypatch) -> None:
@@ -273,6 +307,7 @@ def test_list_embedding_backfill_jobs_filters_and_serializes() -> None:
     assert jobs[0]["scope_total"] is None
     assert jobs[0]["remaining_estimate"] is None
     assert jobs[0]["progress_percent"] is None
+    assert jobs[0]["batches_remaining_estimate"] is None
     assert jobs[0]["last_result"]["activity_log"].startswith("Embedding Backfill Activity Log")
 
 

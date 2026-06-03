@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from math import ceil
 from typing import Any
 
 from bson import ObjectId
@@ -284,23 +285,27 @@ def block_embedding_backfill_job(
 def serialize_embedding_backfill_job(row: dict[str, Any]) -> dict[str, Any]:
     scope_total = row.get("scope_total")
     updated_count = int(row.get("updated_count") or 0)
+    batch_limit = int(row.get("batch_limit") or 0)
     remaining_estimate = None
     progress_percent = None
+    batches_remaining_estimate = None
     if scope_total is not None:
         scope_total = int(scope_total or 0)
         remaining_estimate = max(0, scope_total - updated_count)
         progress_percent = round((updated_count / scope_total) * 100, 1) if scope_total else None
+        batches_remaining_estimate = ceil(remaining_estimate / batch_limit) if batch_limit else None
     return {
         "job_id": str(row.get("_id")),
         "schema_version": row.get("schema_version"),
         "status": row.get("status"),
-        "batch_limit": row.get("batch_limit"),
+        "batch_limit": batch_limit,
         "label": row.get("label"),
         "document_id": row.get("document_id"),
         "force": row.get("force", False),
         "scope_total": scope_total,
         "remaining_estimate": remaining_estimate,
         "progress_percent": progress_percent,
+        "batches_remaining_estimate": batches_remaining_estimate,
         "created_by": row.get("created_by"),
         "batch_count": row.get("batch_count", 0),
         "updated_count": updated_count,
