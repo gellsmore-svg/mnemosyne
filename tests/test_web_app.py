@@ -893,7 +893,7 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     data = response.json()
     assert data["ok"] is True
     assert "ollama_cli" in data["available_adapters"]
-    assert data["available_embedding_adapters"] == ["mock"]
+    assert data["available_embedding_adapters"] == ["mock", "local_command"]
     assert "ollama_http" in data["non_compliant_embedding_adapters"]
     assert "ollama_powershell" in data["non_compliant_embedding_adapters"]
     assert data["embedding_adapter_policy"] == "ingestion_and_retrieval_no_http"

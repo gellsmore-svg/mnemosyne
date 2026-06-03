@@ -89,6 +89,7 @@ The system is not intended to be a single closed chatbot. It should become a mem
 ### Profile Backfill Operation
 
 - Text similarity profile backfill must be controllable by static configuration and visible operator controls.
+- Model-backed profile generation must use a local non-HTTP transport for ingestion and retrieval memory operations. The current bridge is `runtime.embedding_adapter: local_command`, which calls `runtime.profile_command` over stdin/stdout JSON.
 - The current default recommendation is 25 nodes per batch and 10 web batches per run.
 - The system should expose the recovery behavior of profile jobs plainly: node writes are saved individually, while the job cursor is saved after a completed batch.
 - If a profile job is interrupted mid-batch, the operator should requeue it. Missing-profile jobs skip profiles already written during replay; forced jobs may rebuild the interrupted batch.

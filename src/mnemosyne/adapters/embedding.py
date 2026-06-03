@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import shlex
 import subprocess
 import struct
 from typing import Any
@@ -171,9 +172,71 @@ class OllamaPowerShellEmbeddingAdapter:
         return vector
 
 
+class LocalCommandEmbeddingAdapter:
+    name = "local_command_profile"
+
+    def __init__(self, config: Any) -> None:
+        self.config = config
+        self.model = getattr(config, "embedding_model", None) or "local-profile-model"
+        self.command = local_profile_command(getattr(config, "profile_command", None))
+        self.dimensions: int | None = None
+
+    def embed(self, text: str) -> dict[str, Any]:
+        normalized = text or ""
+        vector = l2_normalize(self._profile_vector(normalized))
+        self.dimensions = len(vector)
+        return {
+            "adapter": self.name,
+            "model": self.model,
+            "dimensions": len(vector),
+            "vector": vector,
+            "source_text_hash": source_text_hash(normalized),
+        }
+
+    def _profile_vector(self, text: str) -> list[float]:
+        if not self.command:
+            raise RuntimeError(
+                "Local command profile adapter requires runtime.profile_command. "
+                "Configure a local executable that reads JSON from stdin and returns a vector JSON object."
+            )
+        payload = json.dumps({"model": self.model, "text": text})
+        try:
+            completed = subprocess.run(
+                self.command,
+                input=payload,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self.config.ollama_timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exception:
+            raise TimeoutError(
+                f"Local command profile adapter timed out after "
+                f"{self.config.ollama_timeout_seconds}s while running {self.model}."
+            ) from exception
+        if completed.returncode != 0 or not completed.stdout.strip():
+            detail = "\n".join(part for part in [completed.stderr, completed.stdout] if part)
+            raise RuntimeError(
+                f"Local command profile adapter failed for {self.model}: "
+                f"{detail.strip() or completed.returncode}"
+            )
+        try:
+            data = json.loads(completed.stdout.lstrip("\ufeff").strip())
+        except json.JSONDecodeError as exception:
+            raise RuntimeError(
+                f"Local command profile adapter returned invalid JSON for {self.model}."
+            ) from exception
+        vector = local_command_profile_vector(data)
+        if not vector:
+            raise RuntimeError(
+                f"Local command profile adapter returned no usable vector for {self.model}."
+            )
+        return vector
+
+
 def embedding_adapter(
     config: Any | None = None,
-) -> MockEmbeddingAdapter | OllamaHttpEmbeddingAdapter | OllamaPowerShellEmbeddingAdapter:
+) -> MockEmbeddingAdapter | OllamaHttpEmbeddingAdapter | OllamaPowerShellEmbeddingAdapter | LocalCommandEmbeddingAdapter:
     if config is None:
         return default_embedding_adapter()
     name = getattr(config, "embedding_adapter", "mock")
@@ -191,11 +254,21 @@ def embedding_adapter(
         )
     if name == "mock":
         return MockEmbeddingAdapter(dimensions=dimensions)
+    if name == "local_command":
+        return LocalCommandEmbeddingAdapter(config)
     if name == "ollama_http":
         return OllamaHttpEmbeddingAdapter(config)
     if name == "ollama_powershell":
         return OllamaPowerShellEmbeddingAdapter(config)
     raise ValueError(f"Unknown embedding adapter: {name}")
+
+
+def local_profile_command(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return shlex.split(value)
+    if isinstance(value, (list, tuple)):
+        return [str(part) for part in value if str(part)]
+    return []
 
 
 def deterministic_vector(text: str, dimensions: int) -> list[float]:
@@ -227,6 +300,12 @@ def ollama_embedding_vector(data: dict[str, Any]) -> list[float]:
     if isinstance(embeddings, list) and embeddings:
         return parse_embedding_vector(embeddings[0])
     return []
+
+
+def local_command_profile_vector(data: dict[str, Any]) -> list[float]:
+    if isinstance(data.get("vector"), list):
+        return parse_embedding_vector(data["vector"])
+    return ollama_embedding_vector(data)
 
 
 def parse_embedding_vector(value: Any) -> list[float]:

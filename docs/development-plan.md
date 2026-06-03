@@ -162,7 +162,8 @@ Status: Phase A implemented (stub-capable text similarity profile substrate); Ph
 Phase A implemented behavior:
 
 - A dependency-free profile adapter boundary lives in `mnemosyne.adapters.embedding`, with a deterministic `MockEmbeddingAdapter` and an `embedding_adapter(config)` factory selected by `runtime.embedding_adapter` / `runtime.embedding_dimensions`.
-- HTTP-backed `ollama_http` and `ollama_powershell` profile adapters were built as temporary diagnostics, but they are not compliant for ingestion or retrieval memory operations. The default remains `mock`; the model-backed profile milestone now requires a local non-HTTP execution path behind the same adapter boundary.
+- HTTP-backed `ollama_http` and `ollama_powershell` profile adapters were built as temporary diagnostics, but they are not compliant for ingestion or retrieval memory operations. The default remains `mock`.
+- A non-HTTP `local_command` profile adapter is available behind the same boundary. It calls a configured local executable over stdin/stdout JSON, so a local model runner can be plugged in without routing ingestion or retrieval memory operations through HTTP.
 - The stub adapter derives a bounded, unit-norm embedding vector representation from a SHA-256 expansion of the node text, so the same text always produces the same profile representation without any external model or network call.
 - During direct CLI ingestion and queued worker ingestion (both via `commit_ingestion`), and during maintenance rebuilds (`rebuild_document`), each node is annotated before commit with an `embedding` field holding adapter/model name, dimensions, embedding vector representation, and the source text hash.
 - Ingestion activity reports/logs now surface the profiled node count, profile model, and dimensions.
@@ -173,7 +174,7 @@ Phase A implemented behavior:
 
 Phase A remaining work:
 
-- Wire a local, non-HTTP model-backed profile adapter behind the same boundary.
+- Choose and configure the actual local model-backed profile command, then validate candidate quality against a refreshed corpus.
 - Only then consider any retrieval/ranking use of text similarity profiles, kept candidate/review based.
 
 ## Slice 7: LLM-Assisted Ingestion

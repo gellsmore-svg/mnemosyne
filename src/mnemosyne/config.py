@@ -25,6 +25,7 @@ class RuntimeConfig(BaseModel):
     allow_http_ingestion_adapters: bool = False
     embedding_model: str = "nomic-embed-text:latest"
     embedding_dimensions: int = 16
+    profile_command: list[str] | str | None = Field(default_factory=list)
     profile_backfill_recommended_batch_limit: int = 25
     profile_backfill_web_max_batches: int = 10
     memory_agent_adapter: str | None = None

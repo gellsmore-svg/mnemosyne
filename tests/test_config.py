@@ -65,6 +65,27 @@ runtime:
     assert config.runtime.memory_agent_ollama_format == "json"
 
 
+def test_load_config_reads_local_profile_command(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+runtime:
+  embedding_adapter: local_command
+  embedding_model: local-profile
+  profile_command:
+    - python
+    - tools/profile.py
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_file)
+
+    assert config.runtime.embedding_adapter == "local_command"
+    assert config.runtime.embedding_model == "local-profile"
+    assert config.runtime.profile_command == ["python", "tools/profile.py"]
+
+
 def test_load_config_accepts_unquoted_ollama_think_false(tmp_path: Path) -> None:
     config_file = tmp_path / "config.yaml"
     config_file.write_text(

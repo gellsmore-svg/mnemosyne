@@ -5,10 +5,12 @@ from urllib import error
 
 from mnemosyne.adapters.embedding import (
     DEFAULT_EMBEDDING_DIMENSIONS,
+    LocalCommandEmbeddingAdapter,
     MockEmbeddingAdapter,
     OllamaHttpEmbeddingAdapter,
     OllamaPowerShellEmbeddingAdapter,
     embedding_adapter,
+    local_command_profile_vector,
     ollama_embedding_vector,
     source_text_hash,
 )
@@ -79,6 +81,20 @@ def test_embedding_adapter_factory_can_create_ollama_powershell_adapter() -> Non
 
     assert isinstance(adapter, OllamaPowerShellEmbeddingAdapter)
     assert adapter.model == "nomic-embed-text:latest"
+    assert adapter.dimensions is None
+
+
+def test_embedding_adapter_factory_can_create_local_command_adapter() -> None:
+    config = RuntimeConfig(
+        embedding_adapter="local_command",
+        embedding_model="local-profile",
+        profile_command=["profile-tool", "--json"],
+    )
+    adapter = embedding_adapter(config)
+
+    assert isinstance(adapter, LocalCommandEmbeddingAdapter)
+    assert adapter.model == "local-profile"
+    assert adapter.command == ["profile-tool", "--json"]
     assert adapter.dimensions is None
 
 
@@ -235,8 +251,80 @@ def test_ollama_powershell_embedding_adapter_reports_process_errors(monkeypatch)
         raise AssertionError("Expected PowerShell embedding adapter to report process failure.")
 
 
+def test_local_command_embedding_adapter_uses_stdin_json(monkeypatch) -> None:
+    captured = {}
+    tricky_text = 'quote"; $(Get-Process); newline\ntext'
+
+    def fake_run(command, input, check, capture_output, text, timeout):
+        captured["command"] = command
+        captured["input"] = input
+        captured["check"] = check
+        captured["capture_output"] = capture_output
+        captured["text"] = text
+        captured["timeout"] = timeout
+        return type("Completed", (), {"returncode": 0, "stdout": '{"vector": [3, 4]}', "stderr": ""})()
+
+    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.run", fake_run)
+    config = RuntimeConfig(
+        embedding_adapter="local_command",
+        embedding_model="local-profile",
+        profile_command=["profile-tool", "--json"],
+        ollama_timeout_seconds=11,
+    )
+    adapter = LocalCommandEmbeddingAdapter(config)
+
+    payload = adapter.embed(tricky_text)
+
+    assert captured["command"] == ["profile-tool", "--json"]
+    assert tricky_text not in " ".join(captured["command"])
+    assert 'quote\\"; $(Get-Process); newline\\ntext' in captured["input"]
+    assert '"model": "local-profile"' in captured["input"]
+    assert captured["check"] is False
+    assert captured["capture_output"] is True
+    assert captured["text"] is True
+    assert captured["timeout"] == 11
+    assert payload["adapter"] == "local_command_profile"
+    assert payload["model"] == "local-profile"
+    assert payload["dimensions"] == 2
+    assert payload["vector"] == [0.6, 0.8]
+    assert adapter.dimensions == 2
+
+
+def test_local_command_embedding_adapter_requires_command() -> None:
+    adapter = LocalCommandEmbeddingAdapter(RuntimeConfig(embedding_adapter="local_command"))
+
+    try:
+        adapter.embed("text")
+    except RuntimeError as exc:
+        assert "runtime.profile_command" in str(exc)
+    else:
+        raise AssertionError("Expected local command adapter to require a configured command.")
+
+
+def test_local_command_embedding_adapter_reports_process_errors(monkeypatch) -> None:
+    def fake_run(*_args, **_kwargs):
+        return type("Completed", (), {"returncode": 1, "stdout": "", "stderr": "tool failed"})()
+
+    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.run", fake_run)
+    adapter = LocalCommandEmbeddingAdapter(
+        RuntimeConfig(embedding_adapter="local_command", profile_command=["profile-tool"])
+    )
+
+    try:
+        adapter.embed("text")
+    except RuntimeError as exc:
+        assert "Local command profile adapter failed" in str(exc)
+        assert "tool failed" in str(exc)
+    else:
+        raise AssertionError("Expected local command adapter to report process failure.")
+
+
 def test_ollama_embedding_vector_accepts_legacy_shape() -> None:
     assert ollama_embedding_vector({"embedding": [1, 2, 3]}) == [1.0, 2.0, 3.0]
+
+
+def test_local_command_profile_vector_accepts_vector_shape() -> None:
+    assert local_command_profile_vector({"vector": [1, 2, 3]}) == [1.0, 2.0, 3.0]
 
 
 def test_ollama_embedding_vector_rejects_malformed_values() -> None:

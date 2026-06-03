@@ -16,6 +16,9 @@ runtime:
   allow_http_ingestion_adapters: false
   embedding_model: nomic-embed-text:latest
   embedding_dimensions: 16
+  # Optional non-HTTP local profile generator. The command receives JSON on stdin:
+  # {"model": "...", "text": "..."} and should return {"vector": [...]} or {"embedding": [...]}.
+  profile_command: []
   profile_backfill_recommended_batch_limit: 25
   profile_backfill_web_max_batches: 10
   memory_agent_adapter:
