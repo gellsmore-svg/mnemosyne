@@ -408,11 +408,13 @@ async function loadIngestionStatus() {
     : "no recent jobs";
   const nextJob = backfill.next_job || {};
   const nextJobProgress = embeddingBackfillJobProgress(nextJob);
+  const recommendedJob = backfill.recommended_job || {};
   const backfillItem =
     `<div class="item">` +
     `<strong>Backfill jobs: ${html(backfill.status || "unknown")}</strong>` +
     `<div>${html(backfill.summary || "Embedding backfill job status has not been assessed.")}</div>` +
     `<div class="muted">Recommended action: ${html(backfill.recommended_action || "Refresh ingestion status.")}</div>` +
+    `${recommendedJob.summary ? `<div class="muted">Suggested job: ${html(recommendedJob.summary)}</div>` : ""}` +
     `<div class="muted">Recent jobs checked: ${html(String(backfill.recent_jobs_checked ?? 0))}` +
     ` | ${html(backfillCounts)}</div>` +
     `${nextJob.job_id ? `<div class="muted">Next job: ${html(nextJob.job_id)} | ${html(nextJob.status || "")} | batch ${html(String(nextJob.batch_limit || ""))}${nextJobProgress ? ` | ${html(nextJobProgress)}` : ""}</div>` : ""}` +

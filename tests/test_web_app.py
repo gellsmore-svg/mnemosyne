@@ -17,6 +17,7 @@ from mnemosyne.web.app import (
     parse_ollama_model_list,
     parse_ollama_model_rows,
     process_inbox_activity_log,
+    recommended_embedding_backfill_job,
 )
 
 
@@ -168,6 +169,15 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             "status": "pending",
             "summary": "1 recent embedding backfill job(s) are queued.",
             "recommended_action": "Process the next bounded backfill batches and refresh ingestion status.",
+            "recommended_job": {
+                "batch_limit": 1,
+                "force": False,
+                "missing_embedding_only": True,
+                "estimated_total_batches": 1,
+                "recommended_web_batches": 1,
+                "estimated_nodes_per_web_run": 1,
+                "summary": "Queue a missing-embedding job with batch limit 1; process up to 1 batch(es) per web run. Current coverage needs about 1 total batch(es).",
+            },
             "recent_status_counts": {"pending": 1},
             "recent_jobs_checked": 1,
             "next_job": {"job_id": "job1", "status": "pending"},
@@ -203,6 +213,15 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
             "status": "pending",
             "summary": "1 recent embedding backfill job(s) are queued.",
             "recommended_action": "Process the next bounded backfill batches and refresh ingestion status.",
+            "recommended_job": {
+                "batch_limit": 1,
+                "force": False,
+                "missing_embedding_only": True,
+                "estimated_total_batches": 1,
+                "recommended_web_batches": 1,
+                "estimated_nodes_per_web_run": 1,
+                "summary": "Queue a missing-embedding job with batch limit 1; process up to 1 batch(es) per web run. Current coverage needs about 1 total batch(es).",
+            },
             "recent_status_counts": {"pending": 1},
             "recent_jobs_checked": 1,
             "next_job": {"job_id": "job1", "status": "pending"},
@@ -682,6 +701,8 @@ def test_embedding_backfill_status_reports_needed_when_no_job_exists(monkeypatch
 
     assert status["status"] == "needed"
     assert status["next_job"] is None
+    assert status["recommended_job"]["batch_limit"] == 5
+    assert status["recommended_job"]["recommended_web_batches"] == 1
     assert "Queue an embedding backfill job" in status["recommended_action"]
 
 
@@ -691,7 +712,26 @@ def test_embedding_backfill_status_reports_not_needed_when_coverage_complete(mon
     status = embedding_backfill_status(None, {"missing_active_embeddings": 0})
 
     assert status["status"] == "not_needed"
+    assert status["recommended_job"] is None
     assert "vector-match preview" in status["recommended_action"]
+
+
+def test_recommended_embedding_backfill_job_estimates_large_corpus() -> None:
+    recommendation = recommended_embedding_backfill_job({"missing_active_embeddings": 176428})
+
+    assert recommendation == {
+        "batch_limit": 1000,
+        "force": False,
+        "missing_embedding_only": True,
+        "estimated_total_batches": 177,
+        "recommended_web_batches": 10,
+        "estimated_nodes_per_web_run": 10000,
+        "summary": "Queue a missing-embedding job with batch limit 1000; process up to 10 batch(es) per web run. Current coverage needs about 177 total batch(es).",
+    }
+
+
+def test_recommended_embedding_backfill_job_skips_complete_coverage() -> None:
+    assert recommended_embedding_backfill_job({"missing_active_embeddings": 0}) is None
 
 
 def test_index_serves_html() -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+from math import ceil
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +66,7 @@ from mnemosyne.sessions.registry import create_session, list_sessions
 
 FALLBACK_KNOWN_MODELS = ["gemma4:latest", "gemma3:1b"]
 WEB_EMBEDDING_BACKFILL_MAX_BATCHES = 10
+WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT = 1000
 
 
 class AskRequest(BaseModel):
@@ -1082,9 +1084,32 @@ def embedding_backfill_status(db: Any, coverage: dict[str, Any], limit: int = 20
         "status": status,
         "summary": summary,
         "recommended_action": action,
+        "recommended_job": recommended_embedding_backfill_job(coverage),
         "recent_status_counts": counts,
         "recent_jobs_checked": len(jobs),
         "next_job": next_job,
+    }
+
+
+def recommended_embedding_backfill_job(coverage: dict[str, Any]) -> dict[str, Any] | None:
+    missing = int(coverage.get("missing_active_embeddings") or 0)
+    if missing <= 0:
+        return None
+    batch_limit = min(WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT, missing)
+    total_batches = ceil(missing / batch_limit) if batch_limit else 0
+    recommended_web_batches = min(WEB_EMBEDDING_BACKFILL_MAX_BATCHES, total_batches)
+    return {
+        "batch_limit": batch_limit,
+        "force": False,
+        "missing_embedding_only": True,
+        "estimated_total_batches": total_batches,
+        "recommended_web_batches": recommended_web_batches,
+        "estimated_nodes_per_web_run": batch_limit * recommended_web_batches,
+        "summary": (
+            f"Queue a missing-embedding job with batch limit {batch_limit}; "
+            f"process up to {recommended_web_batches} batch(es) per web run. "
+            f"Current coverage needs about {total_batches} total batch(es)."
+        ),
     }
 
 
