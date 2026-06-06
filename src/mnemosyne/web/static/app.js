@@ -597,6 +597,35 @@ async function enqueueSemanticCandidates(candidateSource) {
   await loadSemanticCandidates();
 }
 
+async function runVectorSemanticBatch(dryRun) {
+  const excludeNodeKey = $("semanticBatchExcludeNodeKey").value.trim();
+  const data = await api("/api/review/enqueue-vector-semantic-batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      label: $("semanticBatchLabel").value.trim() || null,
+      document_id: $("semanticBatchDocumentId").value.trim() || null,
+      focus_limit: Number($("semanticBatchFocusLimit").value || 10),
+      candidates_per_node: Number($("semanticBatchCandidatesPerNode").value || 1),
+      include_same_document: $("semanticIncludeSameDocument").checked,
+      relation_type: "related_to",
+      created_by: "web",
+      min_similarity: Number($("semanticMinSimilarity").value || 0.75),
+      candidate_scan_limit: Number($("semanticCandidateScanLimit").value || 1000),
+      exclude_node_keys: excludeNodeKey ? [excludeNodeKey] : [],
+      dry_run: dryRun,
+    }),
+  });
+  const action = dryRun ? "Dry run" : "Batch queue";
+  $("semanticCandidateStatus").textContent = data.ok
+    ? `${action}: ${data.would_enqueue_count || data.enqueued_count || 0} candidate(s)`
+    : `${action} failed: ${data.reason || "unknown"}`;
+  $("semanticBatchPreview").textContent = vectorBatchSummary(data);
+  if (!dryRun) {
+    await loadSemanticCandidates();
+  }
+}
+
 function vectorCandidatePreviewSummary(data) {
   const diagnostics = data.diagnostics || {};
   const exclusions = diagnostics.exclusions || {};
@@ -604,7 +633,7 @@ function vectorCandidatePreviewSummary(data) {
   const lines = [
     `Status: ${data.ok ? "ready" : "needs attention"}`,
     data.reason ? `Reason: ${data.reason}` : null,
-    focus.title ? `Focus: ${text(focus.title)} (${text(focus.model)}, ${text(focus.dimensions)} dims representation)` : null,
+    focus.title ? `Focus: ${text(focus.title)} (${text(focus.model)}, text similarity profile)` : null,
     `Threshold: ${text(diagnostics.min_similarity)}`,
     `Scan: ${text(diagnostics.scanned_count)} scanned of ${text(diagnostics.candidate_scan_limit)} candidate limit`,
     `Returned: ${text(diagnostics.returned_count)} shown from ${text(diagnostics.candidate_count_before_limit)} above threshold`,
@@ -629,9 +658,38 @@ function vectorCandidatePreviewSummary(data) {
       const ranking = node.link_index_penalty
         ? ` | rank ${text(node.embedding_rank_score)}, link-index adjustment ${text(node.link_index_penalty)}`
         : "";
-      lines.push(`${index + 1}. ${text(node.title || node.node_id)} | profile similarity ${text(node.embedding_similarity)}${ranking} | ${text(node.embedding_model)} ${text(node.embedding_dimensions)} dims representation`);
+      lines.push(`${index + 1}. ${text(node.title || node.node_id)} | profile similarity ${text(node.embedding_similarity)}${ranking} | ${text(node.embedding_model)} text similarity profile`);
     });
   }
+  return lines.join("\n");
+}
+
+function vectorBatchSummary(data) {
+  const scope = data.scope || {};
+  const lines = [
+    `Status: ${data.ok ? "ready" : "needs attention"}`,
+    data.reason ? `Reason: ${data.reason}` : null,
+    `Mode: ${scope.dry_run ? "dry run" : "queue pending review rows"}`,
+    `Scope: label ${text(scope.label || "any")}, document ${text(scope.document_id || "any")}`,
+    `Focus nodes: ${text(scope.focus_node_count)} of limit ${text(scope.focus_limit)}`,
+    `Per focus: ${text(scope.candidates_per_node)} candidate(s), threshold ${text(scope.min_similarity)}`,
+    scope.exclude_node_keys?.length ? `Excluded node keys: ${scope.exclude_node_keys.map(text).join(", ")}` : null,
+    `Candidates found: ${text(data.candidate_count)}`,
+    `Would queue: ${text(data.would_enqueue_count || 0)}`,
+    `Queued: ${text(data.enqueued_count || 0)}`,
+    `Existing: ${text(data.skipped_existing_count || 0)}`,
+    `Invalid: ${text(data.skipped_invalid_count || 0)}`,
+  ].filter(Boolean);
+  const focusResults = Array.isArray(data.focus_results) ? data.focus_results : [];
+  focusResults.slice(0, 8).forEach((result, index) => {
+    lines.push(
+      `${index + 1}. ${text(result.title || result.node_id)} | candidates ${text(result.candidate_count)} | would queue ${text(result.would_enqueue_count || 0)} | queued ${text(result.enqueued_count || 0)} | existing ${text(result.skipped_existing_count || 0)}`
+    );
+    const previews = Array.isArray(result.candidate_previews) ? result.candidate_previews : [];
+    previews.slice(0, 3).forEach((candidate) => {
+      lines.push(`   -> ${text(candidate.target_title || candidate.target_node_id)} | profile similarity ${text(candidate.embedding_similarity)}`);
+    });
+  });
   return lines.join("\n");
 }
 
@@ -1057,6 +1115,8 @@ $("loadSemanticCandidates").addEventListener("click", loadSemanticCandidates);
 $("enqueueLabelCandidates").addEventListener("click", () => enqueueSemanticCandidates("label_overlap"));
 $("previewVectorCandidates").addEventListener("click", previewVectorSemanticCandidates);
 $("enqueueVectorCandidates").addEventListener("click", () => enqueueSemanticCandidates("embedding_similarity"));
+$("dryRunVectorBatch").addEventListener("click", () => runVectorSemanticBatch(true));
+$("enqueueVectorBatch").addEventListener("click", () => runVectorSemanticBatch(false));
 document.querySelectorAll(".tab-button").forEach((button) => {
   button.addEventListener("click", () => switchTab(button.dataset.tab));
 });

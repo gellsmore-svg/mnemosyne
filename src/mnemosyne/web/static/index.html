@@ -130,6 +130,16 @@
               <div id="semanticCandidateStatus" class="status">Candidates: unknown</div>
             </div>
             <pre id="semanticCandidatePreview">Preview text similarity profile matches before queueing them for review.</pre>
+            <div class="operator-grid">
+              <input id="semanticBatchLabel" placeholder="Batch label, e.g. source_section" />
+              <input id="semanticBatchDocumentId" placeholder="Batch document ID (optional)" />
+              <input id="semanticBatchFocusLimit" type="number" min="1" max="200" value="10" />
+              <input id="semanticBatchCandidatesPerNode" type="number" min="1" max="10" value="1" />
+              <input id="semanticBatchExcludeNodeKey" placeholder="Exclude node key, e.g. section-1" />
+              <button id="dryRunVectorBatch" class="secondary">Dry Run Batch</button>
+              <button id="enqueueVectorBatch">Queue Batch</button>
+            </div>
+            <pre id="semanticBatchPreview">Dry-run a bounded profile batch before queueing review candidates.</pre>
             <div id="semanticCandidates" class="list"></div>
           </section>
 

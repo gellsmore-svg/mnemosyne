@@ -1546,6 +1546,48 @@ def test_vector_semantic_candidates_preview_endpoint(monkeypatch) -> None:
     }
 
 
+def test_enqueue_vector_semantic_batch_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "mnemosyne.web.app.enqueue_vector_semantic_edge_candidate_batch",
+        lambda _db, **kwargs: {"ok": True, **kwargs},
+    )
+
+    response = client.post(
+        "/api/review/enqueue-vector-semantic-batch",
+        json={
+            "label": "source_section",
+            "document_id": "doc1",
+            "focus_limit": 5,
+            "candidates_per_node": 1,
+            "include_same_document": True,
+            "relation_type": "supports",
+            "created_by": "tester",
+            "min_similarity": 0.82,
+            "candidate_scan_limit": 500,
+            "exclude_node_keys": ["section-1"],
+            "dry_run": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "label": "source_section",
+        "document_id": "doc1",
+        "focus_limit": 5,
+        "candidates_per_node": 1,
+        "include_same_document": True,
+        "relation_type": "supports",
+        "created_by": "tester",
+        "min_similarity": 0.82,
+        "candidate_scan_limit": 500,
+        "exclude_node_keys": ["section-1"],
+        "dry_run": True,
+    }
+
+
 def test_enqueue_semantic_edge_candidates_endpoint_rejects_unknown_source() -> None:
     client = TestClient(app)
 

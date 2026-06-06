@@ -37,6 +37,7 @@ from mnemosyne.db.indexes import ensure_indexes
 from mnemosyne.db.repositories import (
     backfill_node_embeddings,
     enqueue_semantic_edge_candidates,
+    enqueue_vector_semantic_edge_candidate_batch,
     enqueue_vector_semantic_edge_candidates,
     list_semantic_edge_candidates,
     review_semantic_edge_candidate,
@@ -112,6 +113,20 @@ class EnqueueSemanticEdgeCandidatesRequest(BaseModel):
     min_similarity: float = 0.75
     limit: int = 10
     candidate_scan_limit: int | None = None
+
+
+class EnqueueVectorSemanticBatchRequest(BaseModel):
+    label: str | None = None
+    document_id: str | None = None
+    focus_limit: int = 25
+    candidates_per_node: int = 2
+    include_same_document: bool = False
+    relation_type: str = "related_to"
+    created_by: str = "web"
+    min_similarity: float = 0.75
+    candidate_scan_limit: int | None = None
+    exclude_node_keys: list[str] = []
+    dry_run: bool = True
 
 
 class CreateProcessRunRequest(BaseModel):
@@ -427,6 +442,25 @@ def create_app() -> FastAPI:
             "reason": "invalid_candidate_source",
             "candidate_source": request.candidate_source,
         }
+
+    @app.post("/api/review/enqueue-vector-semantic-batch")
+    def enqueue_vector_semantic_batch_review_candidates(
+        request: EnqueueVectorSemanticBatchRequest,
+    ) -> dict[str, Any]:
+        return enqueue_vector_semantic_edge_candidate_batch(
+            db,
+            label=request.label,
+            document_id=request.document_id,
+            focus_limit=request.focus_limit,
+            candidates_per_node=request.candidates_per_node,
+            include_same_document=request.include_same_document,
+            relation_type=request.relation_type,
+            created_by=request.created_by,
+            min_similarity=request.min_similarity,
+            candidate_scan_limit=request.candidate_scan_limit,
+            exclude_node_keys=request.exclude_node_keys,
+            dry_run=request.dry_run,
+        )
 
     @app.post("/api/review/semantic-edge-candidate")
     def review_semantic_edge(request: ReviewSemanticEdgeCandidateRequest) -> dict[str, Any]:
