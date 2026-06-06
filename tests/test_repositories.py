@@ -957,6 +957,167 @@ def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_does_not_insert(mo
     assert result["focus_results"][0]["candidate_previews"][0]["target_title"] == "Target"
 
 
+def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_skips_reciprocal_related_to(
+    monkeypatch,
+) -> None:
+    document_one = ObjectId()
+    document_two = ObjectId()
+    source_one = ObjectId()
+    source_two = ObjectId()
+    db = FakeDb()
+    db.nodes.rows.extend(
+        [
+            {
+                "_id": source_one,
+                "document_id": document_one,
+                "node_key": "source-1",
+                "title": "Source One",
+                "labels": ["ams_domain"],
+                "embedding": {"model": "mock", "dimensions": 16, "vector": [1.0]},
+            },
+            {
+                "_id": source_two,
+                "document_id": document_two,
+                "node_key": "source-2",
+                "title": "Source Two",
+                "labels": ["ams_domain"],
+                "embedding": {"model": "mock", "dimensions": 16, "vector": [1.0]},
+            },
+        ]
+    )
+
+    def fake_embedding_candidates(
+        _db,
+        node_id,
+        limit=10,
+        include_same_document=False,
+        min_similarity=0.75,
+        **_kwargs,
+    ):
+        if node_id == str(source_one):
+            target_id = source_two
+            target_document = document_two
+            target_title = "Source Two"
+        else:
+            target_id = source_one
+            target_document = document_one
+            target_title = "Source One"
+        return [
+            {
+                "node_id": str(target_id),
+                "document_id": str(target_document),
+                "node_key": "target",
+                "title": target_title,
+                "embedding_similarity": 0.91,
+                "embedding_model": "mock",
+                "embedding_dimensions": 16,
+            }
+        ][:limit]
+
+    monkeypatch.setattr(
+        "mnemosyne.retrieval.queries.embedding_candidate_nodes",
+        fake_embedding_candidates,
+    )
+
+    result = enqueue_vector_semantic_edge_candidate_batch(
+        db,
+        label="ams_domain",
+        focus_limit=2,
+        candidates_per_node=1,
+        relation_type="related_to",
+        min_similarity=0.8,
+        dry_run=True,
+    )
+
+    assert result["ok"] is True
+    assert result["candidate_count"] == 2
+    assert result["would_enqueue_count"] == 1
+    assert result["skipped_existing_count"] == 1
+    assert result["focus_results"][0]["would_enqueue_count"] == 1
+    assert result["focus_results"][1]["skipped_existing_count"] == 1
+    assert len(db.semantic_edge_candidates.rows) == 0
+
+
+def test_enqueue_vector_semantic_edge_candidate_batch_skips_reciprocal_related_to(
+    monkeypatch,
+) -> None:
+    document_one = ObjectId()
+    document_two = ObjectId()
+    source_one = ObjectId()
+    source_two = ObjectId()
+    db = FakeDb()
+    db.nodes.rows.extend(
+        [
+            {
+                "_id": source_one,
+                "document_id": document_one,
+                "node_key": "source-1",
+                "title": "Source One",
+                "labels": ["ams_domain"],
+                "embedding": {"model": "mock", "dimensions": 16, "vector": [1.0]},
+            },
+            {
+                "_id": source_two,
+                "document_id": document_two,
+                "node_key": "source-2",
+                "title": "Source Two",
+                "labels": ["ams_domain"],
+                "embedding": {"model": "mock", "dimensions": 16, "vector": [1.0]},
+            },
+        ]
+    )
+
+    def fake_embedding_candidates(
+        _db,
+        node_id,
+        limit=10,
+        include_same_document=False,
+        min_similarity=0.75,
+        **_kwargs,
+    ):
+        if node_id == str(source_one):
+            target_id = source_two
+            target_document = document_two
+            target_title = "Source Two"
+        else:
+            target_id = source_one
+            target_document = document_one
+            target_title = "Source One"
+        return [
+            {
+                "node_id": str(target_id),
+                "document_id": str(target_document),
+                "node_key": "target",
+                "title": target_title,
+                "embedding_similarity": 0.91,
+                "embedding_model": "mock",
+                "embedding_dimensions": 16,
+            }
+        ][:limit]
+
+    monkeypatch.setattr(
+        "mnemosyne.retrieval.queries.embedding_candidate_nodes",
+        fake_embedding_candidates,
+    )
+
+    result = enqueue_vector_semantic_edge_candidate_batch(
+        db,
+        label="ams_domain",
+        focus_limit=2,
+        candidates_per_node=1,
+        relation_type="related_to",
+        min_similarity=0.8,
+    )
+
+    assert result["ok"] is True
+    assert result["candidate_count"] == 2
+    assert result["enqueued_count"] == 1
+    assert result["skipped_existing_count"] == 1
+    assert len(db.semantic_edge_candidates.rows) == 1
+    assert db.semantic_edge_candidates.rows[0]["source_node_id"] == source_one
+    assert db.semantic_edge_candidates.rows[0]["target_node_id"] == source_two
+
+
 def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
     source_id = ObjectId()
     target_id = ObjectId()
