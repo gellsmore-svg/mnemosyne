@@ -286,6 +286,7 @@ def embedding_candidate_nodes(
     limit: int = 10,
     include_same_document: bool = False,
     min_similarity: float = 0.75,
+    candidate_scan_limit: int | None = None,
 ) -> list[dict[str, Any]]:
     return embedding_candidate_report(
         db,
@@ -293,6 +294,7 @@ def embedding_candidate_nodes(
         limit=limit,
         include_same_document=include_same_document,
         min_similarity=min_similarity,
+        candidate_scan_limit=candidate_scan_limit,
     )["nodes"]
 
 
@@ -302,6 +304,7 @@ def embedding_candidate_report(
     limit: int = 10,
     include_same_document: bool = False,
     min_similarity: float = 0.75,
+    candidate_scan_limit: int | None = None,
 ) -> dict[str, Any]:
     try:
         parsed_limit = int(limit)
@@ -313,12 +316,13 @@ def embedding_candidate_report(
     except (TypeError, ValueError):
         threshold = 0.75
     threshold = max(-1.0, min(threshold, 1.0))
+    scan_limit = bounded_embedding_candidate_scan_limit(candidate_scan_limit, bounded_limit)
     base_diagnostics: dict[str, Any] = {
         "node_id": node_id,
         "limit": bounded_limit,
         "include_same_document": include_same_document,
         "min_similarity": threshold,
-        "candidate_scan_limit": max(bounded_limit * 10, 100),
+        "candidate_scan_limit": scan_limit,
         "scanned_count": 0,
         "returned_count": 0,
         "exclusions": {
@@ -433,6 +437,15 @@ def semantic_labels(labels: list[str]) -> list[str]:
             and not label.startswith("source_")
         }
     )
+
+
+def bounded_embedding_candidate_scan_limit(value: Any, result_limit: int) -> int:
+    default = max(int(result_limit) * 25, 1000)
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(1, min(parsed, 10000))
 
 
 def valid_embedding_payload(value: Any) -> dict[str, Any] | None:

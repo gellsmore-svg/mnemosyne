@@ -44,6 +44,14 @@ class FailingEmbedder:
         raise RuntimeError("embedding failed")
 
 
+class CloseTrackingEmbedder(FakeEmbedder):
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def test_commit_ingestion_rolls_back_partial_insert_on_node_failure() -> None:
     db = FakeDb(fail_nodes=True)
     result = IngestionResult(
@@ -340,6 +348,24 @@ def test_backfill_node_embeddings_repairs_partial_embedding_without_vector() -> 
 
     assert result["updated_count"] == 1
     assert db.nodes.rows[0]["embedding"]["vector"] == [1.0, 0.0]
+
+
+def test_backfill_node_embeddings_closes_closeable_embedder() -> None:
+    db = FakeDb()
+    db.nodes.rows.append(
+        {
+            "_id": ObjectId(),
+            "title": "Closeable",
+            "text": "close me",
+            "status": "active",
+        }
+    )
+    embedder = CloseTrackingEmbedder()
+
+    result = backfill_node_embeddings(db, embedder)
+
+    assert result["updated_count"] == 1
+    assert embedder.closed is True
 
 
 def test_rebuild_document_restores_previous_records_on_node_failure() -> None:
@@ -748,7 +774,7 @@ def test_enqueue_vector_semantic_edge_candidates_stores_similarity_review_rows(m
 
     monkeypatch.setattr(
         "mnemosyne.retrieval.queries.embedding_candidate_nodes",
-        lambda _db, node_id, limit=10, include_same_document=False, min_similarity=0.75: [
+        lambda _db, node_id, limit=10, include_same_document=False, min_similarity=0.75, **_kwargs: [
             {
                 "node_id": str(target_id),
                 "document_id": str(ObjectId()),

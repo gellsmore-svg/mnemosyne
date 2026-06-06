@@ -658,6 +658,7 @@ def enqueue_vector_semantic_edge_candidates(
     relation_type: str = "related_to",
     created_by: str = "user",
     min_similarity: float = 0.75,
+    candidate_scan_limit: int | None = None,
 ) -> dict[str, Any]:
     if not hasattr(db, "semantic_edge_candidates"):
         return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
@@ -685,6 +686,7 @@ def enqueue_vector_semantic_edge_candidates(
         limit=bounded_candidate_limit(limit),
         include_same_document=include_same_document,
         min_similarity=threshold,
+        candidate_scan_limit=candidate_scan_limit,
     )
     now = datetime.now(timezone.utc)
     inserted = []
@@ -1030,36 +1032,41 @@ def backfill_node_embeddings(
     last_dimensions = getattr(embedder, "dimensions", None)
     last_node_id = None
 
-    for node in db.nodes.find(query).sort("_id", 1).limit(bounded_limit):
-        scanned += 1
-        matched += 1
-        last_node_id = str(node.get("_id"))
-        existing_embedding = node.get("embedding") or {}
-        if not force and existing_embedding.get("vector"):
-            last_dimensions = existing_embedding.get("dimensions") or last_dimensions
-            skipped += 1
-            continue
-        try:
-            embedding = embedder.embed(node.get("text") or "")
-        except Exception as error:
-            skipped += 1
-            error_count += 1
-            if len(errors) < max_errors:
-                errors.append(
-                    {
-                        "node_id": str(node.get("_id")),
-                        "title": node.get("title"),
-                        "error_type": error.__class__.__name__,
-                        "error": str(error),
-                    }
-                )
-            continue
-        db.nodes.update_one(
-            {"_id": node["_id"]},
-            {"$set": {"embedding": embedding, "updated_at": now}},
-        )
-        updated += 1
-        last_dimensions = embedding.get("dimensions")
+    try:
+        for node in db.nodes.find(query).sort("_id", 1).limit(bounded_limit):
+            scanned += 1
+            matched += 1
+            last_node_id = str(node.get("_id"))
+            existing_embedding = node.get("embedding") or {}
+            if not force and existing_embedding.get("vector"):
+                last_dimensions = existing_embedding.get("dimensions") or last_dimensions
+                skipped += 1
+                continue
+            try:
+                embedding = embedder.embed(node.get("text") or "")
+            except Exception as error:
+                skipped += 1
+                error_count += 1
+                if len(errors) < max_errors:
+                    errors.append(
+                        {
+                            "node_id": str(node.get("_id")),
+                            "title": node.get("title"),
+                            "error_type": error.__class__.__name__,
+                            "error": str(error),
+                        }
+                    )
+                continue
+            db.nodes.update_one(
+                {"_id": node["_id"]},
+                {"$set": {"embedding": embedding, "updated_at": now}},
+            )
+            updated += 1
+            last_dimensions = embedding.get("dimensions")
+    finally:
+        close_embedder = getattr(embedder, "close", None)
+        if callable(close_embedder):
+            close_embedder()
 
     all_attempted_updates_failed = matched > 0 and updated == 0 and error_count == matched
     result = {

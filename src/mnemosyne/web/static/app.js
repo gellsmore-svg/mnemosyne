@@ -561,6 +561,7 @@ async function previewVectorSemanticCandidates() {
     include_same_document: String($("semanticIncludeSameDocument").checked),
     min_similarity: String(Number($("semanticMinSimilarity").value || 0.75)),
     limit: String(Number($("semanticLimit").value || 10)),
+    candidate_scan_limit: String(Number($("semanticCandidateScanLimit").value || 1000)),
   });
   $("semanticCandidateStatus").textContent = "Previewing text similarity profile matches";
   const data = await api(`/api/review/vector-semantic-candidates?${params.toString()}`);
@@ -587,6 +588,7 @@ async function enqueueSemanticCandidates(candidateSource) {
       created_by: "web",
       min_similarity: Number($("semanticMinSimilarity").value || 0.75),
       limit: Number($("semanticLimit").value || 10),
+      candidate_scan_limit: Number($("semanticCandidateScanLimit").value || 1000),
     }),
   });
   $("semanticCandidateStatus").textContent = data.ok

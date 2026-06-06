@@ -705,6 +705,8 @@ def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
             "0.82",
             "--limit",
             "3",
+            "--candidate-scan-limit",
+            "500",
         ],
     )
     monkeypatch.setattr(
@@ -733,6 +735,7 @@ def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
                 "include_same_document": True,
                 "min_similarity": 0.82,
                 "limit": 3,
+                "candidate_scan_limit": 500,
             }
         ],
         "diagnostics": {
@@ -740,6 +743,7 @@ def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
             "include_same_document": True,
             "min_similarity": 0.82,
             "limit": 3,
+            "candidate_scan_limit": 500,
         },
     }
 
@@ -761,6 +765,8 @@ def test_cli_enqueue_vector_semantic_candidates_command(monkeypatch, capsys) -> 
             "0.82",
             "--limit",
             "3",
+            "--candidate-scan-limit",
+            "500",
         ],
     )
     monkeypatch.setattr(
@@ -785,6 +791,7 @@ def test_cli_enqueue_vector_semantic_candidates_command(monkeypatch, capsys) -> 
         "created_by": "cello",
         "min_similarity": 0.82,
         "limit": 3,
+        "candidate_scan_limit": 500,
     }
 
 

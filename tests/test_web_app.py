@@ -1490,6 +1490,7 @@ def test_enqueue_vector_semantic_edge_candidates_endpoint(monkeypatch) -> None:
             "created_by": "tester",
             "min_similarity": 0.82,
             "limit": 3,
+            "candidate_scan_limit": 500,
         },
     )
 
@@ -1503,6 +1504,7 @@ def test_enqueue_vector_semantic_edge_candidates_endpoint(monkeypatch) -> None:
         "relation_type": "supports",
         "created_by": "tester",
         "min_similarity": 0.82,
+        "candidate_scan_limit": 500,
     }
 
 
@@ -1525,6 +1527,7 @@ def test_vector_semantic_candidates_preview_endpoint(monkeypatch) -> None:
             "include_same_document": True,
             "min_similarity": 0.82,
             "limit": 3,
+            "candidate_scan_limit": 500,
         },
     )
 
@@ -1538,6 +1541,7 @@ def test_vector_semantic_candidates_preview_endpoint(monkeypatch) -> None:
             "include_same_document": True,
             "min_similarity": 0.82,
             "limit": 3,
+            "candidate_scan_limit": 500,
         },
     }
 

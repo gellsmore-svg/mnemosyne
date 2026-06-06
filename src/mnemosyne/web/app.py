@@ -111,6 +111,7 @@ class EnqueueSemanticEdgeCandidatesRequest(BaseModel):
     created_by: str = "web"
     min_similarity: float = 0.75
     limit: int = 10
+    candidate_scan_limit: int | None = None
 
 
 class CreateProcessRunRequest(BaseModel):
@@ -385,6 +386,7 @@ def create_app() -> FastAPI:
         limit: int = 10,
         include_same_document: bool = False,
         min_similarity: float = 0.75,
+        candidate_scan_limit: int | None = None,
     ) -> dict[str, Any]:
         return embedding_candidate_report(
             db,
@@ -392,6 +394,7 @@ def create_app() -> FastAPI:
             limit=limit,
             include_same_document=include_same_document,
             min_similarity=min_similarity,
+            candidate_scan_limit=candidate_scan_limit,
         )
 
     @app.post("/api/review/enqueue-semantic-edge-candidates")
@@ -408,6 +411,7 @@ def create_app() -> FastAPI:
                 relation_type=request.relation_type,
                 created_by=request.created_by,
                 min_similarity=request.min_similarity,
+                candidate_scan_limit=request.candidate_scan_limit,
             )
         if source == "label_overlap":
             return enqueue_semantic_edge_candidates(

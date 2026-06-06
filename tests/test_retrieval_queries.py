@@ -754,6 +754,66 @@ def test_embedding_candidate_report_explains_scan_and_exclusions() -> None:
     assert report["diagnostics"]["exclusions"]["below_threshold"] == 1
     assert report["diagnostics"]["exclusions"]["incompatible_embedding"] == 1
     assert report["diagnostics"]["exclusions"]["invalid_embedding"] == 1
+    assert report["diagnostics"]["candidate_scan_limit"] == 1000
+
+
+def test_embedding_candidate_report_honors_candidate_scan_limit() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    hidden_match_id = ObjectId()
+    filler = [
+        {
+            "_id": ObjectId(),
+            "document_id": ObjectId(),
+            "tree_id": tree_id,
+            "title": f"Filler {index}",
+            "text": "Filler text",
+            "embedding": {"model": "mock", "dimensions": 2, "vector": [0.0, 1.0]},
+        }
+        for index in range(120)
+    ]
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [1.0, 0.0]},
+            },
+            *filler,
+            {
+                "_id": hidden_match_id,
+                "document_id": ObjectId(),
+                "tree_id": tree_id,
+                "title": "Late strong match",
+                "text": "Late strong text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [1.0, 0.0]},
+            },
+        ]
+    )
+
+    short_scan = embedding_candidate_report(
+        db,
+        str(focus_id),
+        min_similarity=0.75,
+        limit=5,
+        candidate_scan_limit=100,
+    )
+    full_scan = embedding_candidate_report(
+        db,
+        str(focus_id),
+        min_similarity=0.75,
+        limit=5,
+        candidate_scan_limit=200,
+    )
+
+    assert [node["title"] for node in short_scan["nodes"]] == []
+    assert [node["title"] for node in full_scan["nodes"]] == ["Late strong match"]
+    assert short_scan["diagnostics"]["candidate_scan_limit"] == 100
+    assert full_scan["diagnostics"]["candidate_scan_limit"] == 200
 
 
 def test_embedding_candidate_report_reports_missing_focus_embedding() -> None:

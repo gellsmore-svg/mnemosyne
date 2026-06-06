@@ -484,6 +484,7 @@ def main() -> None:
     vector_candidates.add_argument("--include-same-document", action="store_true")
     vector_candidates.add_argument("--min-similarity", type=float, default=0.75)
     vector_candidates.add_argument("--limit", type=int, default=10)
+    vector_candidates.add_argument("--candidate-scan-limit", type=int, default=None)
 
     enqueue_semantic = subcommands.add_parser("enqueue-semantic-candidates")
     enqueue_semantic.add_argument("node_id")
@@ -499,6 +500,7 @@ def main() -> None:
     enqueue_vector_semantic.add_argument("--created-by", default="user")
     enqueue_vector_semantic.add_argument("--min-similarity", type=float, default=0.75)
     enqueue_vector_semantic.add_argument("--limit", type=int, default=10)
+    enqueue_vector_semantic.add_argument("--candidate-scan-limit", type=int, default=None)
 
     semantic_queue = subcommands.add_parser("semantic-edge-candidates")
     semantic_queue.add_argument("--status", default="pending")
@@ -1210,6 +1212,7 @@ def main() -> None:
                     include_same_document=args.include_same_document,
                     min_similarity=args.min_similarity,
                     limit=args.limit,
+                    candidate_scan_limit=args.candidate_scan_limit,
                 ),
                 indent=2,
             )
@@ -1245,6 +1248,7 @@ def main() -> None:
                     created_by=args.created_by,
                     min_similarity=args.min_similarity,
                     limit=args.limit,
+                    candidate_scan_limit=args.candidate_scan_limit,
                 ),
                 indent=2,
             )
