@@ -966,6 +966,13 @@ def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_does_not_insert(mo
         result["focus_results"][0]["candidate_previews"][0]["target_text_preview"]
         == "Target text for dry run review."
     )
+    assert result["focus_results"][0]["candidate_previews"][0]["shared_wording"] == {
+        "shared_word_count": 5,
+        "source_word_overlap": 0.833,
+        "target_word_overlap": 0.833,
+        "smaller_text_overlap": 0.833,
+        "larger_text_overlap": 0.833,
+    }
 
 
 def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_skips_reciprocal_related_to(
@@ -1206,6 +1213,13 @@ def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
                 "Target text for candidate review. " * 20,
                 limit=280,
             ),
+            "shared_wording": {
+                "shared_word_count": 4,
+                "source_word_overlap": 0.8,
+                "target_word_overlap": 0.8,
+                "smaller_text_overlap": 0.8,
+                "larger_text_overlap": 0.8,
+            },
             "created_by": "user",
             "reviewer": None,
             "review_note": None,

@@ -388,6 +388,7 @@ def embedding_candidate_report(
     candidates = []
     focus_text_hash = str((focus.get("embedding") or {}).get("source_text_hash") or "")
     focus_text_key = normalized_candidate_text_key(str(focus.get("text") or ""))
+    focus_text_tokens = candidate_text_tokens(focus_text_key)
     seen_candidate_text_hashes: set[str] = set()
     seen_candidate_text_keys: set[str] = set()
     for candidate in db.nodes.find(filters).limit(diagnostics["candidate_scan_limit"]):
@@ -411,6 +412,12 @@ def embedding_candidate_report(
             continue
         candidate_text_key = normalized_candidate_text_key(str(candidate.get("text") or ""))
         if focus_text_key and candidate_text_key == focus_text_key:
+            diagnostics["exclusions"]["duplicate_text"] += 1
+            continue
+        if near_duplicate_candidate_tokens(
+            focus_text_tokens,
+            candidate_text_tokens(candidate_text_key),
+        ):
             diagnostics["exclusions"]["duplicate_text"] += 1
             continue
         if candidate_text_hash and candidate_text_hash in seen_candidate_text_hashes:
@@ -469,6 +476,40 @@ def semantic_labels(labels: list[str]) -> list[str]:
 
 def normalized_candidate_text_key(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+def near_duplicate_candidate_tokens(source_tokens: set[str], candidate_tokens: set[str]) -> bool:
+    if len(source_tokens) < 8 or len(candidate_tokens) < 8:
+        return False
+    overlap = len(source_tokens & candidate_tokens)
+    smaller_count = min(len(source_tokens), len(candidate_tokens))
+    larger_count = max(len(source_tokens), len(candidate_tokens))
+    return overlap / smaller_count >= 0.9 and overlap / larger_count >= 0.75
+
+
+def shared_wording_report(source_text: str, target_text: str) -> dict[str, Any]:
+    source_tokens = candidate_text_tokens(normalized_candidate_text_key(source_text))
+    target_tokens = candidate_text_tokens(normalized_candidate_text_key(target_text))
+    if not source_tokens or not target_tokens:
+        return {
+            "shared_word_count": 0,
+            "source_word_overlap": 0.0,
+            "target_word_overlap": 0.0,
+            "smaller_text_overlap": 0.0,
+            "larger_text_overlap": 0.0,
+        }
+    overlap = len(source_tokens & target_tokens)
+    return {
+        "shared_word_count": overlap,
+        "source_word_overlap": round(overlap / len(source_tokens), 3),
+        "target_word_overlap": round(overlap / len(target_tokens), 3),
+        "smaller_text_overlap": round(overlap / min(len(source_tokens), len(target_tokens)), 3),
+        "larger_text_overlap": round(overlap / max(len(source_tokens), len(target_tokens)), 3),
+    }
+
+
+def candidate_text_tokens(text_key: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9][a-z0-9_-]*", text_key))
 
 
 def bounded_embedding_candidate_scan_limit(value: Any, result_limit: int) -> int:

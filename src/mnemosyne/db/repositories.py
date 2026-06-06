@@ -873,8 +873,10 @@ def vector_semantic_candidate_batch_dry_run_result(
     batch_pair_keys: set[tuple[str, str, str]] | None = None,
 ) -> dict[str, Any]:
     from mnemosyne.retrieval.queries import embedding_candidate_nodes
+    from mnemosyne.retrieval.queries import shared_wording_report
 
     source_id = node.get("_id")
+    source_text = str(node.get("text") or "")
     candidates = embedding_candidate_nodes(
         db,
         node_id=str(source_id),
@@ -905,10 +907,14 @@ def vector_semantic_candidate_batch_dry_run_result(
                 "target_title": candidate.get("title"),
                 "target_node_key": candidate.get("node_key"),
                 "target_document_id": candidate.get("document_id"),
-                "source_text_preview": summarize_node_text(str(node.get("text") or ""), limit=180),
+                "source_text_preview": summarize_node_text(source_text, limit=180),
                 "target_text_preview": summarize_node_text(
                     str(candidate.get("text_preview") or candidate.get("text") or ""),
                     limit=180,
+                ),
+                "shared_wording": shared_wording_report(
+                    source_text,
+                    str(candidate.get("text_preview") or candidate.get("text") or ""),
                 ),
                 "embedding_similarity": candidate.get("embedding_similarity"),
                 "embedding_model": candidate.get("embedding_model"),
@@ -1116,6 +1122,7 @@ def serialize_semantic_edge_candidate(row: dict[str, Any]) -> dict[str, Any]:
         "target_title": row.get("target_title"),
         "source_text_preview": row.get("source_text_preview"),
         "target_text_preview": row.get("target_text_preview"),
+        "shared_wording": row.get("shared_wording") or {},
         "created_by": row.get("created_by"),
         "reviewer": row.get("reviewer"),
         "review_note": row.get("review_note"),
@@ -1127,15 +1134,23 @@ def serialize_semantic_edge_candidate(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def enrich_semantic_edge_candidate_nodes(db: Database, row: dict[str, Any]) -> dict[str, Any]:
+    from mnemosyne.retrieval.queries import shared_wording_report
+
     enriched = dict(row)
     source = db.nodes.find_one({"_id": row.get("source_node_id")}) if row.get("source_node_id") else None
     target = db.nodes.find_one({"_id": row.get("target_node_id")}) if row.get("target_node_id") else None
+    source_text = ""
+    target_text = ""
     if source:
         enriched["source_title"] = enriched.get("source_title") or source.get("title")
-        enriched["source_text_preview"] = summarize_node_text(str(source.get("text") or ""), limit=280)
+        source_text = str(source.get("text") or "")
+        enriched["source_text_preview"] = summarize_node_text(source_text, limit=280)
     if target:
         enriched["target_title"] = enriched.get("target_title") or target.get("title")
-        enriched["target_text_preview"] = summarize_node_text(str(target.get("text") or ""), limit=280)
+        target_text = str(target.get("text") or "")
+        enriched["target_text_preview"] = summarize_node_text(target_text, limit=280)
+    if source_text or target_text:
+        enriched["shared_wording"] = shared_wording_report(source_text, target_text)
     return enriched
 
 

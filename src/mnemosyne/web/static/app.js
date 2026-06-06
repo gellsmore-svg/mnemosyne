@@ -512,10 +512,11 @@ async function loadSemanticCandidates() {
       const selection = candidate.candidate_source === "embedding_similarity" && context.min_similarity !== undefined
         ? ` | threshold ${context.min_similarity}, ${context.embedding_model || candidate.embedding_model || "unknown"} ${context.embedding_dimensions || candidate.embedding_dimensions || "?"} dims`
         : "";
+      const sharedWording = sharedWordingSummary(candidate.shared_wording);
       const el = item(
         `<strong>${html(candidate.relation_type)}</strong>` +
         `<div>${html(candidate.source_title)} -> ${html(candidate.target_title)}</div>` +
-        `<div class="muted">${html(candidate.candidate_id)} | ${html(candidate.candidate_source || "label_overlap")} | ${html(evidence + selection)}</div>`
+        `<div class="muted">${html(candidate.candidate_id)} | ${html(candidate.candidate_source || "label_overlap")} | ${html(evidence + selection)}${sharedWording ? ` | ${html(sharedWording)}` : ""}</div>`
       );
       if (candidate.source_text_preview || candidate.target_text_preview) {
         const details = document.createElement("details");
@@ -695,7 +696,8 @@ function vectorBatchSummary(data) {
     );
     const previews = Array.isArray(result.candidate_previews) ? result.candidate_previews : [];
     previews.slice(0, 3).forEach((candidate) => {
-      lines.push(`   -> ${text(candidate.target_title || candidate.target_node_id)} | profile similarity ${text(candidate.embedding_similarity)}`);
+      const wording = sharedWordingSummary(candidate.shared_wording);
+      lines.push(`   -> ${text(candidate.target_title || candidate.target_node_id)} | profile similarity ${text(candidate.embedding_similarity)}${wording ? ` | ${wording}` : ""}`);
       if (candidate.source_text_preview || candidate.target_text_preview) {
         lines.push(`      source: ${text(candidate.source_text_preview || "No source preview available.")}`);
         lines.push(`      target: ${text(candidate.target_text_preview || "No target preview available.")}`);
@@ -703,6 +705,14 @@ function vectorBatchSummary(data) {
     });
   });
   return lines.join("\n");
+}
+
+function sharedWordingSummary(report) {
+  if (!report || typeof report !== "object") return "";
+  const source = report.source_word_overlap;
+  const target = report.target_word_overlap;
+  if (source === undefined || target === undefined) return "";
+  return `shared wording source ${Math.round(Number(source) * 100)}%, target ${Math.round(Number(target) * 100)}%`;
 }
 
 async function searchNodes() {
