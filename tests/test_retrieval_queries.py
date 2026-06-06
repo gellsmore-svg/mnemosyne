@@ -871,6 +871,65 @@ def test_embedding_candidate_report_deduplicates_candidate_text_hashes() -> None
     assert report["diagnostics"]["exclusions"]["duplicate_text"] == 1
 
 
+def test_embedding_candidate_report_ranks_prose_above_link_index_when_close() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [1.0, 0.0]},
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": ObjectId(),
+                "tree_id": tree_id,
+                "title": "Link index",
+                "text": "\n".join(
+                    [
+                        "- [One](/home/cello/domains/AMS/one.md)",
+                        "- [Two](/home/cello/domains/AMS/two.md)",
+                        "- [Three](/home/cello/domains/AMS/three.md)",
+                        "- [Four](/home/cello/domains/AMS/four.md)",
+                        "- [Five](/home/cello/domains/AMS/five.md)",
+                    ]
+                ),
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [0.99, 0.01]},
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": ObjectId(),
+                "tree_id": tree_id,
+                "title": "Prose candidate",
+                "text": (
+                    "This candidate explains the same policy area in prose, with enough "
+                    "context to support a human review decision."
+                ),
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [0.97, 0.243]},
+            },
+        ]
+    )
+
+    report = embedding_candidate_report(
+        db,
+        str(focus_id),
+        min_similarity=0.75,
+        limit=2,
+        candidate_scan_limit=10,
+    )
+
+    assert [node["title"] for node in report["nodes"]] == ["Prose candidate", "Link index"]
+    assert report["nodes"][0]["link_index_penalty"] == 0.0
+    assert report["nodes"][1]["link_index_penalty"] == 0.05
+    assert report["nodes"][1]["embedding_similarity"] > report["nodes"][0]["embedding_similarity"]
+    assert report["nodes"][0]["embedding_rank_score"] > report["nodes"][1]["embedding_rank_score"]
+
+
 def test_embedding_candidate_report_reports_missing_focus_embedding() -> None:
     focus_id = ObjectId()
     db = FakeDb(

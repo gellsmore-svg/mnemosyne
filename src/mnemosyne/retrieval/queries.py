@@ -415,10 +415,14 @@ def embedding_candidate_report(
         if similarity < threshold:
             diagnostics["exclusions"]["below_threshold"] += 1
             continue
+        link_index_penalty = embedding_candidate_link_index_penalty(candidate)
+        rank_score = similarity - link_index_penalty
         candidates.append(
             {
                 **serialize_node(candidate),
                 "embedding_similarity": round(similarity, 6),
+                "embedding_rank_score": round(rank_score, 6),
+                "link_index_penalty": round(link_index_penalty, 6),
                 "embedding_model": candidate_embedding.get("model"),
                 "embedding_dimensions": candidate_embedding.get("dimensions"),
             }
@@ -511,12 +515,31 @@ def vector_norm(vector: list[float]) -> float:
     return math.sqrt(sum(item * item for item in vector))
 
 
-def embedding_candidate_sort_tuple(candidate: dict[str, Any]) -> tuple[float, int, tuple[tuple[int, Any], ...]]:
+def embedding_candidate_sort_tuple(candidate: dict[str, Any]) -> tuple[float, float, int, tuple[tuple[int, Any], ...]]:
     return (
+        -float(candidate.get("embedding_rank_score") or candidate.get("embedding_similarity") or 0),
         -float(candidate.get("embedding_similarity") or 0),
         -usage_score_bonus(candidate.get("usage_score")),
         natural_sort_key(str(candidate.get("title") or candidate.get("node_id") or "")),
     )
+
+
+def embedding_candidate_link_index_penalty(candidate: dict[str, Any]) -> float:
+    text = str(candidate.get("text") or "")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) < 3:
+        return 0.0
+    link_lines = [
+        line
+        for line in lines
+        if "](" in line or "/home/" in line or line.startswith(("http://", "https://"))
+    ]
+    link_ratio = len(link_lines) / len(lines)
+    if len(link_lines) >= 5 or link_ratio >= 0.5:
+        return 0.05
+    if len(link_lines) >= 3 or link_ratio >= 0.35:
+        return 0.03
+    return 0.0
 
 
 def semantic_candidate_sort_tuple(
