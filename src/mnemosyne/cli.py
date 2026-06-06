@@ -516,6 +516,7 @@ def main() -> None:
     enqueue_vector_semantic_batch.add_argument("--min-similarity", type=float, default=0.75)
     enqueue_vector_semantic_batch.add_argument("--candidate-scan-limit", type=int, default=None)
     enqueue_vector_semantic_batch.add_argument("--exclude-node-key", action="append", default=[])
+    enqueue_vector_semantic_batch.add_argument("--dry-run", action="store_true")
 
     semantic_queue = subcommands.add_parser("semantic-edge-candidates")
     semantic_queue.add_argument("--status", default="pending")
@@ -1286,6 +1287,7 @@ def main() -> None:
                     min_similarity=args.min_similarity,
                     candidate_scan_limit=args.candidate_scan_limit,
                     exclude_node_keys=args.exclude_node_key,
+                    dry_run=args.dry_run,
                 ),
                 indent=2,
             )

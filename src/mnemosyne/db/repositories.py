@@ -765,6 +765,7 @@ def enqueue_vector_semantic_edge_candidate_batch(
     min_similarity: float = 0.75,
     candidate_scan_limit: int | None = None,
     exclude_node_keys: list[str] | None = None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     if not hasattr(db, "semantic_edge_candidates"):
         return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
@@ -805,11 +806,26 @@ def enqueue_vector_semantic_edge_candidate_batch(
     totals = {
         "candidate_count": 0,
         "enqueued_count": 0,
+        "would_enqueue_count": 0,
         "skipped_existing_count": 0,
         "skipped_invalid_count": 0,
     }
     focus_results = []
     for node in focus_nodes:
+        if dry_run:
+            result = vector_semantic_candidate_batch_dry_run_result(
+                db,
+                node=node,
+                limit=bounded_candidates_per_node,
+                include_same_document=include_same_document,
+                relation_type=relation,
+                min_similarity=threshold,
+                candidate_scan_limit=candidate_scan_limit,
+            )
+            for key in totals:
+                totals[key] += int(result.get(key) or 0)
+            focus_results.append(result)
+            continue
         result = enqueue_vector_semantic_edge_candidates(
             db,
             node_id=str(node.get("_id")),
@@ -850,9 +866,74 @@ def enqueue_vector_semantic_edge_candidate_batch(
             "min_similarity": threshold,
             "candidate_scan_limit": candidate_scan_limit,
             "exclude_node_keys": sorted(excluded_node_keys),
+            "dry_run": dry_run,
         },
         **totals,
         "focus_results": focus_results,
+    }
+
+
+def vector_semantic_candidate_batch_dry_run_result(
+    db: Database,
+    node: dict[str, Any],
+    limit: int,
+    include_same_document: bool,
+    relation_type: str,
+    min_similarity: float,
+    candidate_scan_limit: int | None,
+) -> dict[str, Any]:
+    from mnemosyne.retrieval.queries import embedding_candidate_nodes
+
+    source_id = node.get("_id")
+    candidates = embedding_candidate_nodes(
+        db,
+        node_id=str(source_id),
+        limit=limit,
+        include_same_document=include_same_document,
+        min_similarity=min_similarity,
+        candidate_scan_limit=candidate_scan_limit,
+    )
+    skipped_existing = 0
+    skipped_invalid = 0
+    previews = []
+    for candidate in candidates:
+        target_id = parse_object_id(candidate.get("node_id"))
+        if target_id is None:
+            skipped_invalid += 1
+            continue
+        existing = db.semantic_edge_candidates.find_one(
+            {
+                "source_node_id": source_id,
+                "target_node_id": target_id,
+                "relation_type": relation_type,
+            }
+        )
+        if existing:
+            skipped_existing += 1
+            continue
+        previews.append(
+            {
+                "target_node_id": str(target_id),
+                "target_title": candidate.get("title"),
+                "target_node_key": candidate.get("node_key"),
+                "target_document_id": candidate.get("document_id"),
+                "embedding_similarity": candidate.get("embedding_similarity"),
+                "embedding_model": candidate.get("embedding_model"),
+                "embedding_dimensions": candidate.get("embedding_dimensions"),
+            }
+        )
+    return {
+        "node_id": str(source_id),
+        "title": node.get("title"),
+        "ok": True,
+        "dry_run": True,
+        "candidate_count": len(candidates),
+        "enqueued_count": 0,
+        "would_enqueue_count": len(previews),
+        "skipped_existing_count": skipped_existing,
+        "skipped_invalid_count": skipped_invalid,
+        "reason": None,
+        "candidate_previews": previews,
     }
 
 

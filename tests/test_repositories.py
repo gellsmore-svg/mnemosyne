@@ -908,6 +908,55 @@ def test_enqueue_vector_semantic_edge_candidate_batch_scopes_focus_nodes(monkeyp
     }
 
 
+def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_does_not_insert(monkeypatch) -> None:
+    document_id = ObjectId()
+    source_id = ObjectId()
+    target_id = ObjectId()
+    db = FakeDb()
+    db.nodes.rows.append(
+        {
+            "_id": source_id,
+            "document_id": document_id,
+            "node_key": "source",
+            "title": "Source",
+            "labels": ["ams_domain"],
+            "embedding": {"model": "mock", "dimensions": 16, "vector": [1.0]},
+        }
+    )
+
+    monkeypatch.setattr(
+        "mnemosyne.retrieval.queries.embedding_candidate_nodes",
+        lambda _db, node_id, limit=10, include_same_document=False, min_similarity=0.75, **_kwargs: [
+            {
+                "node_id": str(target_id),
+                "document_id": str(ObjectId()),
+                "node_key": "target",
+                "title": "Target",
+                "embedding_similarity": 0.91,
+                "embedding_model": "mock",
+                "embedding_dimensions": 16,
+            }
+        ],
+    )
+
+    result = enqueue_vector_semantic_edge_candidate_batch(
+        db,
+        label="ams_domain",
+        focus_limit=5,
+        candidates_per_node=1,
+        min_similarity=0.8,
+        dry_run=True,
+    )
+
+    assert result["ok"] is True
+    assert result["scope"]["dry_run"] is True
+    assert result["candidate_count"] == 1
+    assert result["enqueued_count"] == 0
+    assert result["would_enqueue_count"] == 1
+    assert len(db.semantic_edge_candidates.rows) == 0
+    assert result["focus_results"][0]["candidate_previews"][0]["target_title"] == "Target"
+
+
 def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
     source_id = ObjectId()
     target_id = ObjectId()
