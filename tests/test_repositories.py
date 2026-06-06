@@ -848,7 +848,7 @@ def test_enqueue_vector_semantic_edge_candidate_batch_scopes_focus_nodes(monkeyp
             {
                 "_id": source_two,
                 "document_id": document_id,
-                "node_key": "source-2",
+                "node_key": "section-1",
                 "title": "Source Two",
                 "labels": ["ams_domain"],
                 "embedding": {"model": "mock", "dimensions": 16, "vector": [1.0]},
@@ -891,19 +891,20 @@ def test_enqueue_vector_semantic_edge_candidate_batch_scopes_focus_nodes(monkeyp
         relation_type="supports",
         created_by="cello",
         min_similarity=0.82,
+        exclude_node_keys=["section-1"],
     )
 
     assert result["ok"] is True
     assert result["candidate_source"] == "embedding_similarity"
-    assert result["scope"]["focus_node_count"] == 2
+    assert result["scope"]["focus_node_count"] == 1
     assert result["scope"]["candidates_per_node"] == 1
+    assert result["scope"]["exclude_node_keys"] == ["section-1"]
     assert result["scope"]["relation_type"] == "supports"
-    assert result["candidate_count"] == 2
-    assert result["enqueued_count"] == 2
-    assert len(db.semantic_edge_candidates.rows) == 2
+    assert result["candidate_count"] == 1
+    assert result["enqueued_count"] == 1
+    assert len(db.semantic_edge_candidates.rows) == 1
     assert {row["source_node_id"] for row in db.semantic_edge_candidates.rows} == {
         source_one,
-        source_two,
     }
 
 

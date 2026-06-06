@@ -819,6 +819,8 @@ def test_cli_enqueue_vector_semantic_batch_command(monkeypatch, capsys) -> None:
             "0.82",
             "--candidate-scan-limit",
             "500",
+            "--exclude-node-key",
+            "section-1",
         ],
     )
     monkeypatch.setattr(
@@ -846,6 +848,7 @@ def test_cli_enqueue_vector_semantic_batch_command(monkeypatch, capsys) -> None:
         "created_by": "cello",
         "min_similarity": 0.82,
         "candidate_scan_limit": 500,
+        "exclude_node_keys": ["section-1"],
     }
 
 

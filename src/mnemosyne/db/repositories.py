@@ -764,6 +764,7 @@ def enqueue_vector_semantic_edge_candidate_batch(
     created_by: str = "user",
     min_similarity: float = 0.75,
     candidate_scan_limit: int | None = None,
+    exclude_node_keys: list[str] | None = None,
 ) -> dict[str, Any]:
     if not hasattr(db, "semantic_edge_candidates"):
         return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
@@ -790,11 +791,14 @@ def enqueue_vector_semantic_edge_candidate_batch(
     threshold = max(-1.0, min(threshold, 1.0))
     bounded_focus_limit = max(1, min(int(focus_limit or 25), 200))
     bounded_candidates_per_node = bounded_candidate_limit(candidates_per_node)
+    excluded_node_keys = {str(key) for key in (exclude_node_keys or []) if str(key)}
     focus_nodes = []
     for node in db.nodes.find(filters).limit(bounded_focus_limit):
         if "source_root" in (node.get("labels") or []):
             continue
         if node.get("status") == "superseded":
+            continue
+        if str(node.get("node_key") or "") in excluded_node_keys:
             continue
         focus_nodes.append(node)
 
@@ -845,6 +849,7 @@ def enqueue_vector_semantic_edge_candidate_batch(
             "created_by": created_by,
             "min_similarity": threshold,
             "candidate_scan_limit": candidate_scan_limit,
+            "exclude_node_keys": sorted(excluded_node_keys),
         },
         **totals,
         "focus_results": focus_results,
