@@ -977,7 +977,7 @@ def list_semantic_edge_candidates(
     rows = db.semantic_edge_candidates.find(query).sort("created_at", -1).limit(
         bounded_candidate_limit(limit, maximum=100)
     )
-    return [serialize_semantic_edge_candidate(row) for row in rows]
+    return [serialize_semantic_edge_candidate(enrich_semantic_edge_candidate_nodes(db, row)) for row in rows]
 
 
 def review_semantic_edge_candidate(
@@ -1109,6 +1109,8 @@ def serialize_semantic_edge_candidate(row: dict[str, Any]) -> dict[str, Any]:
         "selection_context": row.get("selection_context") or {},
         "source_title": row.get("source_title"),
         "target_title": row.get("target_title"),
+        "source_text_preview": row.get("source_text_preview"),
+        "target_text_preview": row.get("target_text_preview"),
         "created_by": row.get("created_by"),
         "reviewer": row.get("reviewer"),
         "review_note": row.get("review_note"),
@@ -1117,6 +1119,19 @@ def serialize_semantic_edge_candidate(row: dict[str, Any]) -> dict[str, Any]:
         "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
         "reviewed_at": row.get("reviewed_at").isoformat() if row.get("reviewed_at") else None,
     }
+
+
+def enrich_semantic_edge_candidate_nodes(db: Database, row: dict[str, Any]) -> dict[str, Any]:
+    enriched = dict(row)
+    source = db.nodes.find_one({"_id": row.get("source_node_id")}) if row.get("source_node_id") else None
+    target = db.nodes.find_one({"_id": row.get("target_node_id")}) if row.get("target_node_id") else None
+    if source:
+        enriched["source_title"] = enriched.get("source_title") or source.get("title")
+        enriched["source_text_preview"] = summarize_node_text(str(source.get("text") or ""), limit=280)
+    if target:
+        enriched["target_title"] = enriched.get("target_title") or target.get("title")
+        enriched["target_text_preview"] = summarize_node_text(str(target.get("text") or ""), limit=280)
+    return enriched
 
 
 def bounded_candidate_limit(value: Any, maximum: int = 50) -> int:

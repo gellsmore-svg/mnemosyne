@@ -517,6 +517,14 @@ async function loadSemanticCandidates() {
         `<div>${html(candidate.source_title)} -> ${html(candidate.target_title)}</div>` +
         `<div class="muted">${html(candidate.candidate_id)} | ${html(candidate.candidate_source || "label_overlap")} | ${html(evidence + selection)}</div>`
       );
+      if (candidate.source_text_preview || candidate.target_text_preview) {
+        const details = document.createElement("details");
+        details.className = "technical-report";
+        details.innerHTML =
+          "<summary>Compare source and target text</summary>" +
+          `<pre>Source:\n${html(candidate.source_text_preview || "No source preview available.")}\n\nTarget:\n${html(candidate.target_text_preview || "No target preview available.")}</pre>`;
+        el.appendChild(details);
+      }
       const actions = document.createElement("div");
       actions.className = "button-row";
       const accept = document.createElement("button");

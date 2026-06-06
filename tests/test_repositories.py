@@ -17,6 +17,7 @@ from mnemosyne.db.repositories import (
     rebuild_document,
     review_semantic_edge_candidate,
     resolved_ingestion_epoch,
+    summarize_node_text,
 )
 from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
@@ -1123,6 +1124,20 @@ def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
     target_id = ObjectId()
     timestamp = datetime(2026, 5, 28, tzinfo=timezone.utc)
     db = FakeDb()
+    db.nodes.rows.extend(
+        [
+            {
+                "_id": source_id,
+                "title": "Source from node",
+                "text": "Source text for candidate review. " * 20,
+            },
+            {
+                "_id": target_id,
+                "title": "Target from node",
+                "text": "Target text for candidate review. " * 20,
+            },
+        ]
+    )
     db.semantic_edge_candidates.rows.append(
         {
             "_id": ObjectId(),
@@ -1173,6 +1188,14 @@ def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
             },
             "source_title": "Source",
             "target_title": "Target",
+            "source_text_preview": summarize_node_text(
+                "Source text for candidate review. " * 20,
+                limit=280,
+            ),
+            "target_text_preview": summarize_node_text(
+                "Target text for candidate review. " * 20,
+                limit=280,
+            ),
             "created_by": "user",
             "reviewer": None,
             "review_note": None,
