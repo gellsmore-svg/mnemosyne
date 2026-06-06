@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import select
 import shlex
 import subprocess
 import struct
@@ -179,7 +180,9 @@ class LocalCommandEmbeddingAdapter:
         self.config = config
         self.model = getattr(config, "embedding_model", None) or "local-profile-model"
         self.command = local_profile_command(getattr(config, "profile_command", None))
+        self.command_mode = getattr(config, "profile_command_mode", None) or "single"
         self.dimensions: int | None = None
+        self._worker: subprocess.Popen[str] | None = None
 
     def embed(self, text: str) -> dict[str, Any]:
         normalized = text or ""
@@ -199,6 +202,8 @@ class LocalCommandEmbeddingAdapter:
                 "Local command profile adapter requires runtime.profile_command. "
                 "Configure a local executable that reads JSON from stdin and returns a vector JSON object."
             )
+        if self.command_mode == "worker":
+            return self._worker_profile_vector(text)
         payload = json.dumps({"model": self.model, "text": text})
         try:
             completed = subprocess.run(
@@ -232,6 +237,85 @@ class LocalCommandEmbeddingAdapter:
                 f"Local command profile adapter returned no usable vector for {self.model}."
             )
         return vector
+
+    def _worker_profile_vector(self, text: str) -> list[float]:
+        worker = self._worker_process()
+        if worker.stdin is None or worker.stdout is None:
+            raise RuntimeError("Local command profile worker was not opened with stdin/stdout.")
+        payload = json.dumps({"model": self.model, "text": text})
+        try:
+            worker.stdin.write(payload)
+            worker.stdin.write("\n")
+            worker.stdin.flush()
+        except BrokenPipeError as exception:
+            self.close()
+            raise RuntimeError(
+                f"Local command profile worker stopped while running {self.model}."
+            ) from exception
+        timeout = getattr(self.config, "ollama_timeout_seconds", 180)
+        ready, _, _ = select.select([worker.stdout], [], [], timeout)
+        if not ready:
+            self.close()
+            raise TimeoutError(
+                f"Local command profile worker timed out after {timeout}s while running {self.model}."
+            )
+        line = worker.stdout.readline()
+        if not line:
+            stderr = worker.stderr.read() if worker.stderr else ""
+            self.close()
+            raise RuntimeError(
+                f"Local command profile worker exited while running {self.model}: "
+                f"{stderr.strip() or worker.poll()}"
+            )
+        try:
+            data = json.loads(line.lstrip("\ufeff").strip())
+        except json.JSONDecodeError as exception:
+            raise RuntimeError(
+                f"Local command profile worker returned invalid JSON for {self.model}."
+            ) from exception
+        if isinstance(data.get("error"), dict):
+            error_payload = data["error"]
+            detail = error_payload.get("message") or error_payload.get("code") or data["error"]
+            raise RuntimeError(f"Local command profile worker failed for {self.model}: {detail}")
+        vector = local_command_profile_vector(data)
+        if not vector:
+            raise RuntimeError(
+                f"Local command profile worker returned no usable vector for {self.model}."
+            )
+        return vector
+
+    def _worker_process(self) -> subprocess.Popen[str]:
+        if self._worker is not None and self._worker.poll() is None:
+            return self._worker
+        self._worker = subprocess.Popen(
+            self.command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        return self._worker
+
+    def close(self) -> None:
+        worker = self._worker
+        self._worker = None
+        if worker is None:
+            return
+        if worker.poll() is None:
+            if worker.stdin:
+                try:
+                    worker.stdin.close()
+                except BrokenPipeError:
+                    pass
+            try:
+                worker.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                worker.kill()
+                worker.wait(timeout=2)
+
+    def __del__(self) -> None:
+        self.close()
 
 
 def embedding_adapter(

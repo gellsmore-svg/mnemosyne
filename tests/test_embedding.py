@@ -330,6 +330,137 @@ def test_local_command_embedding_adapter_reports_process_errors(monkeypatch) -> 
         raise AssertionError("Expected local command adapter to report process failure.")
 
 
+def test_local_command_embedding_adapter_worker_reuses_process(monkeypatch) -> None:
+    captured = {"writes": [], "flushes": 0, "popen_calls": 0}
+
+    class FakeStdin:
+        def write(self, value):
+            captured["writes"].append(value)
+
+        def flush(self):
+            captured["flushes"] += 1
+
+        def close(self):
+            captured["closed"] = True
+
+    class FakeStdout:
+        def __init__(self):
+            self.lines = iter(['{"vector": [3, 4]}\n', '{"vector": [0, 5]}\n'])
+
+        def readline(self):
+            return next(self.lines)
+
+    class FakeStderr:
+        def read(self):
+            return ""
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdin = FakeStdin()
+            self.stdout = FakeStdout()
+            self.stderr = FakeStderr()
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            del timeout
+            return 0
+
+        def kill(self):
+            captured["killed"] = True
+
+    def fake_popen(command, stdin, stdout, stderr, text, bufsize):
+        captured["popen_calls"] += 1
+        captured["command"] = command
+        captured["stdin_pipe"] = stdin
+        captured["stdout_pipe"] = stdout
+        captured["stderr_pipe"] = stderr
+        captured["text"] = text
+        captured["bufsize"] = bufsize
+        return FakeProcess()
+
+    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        "mnemosyne.adapters.embedding.select.select",
+        lambda readable, _writable, _errors, timeout: (readable, [], []),
+    )
+    config = RuntimeConfig(
+        embedding_adapter="local_command",
+        embedding_model="local-profile",
+        profile_command=["profile-tool", "--worker"],
+        profile_command_mode="worker",
+    )
+    adapter = LocalCommandEmbeddingAdapter(config)
+
+    first = adapter.embed("first")
+    second = adapter.embed("second")
+    adapter.close()
+
+    assert captured["popen_calls"] == 1
+    assert captured["command"] == ["profile-tool", "--worker"]
+    assert '"text": "first"' in captured["writes"][0]
+    assert '"text": "second"' in captured["writes"][2]
+    assert captured["flushes"] == 2
+    assert first["vector"] == [0.6, 0.8]
+    assert second["vector"] == [0.0, 1.0]
+
+
+def test_local_command_embedding_adapter_worker_reports_json_errors(monkeypatch) -> None:
+    class FakeStdin:
+        def write(self, _value):
+            return None
+
+        def flush(self):
+            return None
+
+        def close(self):
+            return None
+
+    class FakeStdout:
+        def readline(self):
+            return '{"error": {"code": 3, "message": "model mismatch"}}\n'
+
+    class FakeProcess:
+        stdin = FakeStdin()
+        stdout = FakeStdout()
+        stderr = None
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            del timeout
+            return 0
+
+        def kill(self):
+            return None
+
+    monkeypatch.setattr(
+        "mnemosyne.adapters.embedding.subprocess.Popen",
+        lambda *_args, **_kwargs: FakeProcess(),
+    )
+    monkeypatch.setattr(
+        "mnemosyne.adapters.embedding.select.select",
+        lambda readable, _writable, _errors, timeout: (readable, [], []),
+    )
+    adapter = LocalCommandEmbeddingAdapter(
+        RuntimeConfig(
+            embedding_adapter="local_command",
+            profile_command=["profile-tool", "--worker"],
+            profile_command_mode="worker",
+        )
+    )
+
+    try:
+        adapter.embed("text")
+    except RuntimeError as exc:
+        assert "Local command profile worker failed" in str(exc)
+        assert "model mismatch" in str(exc)
+    else:
+        raise AssertionError("Expected worker JSON error to be reported.")
+
+
 def test_ollama_embedding_vector_accepts_legacy_shape() -> None:
     assert ollama_embedding_vector({"embedding": [1, 2, 3]}) == [1.0, 2.0, 3.0]
 

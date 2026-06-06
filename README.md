@@ -114,11 +114,17 @@ Compiled context now renders the full stored node text, subject to the context b
 
 For a real local model call, use the default adapter or pass `--adapter ollama_cli` explicitly. Use `--model <name>` to override the configured Ollama model for that request. The current default model is `gemma3:1b` via the Windows Ollama executable configured in `config.example.yaml`. Ollama CLI prompts are sent through stdin, run with word wrapping disabled, and are bounded by `runtime.ollama_timeout_seconds`.
 
-Text similarity profiles default to the deterministic `mock` adapter in committed config so tests and first runs are reproducible. For a local model-backed profile path, set `runtime.embedding_adapter: local_command` and configure `runtime.profile_command` with a local executable that reads `{"model": "...", "text": "..."}` from stdin and returns `{"vector": [...]}` on stdout. HTTP-backed profile adapters are retained only for temporary diagnostics and are blocked by default for ingestion and retrieval memory operations. Verify the selected adapter before ingestion:
+Text similarity profiles default to the deterministic `mock` adapter in committed config so tests and first runs are reproducible. For the current local model-backed profile path, install the optional profile dependencies and configure the committed helper:
+
+```bash
+.venv/bin/pip install -e '.[profiles]'
+```
+
+Set `runtime.embedding_adapter: local_command`, `runtime.embedding_model: BAAI/bge-small-en-v1.5`, `runtime.embedding_dimensions: 384`, `runtime.profile_command: [.venv/bin/python, tools/profile_helper.py, --worker]`, and `runtime.profile_command_mode: worker`. In worker mode, the helper reads one `{"model": "...", "text": "..."}` request per stdin line and returns one `{"vector": [...]}` response per stdout line, keeping the model loaded across a batch. HTTP-backed profile adapters are retained only for temporary diagnostics and are blocked by default for ingestion and retrieval memory operations. Verify the selected adapter before ingestion:
 
 ```bash
 .venv/bin/mnemosyne embedding-smoke "Taj Mahal test"
-.venv/bin/mnemosyne embedding-smoke "Taj Mahal test" --adapter local_command --model local-profile-model
+.venv/bin/mnemosyne embedding-smoke "Taj Mahal test" --adapter local_command --model BAAI/bge-small-en-v1.5
 ```
 
 Existing active nodes can be given text similarity profiles in bounded batches without rebuilding documents:

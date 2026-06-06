@@ -8,6 +8,10 @@ Satisfies the LocalCommandEmbeddingAdapter contract in
   stdout: JSON object  ``{"vector": [<float>, ...]}``  (one line, no trailing data)
   exit:   0 on success, nonzero on any failure (with diagnostics on stderr)
 
+In worker mode, pass ``--worker``. The helper then reads one JSON object per
+stdin line and writes one JSON object per stdout line. This keeps the model
+loaded across a whole backfill batch.
+
 The helper does not L2-normalise the vector. Mnemosyne does that on the
 Python side (``LocalCommandEmbeddingAdapter.embed`` calls ``l2_normalize``).
 
@@ -15,9 +19,10 @@ Decisions baked in (recorded in ``.session-log.md`` 2026-06-05):
 
 - Library:  ``fastembed`` (ONNX-runtime backed, cold-start ~200-400 ms)
 - Model:    ``BAAI/bge-small-en-v1.5`` (384 dim, ~130 MB, English retrieval)
-- Path:     A — per-call subprocess, no persistent worker.
-            Path B (persistent worker via embedding.py change) is deferred
-            and requires explicit operator approval.
+- Path:     Worker mode is preferred for backfill:
+            ``--worker`` plus ``runtime.profile_command_mode: worker`` keeps
+            the process and model loaded across a batch. One-shot mode remains
+            available for simple smoke checks.
 
 Install (operator-side, one time):
 
@@ -30,7 +35,9 @@ Configure in ``config.yaml`` (operator-side, one time, when ready to test):
     runtime:
       embedding_adapter: local_command
       embedding_model: BAAI/bge-small-en-v1.5
-      profile_command: [.venv/bin/python, tools/profile_helper.py]
+      embedding_dimensions: 384
+      profile_command: [.venv/bin/python, tools/profile_helper.py, --worker]
+      profile_command_mode: worker
 
 Verification (operator-side, takes ~1 minute after first model download):
 
@@ -132,44 +139,93 @@ def read_request() -> tuple[str, str]:
     return model, text
 
 
+def profile_response(model: str, text: str) -> tuple[int, dict[str, Any] | None, str | None]:
+    # Reject mismatched model requests loudly. This is conservative on
+    # purpose: a config that says one model while the helper computes
+    # another would silently corrupt the stored profile semantics.
+    if model != SUPPORTED_MODEL:
+        return (
+            3,
+            None,
+            "profile_helper: requested model "
+            f"{model!r} does not match the model this helper is "
+            f"configured to serve ({SUPPORTED_MODEL!r}). Either update "
+            "runtime.embedding_model in config.yaml to match, or use a "
+            "different helper that supports the requested model.",
+        )
+
+    try:
+        vector = embed_text(text)
+    except RuntimeError as exc:
+        return 4, None, f"profile_helper: {exc}"
+    except Exception as exc:  # noqa: BLE001 — top-level guard
+        return (
+            5,
+            None,
+            f"profile_helper: unexpected error while embedding: "
+            f"{exc.__class__.__name__}: {exc}",
+        )
+
+    return 0, {"vector": vector}, None
+
+
+def worker_error(code: int, message: str) -> dict[str, Any]:
+    return {"error": {"code": code, "message": message}}
+
+
+def run_worker() -> int:
+    for raw in sys.stdin:
+        if not raw.strip():
+            continue
+        try:
+            payload = json.loads(raw)
+            if not isinstance(payload, dict):
+                raise RuntimeError("stdin JSON must be an object, not a list/scalar")
+            model = payload.get("model")
+            text = payload.get("text")
+            if not isinstance(model, str) or not model:
+                raise RuntimeError("missing or empty 'model' field in stdin JSON")
+            if not isinstance(text, str):
+                raise RuntimeError("missing or non-string 'text' field in stdin JSON")
+        except json.JSONDecodeError as exc:
+            sys.stdout.write(json.dumps(worker_error(2, f"profile_helper: stdin is not valid JSON: {exc}")))
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            continue
+        except RuntimeError as exc:
+            sys.stdout.write(json.dumps(worker_error(2, f"profile_helper: {exc}")))
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            continue
+        code, response, message = profile_response(model, text)
+        if code != 0:
+            sys.stdout.write(json.dumps(worker_error(code, message or "profile_helper failed")))
+        else:
+            sys.stdout.write(json.dumps(response))
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if "--worker" in argv[1:]:
+        return run_worker()
+
     try:
         model, text = read_request()
     except RuntimeError as exc:
         print(f"profile_helper: {exc}", file=sys.stderr)
         return 2
 
-    # Reject mismatched model requests loudly. This is conservative on
-    # purpose: a config that says one model while the helper computes
-    # another would silently corrupt the stored profile semantics.
-    if model != SUPPORTED_MODEL:
-        print(
-            "profile_helper: requested model "
-            f"{model!r} does not match the model this helper is "
-            f"configured to serve ({SUPPORTED_MODEL!r}). Either update "
-            "runtime.embedding_model in config.yaml to match, or use a "
-            "different helper that supports the requested model.",
-            file=sys.stderr,
-        )
-        return 3
-
-    try:
-        vector = embed_text(text)
-    except RuntimeError as exc:
-        print(f"profile_helper: {exc}", file=sys.stderr)
-        return 4
-    except Exception as exc:  # noqa: BLE001 — top-level guard
-        print(
-            f"profile_helper: unexpected error while embedding: "
-            f"{exc.__class__.__name__}: {exc}",
-            file=sys.stderr,
-        )
-        return 5
+    code, response, message = profile_response(model, text)
+    if code != 0:
+        print(message or "profile_helper failed", file=sys.stderr)
+        return code
 
     # One JSON object, newline-terminated, on stdout. The adapter only
     # reads stdout, so anything written to stderr above is for the
     # operator's eyes only.
-    sys.stdout.write(json.dumps({"vector": vector}))
+    sys.stdout.write(json.dumps(response))
     sys.stdout.write("\n")
     return 0
 

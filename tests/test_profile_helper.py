@@ -16,14 +16,19 @@ def load_profile_helper():
     return module
 
 
-def run_helper(module, monkeypatch, stdin: str) -> tuple[int, str, str]:
+def run_helper(
+    module,
+    monkeypatch,
+    stdin: str,
+    argv: list[str] | None = None,
+) -> tuple[int, str, str]:
     stdout = io.StringIO()
     stderr = io.StringIO()
     monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
     monkeypatch.setattr(sys, "stdout", stdout)
     monkeypatch.setattr(sys, "stderr", stderr)
 
-    code = module.main(["profile_helper.py"])
+    code = module.main(argv or ["profile_helper.py"])
 
     return code, stdout.getvalue(), stderr.getvalue()
 
@@ -84,3 +89,38 @@ def test_profile_helper_reports_known_embedding_error(monkeypatch) -> None:
     assert code == 4
     assert stdout == ""
     assert "fastembed is not installed" in stderr
+
+
+def test_profile_helper_worker_returns_one_json_response_per_line(monkeypatch) -> None:
+    module = load_profile_helper()
+    monkeypatch.setattr(module, "embed_text", lambda text: [1.0, 0.0] if text == "first" else [0.0, 1.0])
+
+    stdin = "\n".join(
+        [
+            json.dumps({"model": module.SUPPORTED_MODEL, "text": "first"}),
+            json.dumps({"model": module.SUPPORTED_MODEL, "text": "second"}),
+        ]
+    )
+    code, stdout, stderr = run_helper(module, monkeypatch, stdin, ["profile_helper.py", "--worker"])
+
+    assert code == 0
+    assert stderr == ""
+    lines = [json.loads(line) for line in stdout.splitlines()]
+    assert lines == [{"vector": [1.0, 0.0]}, {"vector": [0.0, 1.0]}]
+
+
+def test_profile_helper_worker_reports_bad_request_as_json(monkeypatch) -> None:
+    module = load_profile_helper()
+
+    code, stdout, stderr = run_helper(
+        module,
+        monkeypatch,
+        "{not-json",
+        ["profile_helper.py", "--worker"],
+    )
+
+    assert code == 0
+    assert stderr == ""
+    payload = json.loads(stdout)
+    assert payload["error"]["code"] == 2
+    assert "valid JSON" in payload["error"]["message"]
