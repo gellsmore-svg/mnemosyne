@@ -431,6 +431,7 @@ def embedding_candidate_report(
     nodes = candidates[:bounded_limit]
     diagnostics["returned_count"] = len(nodes)
     diagnostics["candidate_count_before_limit"] = len(candidates)
+    diagnostics["returned_source_documents"] = embedding_candidate_source_documents(nodes)
     return {
         "ok": True,
         "reason": None,
@@ -540,6 +541,40 @@ def embedding_candidate_link_index_penalty(candidate: dict[str, Any]) -> float:
     if len(link_lines) >= 3 or link_ratio >= 0.35:
         return 0.03
     return 0.0
+
+
+def embedding_candidate_source_documents(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    documents: dict[str, dict[str, Any]] = {}
+    for candidate in candidates:
+        document_id = str(candidate.get("document_id") or "unknown")
+        provenance = candidate.get("provenance") if isinstance(candidate.get("provenance"), dict) else {}
+        document = documents.setdefault(
+            document_id,
+            {
+                "document_id": document_id,
+                "source_path": provenance.get("source_path"),
+                "candidate_count": 0,
+                "best_similarity": None,
+                "best_rank_score": None,
+            },
+        )
+        document["candidate_count"] += 1
+        similarity = candidate.get("embedding_similarity")
+        rank_score = candidate.get("embedding_rank_score")
+        if isinstance(similarity, (int, float)):
+            current = document.get("best_similarity")
+            document["best_similarity"] = similarity if current is None else max(current, similarity)
+        if isinstance(rank_score, (int, float)):
+            current = document.get("best_rank_score")
+            document["best_rank_score"] = rank_score if current is None else max(current, rank_score)
+    return sorted(
+        documents.values(),
+        key=lambda item: (
+            -int(item.get("candidate_count") or 0),
+            -float(item.get("best_rank_score") or item.get("best_similarity") or 0),
+            str(item.get("source_path") or item.get("document_id") or ""),
+        ),
+    )
 
 
 def semantic_candidate_sort_tuple(

@@ -755,6 +755,15 @@ def test_embedding_candidate_report_explains_scan_and_exclusions() -> None:
     assert report["diagnostics"]["exclusions"]["incompatible_embedding"] == 1
     assert report["diagnostics"]["exclusions"]["invalid_embedding"] == 1
     assert report["diagnostics"]["candidate_scan_limit"] == 1000
+    assert report["diagnostics"]["returned_source_documents"] == [
+        {
+            "document_id": str(other_document_id),
+            "source_path": None,
+            "candidate_count": 1,
+            "best_similarity": report["nodes"][0]["embedding_similarity"],
+            "best_rank_score": report["nodes"][0]["embedding_rank_score"],
+        }
+    ]
 
 
 def test_embedding_candidate_report_honors_candidate_scan_limit() -> None:
