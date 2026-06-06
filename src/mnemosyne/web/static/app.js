@@ -608,14 +608,28 @@ function vectorCandidatePreviewSummary(data) {
     `Threshold: ${text(diagnostics.min_similarity)}`,
     `Scan: ${text(diagnostics.scanned_count)} scanned of ${text(diagnostics.candidate_scan_limit)} candidate limit`,
     `Returned: ${text(diagnostics.returned_count)} shown from ${text(diagnostics.candidate_count_before_limit)} above threshold`,
-    `Excluded: ${text(exclusions.invalid_embedding)} invalid profile, ${text(exclusions.incompatible_embedding)} incompatible profile, ${text(exclusions.below_threshold)} below threshold, ${text(exclusions.source_root)} root, ${text(exclusions.superseded)} superseded`,
+    `Excluded: ${text(exclusions.invalid_embedding)} invalid profile, ${text(exclusions.incompatible_embedding)} incompatible profile, ${text(exclusions.duplicate_text)} duplicate text, ${text(exclusions.below_threshold)} below threshold, ${text(exclusions.source_root)} root, ${text(exclusions.superseded)} superseded`,
   ].filter(Boolean);
+  const sources = Array.isArray(diagnostics.returned_source_documents) ? diagnostics.returned_source_documents : [];
+  if (sources.length) {
+    lines.push("");
+    lines.push("Sources:");
+    sources.forEach((source) => {
+      const best = source.best_rank_score !== undefined && source.best_rank_score !== null
+        ? `best rank ${text(source.best_rank_score)}`
+        : `best similarity ${text(source.best_similarity)}`;
+      lines.push(`- ${text(source.source_path || source.document_id || "unknown source")} | ${text(source.candidate_count)} match(es), ${best}`);
+    });
+  }
   const nodes = Array.isArray(data.nodes) ? data.nodes : [];
   if (nodes.length) {
     lines.push("");
     lines.push("Matches:");
     nodes.forEach((node, index) => {
-      lines.push(`${index + 1}. ${text(node.title || node.node_id)} | profile similarity ${text(node.embedding_similarity)} | ${text(node.embedding_model)} ${text(node.embedding_dimensions)} dims representation`);
+      const ranking = node.link_index_penalty
+        ? ` | rank ${text(node.embedding_rank_score)}, link-index adjustment ${text(node.link_index_penalty)}`
+        : "";
+      lines.push(`${index + 1}. ${text(node.title || node.node_id)} | profile similarity ${text(node.embedding_similarity)}${ranking} | ${text(node.embedding_model)} ${text(node.embedding_dimensions)} dims representation`);
     });
   }
   return lines.join("\n");
