@@ -905,6 +905,11 @@ def vector_semantic_candidate_batch_dry_run_result(
                 "target_title": candidate.get("title"),
                 "target_node_key": candidate.get("node_key"),
                 "target_document_id": candidate.get("document_id"),
+                "source_text_preview": summarize_node_text(str(node.get("text") or ""), limit=180),
+                "target_text_preview": summarize_node_text(
+                    str(candidate.get("text_preview") or candidate.get("text") or ""),
+                    limit=180,
+                ),
                 "embedding_similarity": candidate.get("embedding_similarity"),
                 "embedding_model": candidate.get("embedding_model"),
                 "embedding_dimensions": candidate.get("embedding_dimensions"),

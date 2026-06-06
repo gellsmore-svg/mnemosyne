@@ -920,6 +920,7 @@ def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_does_not_insert(mo
             "document_id": document_id,
             "node_key": "source",
             "title": "Source",
+            "text": "Source text for dry run review.",
             "labels": ["ams_domain"],
             "embedding": {"model": "mock", "dimensions": 16, "vector": [1.0]},
         }
@@ -933,6 +934,7 @@ def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_does_not_insert(mo
                 "document_id": str(ObjectId()),
                 "node_key": "target",
                 "title": "Target",
+                "text_preview": "Target text for dry run review.",
                 "embedding_similarity": 0.91,
                 "embedding_model": "mock",
                 "embedding_dimensions": 16,
@@ -956,6 +958,14 @@ def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_does_not_insert(mo
     assert result["would_enqueue_count"] == 1
     assert len(db.semantic_edge_candidates.rows) == 0
     assert result["focus_results"][0]["candidate_previews"][0]["target_title"] == "Target"
+    assert (
+        result["focus_results"][0]["candidate_previews"][0]["source_text_preview"]
+        == "Source text for dry run review."
+    )
+    assert (
+        result["focus_results"][0]["candidate_previews"][0]["target_text_preview"]
+        == "Target text for dry run review."
+    )
 
 
 def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_skips_reciprocal_related_to(

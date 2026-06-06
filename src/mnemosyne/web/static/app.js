@@ -696,6 +696,10 @@ function vectorBatchSummary(data) {
     const previews = Array.isArray(result.candidate_previews) ? result.candidate_previews : [];
     previews.slice(0, 3).forEach((candidate) => {
       lines.push(`   -> ${text(candidate.target_title || candidate.target_node_id)} | profile similarity ${text(candidate.embedding_similarity)}`);
+      if (candidate.source_text_preview || candidate.target_text_preview) {
+        lines.push(`      source: ${text(candidate.source_text_preview || "No source preview available.")}`);
+        lines.push(`      target: ${text(candidate.target_text_preview || "No target preview available.")}`);
+      }
     });
   });
   return lines.join("\n");
