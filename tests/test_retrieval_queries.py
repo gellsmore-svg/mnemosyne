@@ -816,6 +816,61 @@ def test_embedding_candidate_report_honors_candidate_scan_limit() -> None:
     assert full_scan["diagnostics"]["candidate_scan_limit"] == 200
 
 
+def test_embedding_candidate_report_deduplicates_candidate_text_hashes() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+                "embedding": {"model": "mock", "dimensions": 2, "vector": [1.0, 0.0]},
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": ObjectId(),
+                "tree_id": tree_id,
+                "title": "Section duplicate",
+                "text": "Same text",
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 2,
+                    "vector": [1.0, 0.0],
+                    "source_text_hash": "same",
+                },
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": ObjectId(),
+                "tree_id": tree_id,
+                "title": "Paragraph duplicate",
+                "text": "Same text",
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 2,
+                    "vector": [1.0, 0.0],
+                    "source_text_hash": "same",
+                },
+            },
+        ]
+    )
+
+    report = embedding_candidate_report(
+        db,
+        str(focus_id),
+        min_similarity=0.75,
+        limit=5,
+        candidate_scan_limit=10,
+    )
+
+    assert [node["title"] for node in report["nodes"]] == ["Section duplicate"]
+    assert report["diagnostics"]["exclusions"]["duplicate_text"] == 1
+
+
 def test_embedding_candidate_report_reports_missing_focus_embedding() -> None:
     focus_id = ObjectId()
     db = FakeDb(

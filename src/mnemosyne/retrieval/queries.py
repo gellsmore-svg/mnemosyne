@@ -330,6 +330,7 @@ def embedding_candidate_report(
             "superseded": 0,
             "invalid_embedding": 0,
             "incompatible_embedding": 0,
+            "duplicate_text": 0,
             "below_threshold": 0,
         },
     }
@@ -385,6 +386,7 @@ def embedding_candidate_report(
         filters["document_id"] = {"$ne": focus["document_id"]}
 
     candidates = []
+    seen_candidate_text_hashes: set[str] = set()
     for candidate in db.nodes.find(filters).limit(diagnostics["candidate_scan_limit"]):
         diagnostics["scanned_count"] += 1
         if "source_root" in (candidate.get("labels") or []):
@@ -400,6 +402,12 @@ def embedding_candidate_report(
         if not comparable_embeddings(focus_embedding, candidate_embedding):
             diagnostics["exclusions"]["incompatible_embedding"] += 1
             continue
+        candidate_text_hash = str((candidate.get("embedding") or {}).get("source_text_hash") or "")
+        if candidate_text_hash and candidate_text_hash in seen_candidate_text_hashes:
+            diagnostics["exclusions"]["duplicate_text"] += 1
+            continue
+        if candidate_text_hash:
+            seen_candidate_text_hashes.add(candidate_text_hash)
         similarity = cosine_similarity(
             focus_embedding["vector"],
             candidate_embedding["vector"],
