@@ -753,6 +753,104 @@ def enqueue_vector_semantic_edge_candidates(
     }
 
 
+def enqueue_vector_semantic_edge_candidate_batch(
+    db: Database,
+    label: str | None = None,
+    document_id: str | None = None,
+    focus_limit: int = 25,
+    candidates_per_node: int = 2,
+    include_same_document: bool = False,
+    relation_type: str = "related_to",
+    created_by: str = "user",
+    min_similarity: float = 0.75,
+    candidate_scan_limit: int | None = None,
+) -> dict[str, Any]:
+    if not hasattr(db, "semantic_edge_candidates"):
+        return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
+    relation = normalized_relation_type(relation_type)
+    if not relation:
+        return {"ok": False, "reason": "invalid_relation_type", "relation_type": relation_type}
+
+    filters: dict[str, Any] = {
+        "embedding.model": {"$exists": True},
+        "embedding.dimensions": {"$exists": True},
+    }
+    if label:
+        filters["labels"] = label
+    if document_id:
+        parsed_document_id = parse_object_id(document_id)
+        if parsed_document_id is None:
+            return {"ok": False, "reason": "invalid_document_id", "document_id": document_id}
+        filters["document_id"] = parsed_document_id
+
+    try:
+        threshold = float(min_similarity)
+    except (TypeError, ValueError):
+        threshold = 0.75
+    threshold = max(-1.0, min(threshold, 1.0))
+    bounded_focus_limit = max(1, min(int(focus_limit or 25), 200))
+    bounded_candidates_per_node = bounded_candidate_limit(candidates_per_node)
+    focus_nodes = []
+    for node in db.nodes.find(filters).limit(bounded_focus_limit):
+        if "source_root" in (node.get("labels") or []):
+            continue
+        if node.get("status") == "superseded":
+            continue
+        focus_nodes.append(node)
+
+    totals = {
+        "candidate_count": 0,
+        "enqueued_count": 0,
+        "skipped_existing_count": 0,
+        "skipped_invalid_count": 0,
+    }
+    focus_results = []
+    for node in focus_nodes:
+        result = enqueue_vector_semantic_edge_candidates(
+            db,
+            node_id=str(node.get("_id")),
+            limit=bounded_candidates_per_node,
+            include_same_document=include_same_document,
+            relation_type=relation,
+            created_by=created_by,
+            min_similarity=threshold,
+            candidate_scan_limit=candidate_scan_limit,
+        )
+        for key in totals:
+            totals[key] += int(result.get(key) or 0)
+        focus_results.append(
+            {
+                "node_id": str(node.get("_id")),
+                "title": node.get("title"),
+                "ok": result.get("ok"),
+                "candidate_count": result.get("candidate_count", 0),
+                "enqueued_count": result.get("enqueued_count", 0),
+                "skipped_existing_count": result.get("skipped_existing_count", 0),
+                "skipped_invalid_count": result.get("skipped_invalid_count", 0),
+                "reason": result.get("reason"),
+            }
+        )
+
+    return {
+        "ok": True,
+        "candidate_source": "embedding_similarity",
+        "scope": {
+            "label": label,
+            "document_id": document_id,
+            "focus_limit": bounded_focus_limit,
+            "focus_node_count": len(focus_nodes),
+            "candidates_per_node": bounded_candidates_per_node,
+            "include_same_document": include_same_document,
+            "relation_type": relation,
+            "created_by": created_by,
+            "min_similarity": threshold,
+            "candidate_scan_limit": candidate_scan_limit,
+        },
+        **totals,
+        "focus_results": focus_results,
+    }
+
+
 def list_semantic_edge_candidates(
     db: Database,
     status: str | None = "pending",

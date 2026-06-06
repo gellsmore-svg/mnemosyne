@@ -795,6 +795,60 @@ def test_cli_enqueue_vector_semantic_candidates_command(monkeypatch, capsys) -> 
     }
 
 
+def test_cli_enqueue_vector_semantic_batch_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "enqueue-vector-semantic-batch",
+            "--label",
+            "ams_domain",
+            "--document-id",
+            "doc1",
+            "--focus-limit",
+            "12",
+            "--candidates-per-node",
+            "2",
+            "--include-same-document",
+            "--relation-type",
+            "supports",
+            "--created-by",
+            "cello",
+            "--min-similarity",
+            "0.82",
+            "--candidate-scan-limit",
+            "500",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.enqueue_vector_semantic_edge_candidate_batch",
+        lambda _db, **kwargs: {"ok": True, **kwargs},
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "label": "ams_domain",
+        "document_id": "doc1",
+        "focus_limit": 12,
+        "candidates_per_node": 2,
+        "include_same_document": True,
+        "relation_type": "supports",
+        "created_by": "cello",
+        "min_similarity": 0.82,
+        "candidate_scan_limit": 500,
+    }
+
+
 def test_cli_semantic_edge_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

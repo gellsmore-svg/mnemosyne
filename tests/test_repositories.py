@@ -10,6 +10,7 @@ from mnemosyne.db.repositories import (
     create_reviewed_semantic_edge,
     document_tree,
     enqueue_semantic_edge_candidates,
+    enqueue_vector_semantic_edge_candidate_batch,
     enqueue_vector_semantic_edge_candidates,
     graph_edge_status,
     list_semantic_edge_candidates,
@@ -825,6 +826,85 @@ def test_enqueue_vector_semantic_edge_candidates_stores_similarity_review_rows(m
 
     assert duplicate["enqueued_count"] == 0
     assert duplicate["skipped_existing_count"] == 1
+
+
+def test_enqueue_vector_semantic_edge_candidate_batch_scopes_focus_nodes(monkeypatch) -> None:
+    document_id = ObjectId()
+    source_one = ObjectId()
+    source_two = ObjectId()
+    target_one = ObjectId()
+    target_two = ObjectId()
+    db = FakeDb()
+    db.nodes.rows.extend(
+        [
+            {
+                "_id": source_one,
+                "document_id": document_id,
+                "node_key": "source-1",
+                "title": "Source One",
+                "labels": ["ams_domain"],
+                "embedding": {"model": "mock", "dimensions": 16, "vector": [1.0]},
+            },
+            {
+                "_id": source_two,
+                "document_id": document_id,
+                "node_key": "source-2",
+                "title": "Source Two",
+                "labels": ["ams_domain"],
+                "embedding": {"model": "mock", "dimensions": 16, "vector": [1.0]},
+            },
+        ]
+    )
+
+    def fake_embedding_candidates(
+        _db,
+        node_id,
+        limit=10,
+        include_same_document=False,
+        min_similarity=0.75,
+        **_kwargs,
+    ):
+        target_id = target_one if node_id == str(source_one) else target_two
+        return [
+            {
+                "node_id": str(target_id),
+                "document_id": str(ObjectId()),
+                "node_key": "target",
+                "title": "Target",
+                "embedding_similarity": min_similarity,
+                "embedding_model": "mock",
+                "embedding_dimensions": 16,
+            }
+        ][:limit]
+
+    monkeypatch.setattr(
+        "mnemosyne.retrieval.queries.embedding_candidate_nodes",
+        fake_embedding_candidates,
+    )
+
+    result = enqueue_vector_semantic_edge_candidate_batch(
+        db,
+        label="ams_domain",
+        document_id=str(document_id),
+        focus_limit=10,
+        candidates_per_node=1,
+        relation_type="supports",
+        created_by="cello",
+        min_similarity=0.82,
+    )
+
+    assert result["ok"] is True
+    assert result["candidate_source"] == "embedding_similarity"
+    assert result["scope"]["focus_node_count"] == 2
+    assert result["scope"]["candidates_per_node"] == 1
+    assert result["scope"]["relation_type"] == "supports"
+    assert result["candidate_count"] == 2
+    assert result["enqueued_count"] == 2
+    assert len(db.semantic_edge_candidates.rows) == 2
+    assert {row["source_node_id"] for row in db.semantic_edge_candidates.rows} == {
+        source_one,
+        source_two,
+    }
 
 
 def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:

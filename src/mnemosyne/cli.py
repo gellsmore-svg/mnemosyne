@@ -34,6 +34,7 @@ from mnemosyne.db.repositories import (
     commit_ingestion,
     create_reviewed_semantic_edge,
     enqueue_semantic_edge_candidates,
+    enqueue_vector_semantic_edge_candidate_batch,
     enqueue_vector_semantic_edge_candidates,
     find_duplicate_by_checksum,
     document_tree,
@@ -501,6 +502,19 @@ def main() -> None:
     enqueue_vector_semantic.add_argument("--min-similarity", type=float, default=0.75)
     enqueue_vector_semantic.add_argument("--limit", type=int, default=10)
     enqueue_vector_semantic.add_argument("--candidate-scan-limit", type=int, default=None)
+
+    enqueue_vector_semantic_batch = subcommands.add_parser(
+        "enqueue-vector-semantic-batch"
+    )
+    enqueue_vector_semantic_batch.add_argument("--label", default=None)
+    enqueue_vector_semantic_batch.add_argument("--document-id", default=None)
+    enqueue_vector_semantic_batch.add_argument("--focus-limit", type=int, default=25)
+    enqueue_vector_semantic_batch.add_argument("--candidates-per-node", type=int, default=2)
+    enqueue_vector_semantic_batch.add_argument("--include-same-document", action="store_true")
+    enqueue_vector_semantic_batch.add_argument("--relation-type", default="related_to")
+    enqueue_vector_semantic_batch.add_argument("--created-by", default="user")
+    enqueue_vector_semantic_batch.add_argument("--min-similarity", type=float, default=0.75)
+    enqueue_vector_semantic_batch.add_argument("--candidate-scan-limit", type=int, default=None)
 
     semantic_queue = subcommands.add_parser("semantic-edge-candidates")
     semantic_queue.add_argument("--status", default="pending")
@@ -1248,6 +1262,27 @@ def main() -> None:
                     created_by=args.created_by,
                     min_similarity=args.min_similarity,
                     limit=args.limit,
+                    candidate_scan_limit=args.candidate_scan_limit,
+                ),
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "enqueue-vector-semantic-batch":
+        ensure_indexes(db)
+        print(
+            json.dumps(
+                enqueue_vector_semantic_edge_candidate_batch(
+                    db,
+                    label=args.label,
+                    document_id=args.document_id,
+                    focus_limit=args.focus_limit,
+                    candidates_per_node=args.candidates_per_node,
+                    include_same_document=args.include_same_document,
+                    relation_type=args.relation_type,
+                    created_by=args.created_by,
+                    min_similarity=args.min_similarity,
                     candidate_scan_limit=args.candidate_scan_limit,
                 ),
                 indent=2,
