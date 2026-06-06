@@ -386,7 +386,10 @@ def embedding_candidate_report(
         filters["document_id"] = {"$ne": focus["document_id"]}
 
     candidates = []
+    focus_text_hash = str((focus.get("embedding") or {}).get("source_text_hash") or "")
+    focus_text_key = normalized_candidate_text_key(str(focus.get("text") or ""))
     seen_candidate_text_hashes: set[str] = set()
+    seen_candidate_text_keys: set[str] = set()
     for candidate in db.nodes.find(filters).limit(diagnostics["candidate_scan_limit"]):
         diagnostics["scanned_count"] += 1
         if "source_root" in (candidate.get("labels") or []):
@@ -403,11 +406,23 @@ def embedding_candidate_report(
             diagnostics["exclusions"]["incompatible_embedding"] += 1
             continue
         candidate_text_hash = str((candidate.get("embedding") or {}).get("source_text_hash") or "")
+        if focus_text_hash and candidate_text_hash == focus_text_hash:
+            diagnostics["exclusions"]["duplicate_text"] += 1
+            continue
+        candidate_text_key = normalized_candidate_text_key(str(candidate.get("text") or ""))
+        if focus_text_key and candidate_text_key == focus_text_key:
+            diagnostics["exclusions"]["duplicate_text"] += 1
+            continue
         if candidate_text_hash and candidate_text_hash in seen_candidate_text_hashes:
             diagnostics["exclusions"]["duplicate_text"] += 1
             continue
         if candidate_text_hash:
             seen_candidate_text_hashes.add(candidate_text_hash)
+        if candidate_text_key and candidate_text_key in seen_candidate_text_keys:
+            diagnostics["exclusions"]["duplicate_text"] += 1
+            continue
+        if candidate_text_key:
+            seen_candidate_text_keys.add(candidate_text_key)
         similarity = cosine_similarity(
             focus_embedding["vector"],
             candidate_embedding["vector"],
@@ -450,6 +465,10 @@ def semantic_labels(labels: list[str]) -> list[str]:
             and not label.startswith("source_")
         }
     )
+
+
+def normalized_candidate_text_key(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().casefold()
 
 
 def bounded_embedding_candidate_scan_limit(value: Any, result_limit: int) -> int:

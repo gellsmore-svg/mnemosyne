@@ -880,6 +880,126 @@ def test_embedding_candidate_report_deduplicates_candidate_text_hashes() -> None
     assert report["diagnostics"]["exclusions"]["duplicate_text"] == 1
 
 
+def test_embedding_candidate_report_excludes_candidate_with_focus_text_hash() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Copied policy text",
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 2,
+                    "vector": [1.0, 0.0],
+                    "source_text_hash": "copied",
+                },
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": ObjectId(),
+                "tree_id": tree_id,
+                "title": "Copied policy paragraph",
+                "text": "Copied policy text",
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 2,
+                    "vector": [1.0, 0.0],
+                    "source_text_hash": "copied",
+                },
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": ObjectId(),
+                "tree_id": tree_id,
+                "title": "Real related passage",
+                "text": "Different but strongly related policy text",
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 2,
+                    "vector": [0.9, 0.1],
+                    "source_text_hash": "related",
+                },
+            },
+        ]
+    )
+
+    report = embedding_candidate_report(
+        db,
+        str(focus_id),
+        min_similarity=0.75,
+        limit=5,
+        candidate_scan_limit=10,
+    )
+
+    assert [node["title"] for node in report["nodes"]] == ["Real related passage"]
+    assert report["diagnostics"]["exclusions"]["duplicate_text"] == 1
+
+
+def test_embedding_candidate_report_excludes_case_variant_focus_text() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "1. canonical policy\n2. domain policy",
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 2,
+                    "vector": [1.0, 0.0],
+                    "source_text_hash": "lowercase",
+                },
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": ObjectId(),
+                "tree_id": tree_id,
+                "title": "Copied policy paragraph",
+                "text": "1. Canonical policy\n2. Domain policy",
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 2,
+                    "vector": [1.0, 0.0],
+                    "source_text_hash": "titlecase",
+                },
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": ObjectId(),
+                "tree_id": tree_id,
+                "title": "Real related passage",
+                "text": "Different but strongly related policy text",
+                "embedding": {
+                    "model": "mock",
+                    "dimensions": 2,
+                    "vector": [0.9, 0.1],
+                    "source_text_hash": "related",
+                },
+            },
+        ]
+    )
+
+    report = embedding_candidate_report(
+        db,
+        str(focus_id),
+        min_similarity=0.75,
+        limit=5,
+        candidate_scan_limit=10,
+    )
+
+    assert [node["title"] for node in report["nodes"]] == ["Real related passage"]
+    assert report["diagnostics"]["exclusions"]["duplicate_text"] == 1
+
+
 def test_embedding_candidate_report_ranks_prose_above_link_index_when_close() -> None:
     document_id = ObjectId()
     tree_id = ObjectId()
