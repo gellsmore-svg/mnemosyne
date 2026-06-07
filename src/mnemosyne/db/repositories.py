@@ -901,6 +901,8 @@ def vector_semantic_candidate_batch_dry_run_result(
             skipped_existing += 1
             continue
         batch_pair_keys.add(pair_key)
+        target_text = str(candidate.get("text_preview") or candidate.get("text") or "")
+        shared_wording = shared_wording_report(source_text, target_text)
         previews.append(
             {
                 "target_node_id": str(target_id),
@@ -908,13 +910,11 @@ def vector_semantic_candidate_batch_dry_run_result(
                 "target_node_key": candidate.get("node_key"),
                 "target_document_id": candidate.get("document_id"),
                 "source_text_preview": summarize_node_text(source_text, limit=180),
-                "target_text_preview": summarize_node_text(
-                    str(candidate.get("text_preview") or candidate.get("text") or ""),
-                    limit=180,
-                ),
-                "shared_wording": shared_wording_report(
-                    source_text,
-                    str(candidate.get("text_preview") or candidate.get("text") or ""),
+                "target_text_preview": summarize_node_text(target_text, limit=180),
+                "shared_wording": shared_wording,
+                "review_hint": semantic_candidate_review_hint(
+                    embedding_similarity=candidate.get("embedding_similarity"),
+                    shared_wording=shared_wording,
                 ),
                 "embedding_similarity": candidate.get("embedding_similarity"),
                 "embedding_model": candidate.get("embedding_model"),
@@ -1123,6 +1123,7 @@ def serialize_semantic_edge_candidate(row: dict[str, Any]) -> dict[str, Any]:
         "source_text_preview": row.get("source_text_preview"),
         "target_text_preview": row.get("target_text_preview"),
         "shared_wording": row.get("shared_wording") or {},
+        "review_hint": row.get("review_hint"),
         "created_by": row.get("created_by"),
         "reviewer": row.get("reviewer"),
         "review_note": row.get("review_note"),
@@ -1151,7 +1152,35 @@ def enrich_semantic_edge_candidate_nodes(db: Database, row: dict[str, Any]) -> d
         enriched["target_text_preview"] = summarize_node_text(target_text, limit=280)
     if source_text or target_text:
         enriched["shared_wording"] = shared_wording_report(source_text, target_text)
+        enriched["review_hint"] = semantic_candidate_review_hint(
+            embedding_similarity=enriched.get("embedding_similarity"),
+            shared_wording=enriched["shared_wording"],
+        )
     return enriched
+
+
+def semantic_candidate_review_hint(
+    *,
+    embedding_similarity: Any,
+    shared_wording: dict[str, Any] | None,
+) -> str:
+    shared_wording = shared_wording or {}
+    source_overlap = safe_float(shared_wording.get("source_word_overlap"))
+    target_overlap = safe_float(shared_wording.get("target_word_overlap"))
+    smaller_overlap = safe_float(shared_wording.get("smaller_text_overlap"))
+    similarity = safe_float(embedding_similarity)
+    if source_overlap >= 0.75 or target_overlap >= 0.75 or smaller_overlap >= 0.85:
+        return "Review hint: high shared wording; check for copied or near-copied source text before accepting."
+    if similarity >= 0.88 and source_overlap < 0.65 and target_overlap < 0.65:
+        return "Review hint: strong profile match with moderate wording overlap; likely conceptual candidate."
+    return "Review hint: inspect source and target text before deciding."
+
+
+def safe_float(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def bounded_candidate_limit(value: Any, maximum: int = 50) -> int:

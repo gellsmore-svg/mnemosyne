@@ -513,7 +513,7 @@ async function loadSemanticCandidates() {
         ? ` | threshold ${context.min_similarity}, ${context.embedding_model || candidate.embedding_model || "unknown"} ${context.embedding_dimensions || candidate.embedding_dimensions || "?"} dims`
         : "";
       const sharedWording = sharedWordingSummary(candidate.shared_wording);
-      const reviewHint = semanticCandidateReviewHint(candidate);
+      const reviewHint = candidate.review_hint || semanticCandidateReviewHint(candidate);
       const el = item(
         `<strong>${html(candidate.relation_type)}</strong>` +
         `<div>${html(candidate.source_title)} -> ${html(candidate.target_title)}</div>` +
@@ -699,7 +699,7 @@ function vectorBatchSummary(data) {
     const previews = Array.isArray(result.candidate_previews) ? result.candidate_previews : [];
     previews.slice(0, 3).forEach((candidate) => {
       const wording = sharedWordingSummary(candidate.shared_wording);
-      lines.push(`   -> ${text(candidate.target_title || candidate.target_node_id)} | profile similarity ${text(candidate.embedding_similarity)}${wording ? ` | ${wording}` : ""} | ${semanticCandidateReviewHint(candidate)}`);
+      lines.push(`   -> ${text(candidate.target_title || candidate.target_node_id)} | profile similarity ${text(candidate.embedding_similarity)}${wording ? ` | ${wording}` : ""} | ${candidate.review_hint || semanticCandidateReviewHint(candidate)}`);
       if (candidate.source_text_preview || candidate.target_text_preview) {
         lines.push(`      source: ${text(candidate.source_text_preview || "No source preview available.")}`);
         lines.push(`      target: ${text(candidate.target_text_preview || "No target preview available.")}`);

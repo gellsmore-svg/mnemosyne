@@ -973,6 +973,10 @@ def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_does_not_insert(mo
         "smaller_text_overlap": 0.833,
         "larger_text_overlap": 0.833,
     }
+    assert (
+        result["focus_results"][0]["candidate_previews"][0]["review_hint"]
+        == "Review hint: high shared wording; check for copied or near-copied source text before accepting."
+    )
 
 
 def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_skips_reciprocal_related_to(
@@ -1220,6 +1224,7 @@ def test_list_semantic_edge_candidates_serializes_pending_rows() -> None:
                 "smaller_text_overlap": 0.8,
                 "larger_text_overlap": 0.8,
             },
+            "review_hint": "Review hint: high shared wording; check for copied or near-copied source text before accepting.",
             "created_by": "user",
             "reviewer": None,
             "review_note": None,
