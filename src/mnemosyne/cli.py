@@ -388,6 +388,30 @@ def render_proximity_text(nodes: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def render_documents_text(documents: list[dict]) -> str:
+    if not documents:
+        return "No documents found."
+    lines = [f"Documents: {len(documents)} shown"]
+    for index, document in enumerate(documents, start=1):
+        source = document.get("source") or {}
+        lines.append("")
+        lines.append(f"{index}. {document.get('title') or document.get('document_id')}")
+        lines.append(f"   id: {document.get('document_id')}")
+        if source.get("path"):
+            lines.append(f"   source: {source.get('path')}")
+        if document.get("origin_date"):
+            lines.append(
+                f"   origin date: {document.get('origin_date')} "
+                f"({document.get('origin_date_source') or 'unknown source'})"
+            )
+        if document.get("ingestion_epoch"):
+            lines.append(f"   ingestion epoch: {document.get('ingestion_epoch')}")
+        summary = str(document.get("summary") or "").strip()
+        if summary:
+            lines.append(f"   summary: {summary[:280]}")
+    return "\n".join(lines)
+
+
 def render_vector_semantic_candidates_text(report: dict) -> str:
     diagnostics = report.get("diagnostics") or {}
     focus = diagnostics.get("focus") or {}
@@ -617,6 +641,7 @@ def main() -> None:
 
     list_docs = subcommands.add_parser("list-docs")
     list_docs.add_argument("--limit", type=int, default=20)
+    list_docs.add_argument("--format", choices=["json", "text"], default="json")
 
     show_doc = subcommands.add_parser("show-doc")
     show_doc.add_argument("document_id")
@@ -1287,7 +1312,11 @@ def main() -> None:
 
     if args.command == "list-docs":
         ensure_indexes(db)
-        print(json.dumps({"ok": True, "documents": list_documents(db, args.limit)}, indent=2))
+        documents = list_documents(db, args.limit)
+        if args.format == "text":
+            print(render_documents_text(documents))
+            return
+        print(json.dumps({"ok": True, "documents": documents}, indent=2))
         return
 
     if args.command == "show-doc":

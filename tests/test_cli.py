@@ -364,6 +364,67 @@ def test_cli_graph_status_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_list_docs_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["mnemosyne", "list-docs", "--limit", "2"])
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.list_documents",
+        lambda _db, limit=20: [{"document_id": "doc1", "title": "Doc", "limit": limit}],
+    )
+
+    main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "documents": [{"document_id": "doc1", "title": "Doc", "limit": 2}],
+    }
+
+
+def test_cli_list_docs_text_format(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "list-docs", "--limit", "2", "--format", "text"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.list_documents",
+        lambda _db, limit=20: [
+            {
+                "document_id": "doc1",
+                "title": "Readable Doc",
+                "summary": "A useful source document for review.",
+                "source": {"path": "/tmp/readable.md"},
+                "origin_date": "2026-03-10",
+                "origin_date_source": "explicit_content",
+                "ingestion_epoch": "epoch-1",
+                "limit": limit,
+            }
+        ],
+    )
+
+    main()
+
+    output = capsys.readouterr().out
+    assert "Documents: 1 shown" in output
+    assert "1. Readable Doc" in output
+    assert "id: doc1" in output
+    assert "source: /tmp/readable.md" in output
+    assert "origin date: 2026-03-10 (explicit_content)" in output
+    assert "ingestion epoch: epoch-1" in output
+    assert "summary: A useful source document for review." in output
+
+
 def test_cli_expand_proximity_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
