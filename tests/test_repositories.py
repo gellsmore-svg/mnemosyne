@@ -17,6 +17,8 @@ from mnemosyne.db.repositories import (
     rebuild_document,
     review_semantic_edge_candidate,
     resolved_ingestion_epoch,
+    semantic_edge_candidate_exists,
+    semantic_edge_candidate_pair_key,
     summarize_node_text,
 )
 from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
@@ -749,6 +751,7 @@ def test_enqueue_semantic_edge_candidates_stores_pending_review_rows(monkeypatch
     assert row["target_node_id"] == target_id
     assert row["source_document_id"] == document_id
     assert row["relation_type"] == "related_to"
+    assert row["pair_key"] == semantic_edge_candidate_pair_key(source_id, target_id, "related_to")
     assert row["shared_labels"] == ["taj_mahal"]
     assert row["created_by"] == "cello"
 
@@ -810,6 +813,7 @@ def test_enqueue_vector_semantic_edge_candidates_stores_similarity_review_rows(m
     assert row["target_node_id"] == target_id
     assert row["source_document_id"] == document_id
     assert row["relation_type"] == "related_to"
+    assert row["pair_key"] == semantic_edge_candidate_pair_key(source_id, target_id, "related_to")
     assert row["embedding_similarity"] == 0.91
     assert row["embedding_model"] == "mock"
     assert row["embedding_dimensions"] == 16
@@ -827,6 +831,54 @@ def test_enqueue_vector_semantic_edge_candidates_stores_similarity_review_rows(m
 
     assert duplicate["enqueued_count"] == 0
     assert duplicate["skipped_existing_count"] == 1
+
+
+def test_semantic_edge_candidate_exists_uses_pair_key_for_related_to_reciprocals() -> None:
+    source_id = ObjectId()
+    target_id = ObjectId()
+    db = FakeDb()
+    db.semantic_edge_candidates.rows.append(
+        {
+            "source_node_id": source_id,
+            "target_node_id": target_id,
+            "relation_type": "related_to",
+            "pair_key": semantic_edge_candidate_pair_key(source_id, target_id, "related_to"),
+        }
+    )
+
+    assert semantic_edge_candidate_exists(db, target_id, source_id, "related_to") is True
+
+
+def test_semantic_edge_candidate_exists_falls_back_for_legacy_related_to_rows() -> None:
+    source_id = ObjectId()
+    target_id = ObjectId()
+    db = FakeDb()
+    db.semantic_edge_candidates.rows.append(
+        {
+            "source_node_id": source_id,
+            "target_node_id": target_id,
+            "relation_type": "related_to",
+        }
+    )
+
+    assert semantic_edge_candidate_exists(db, target_id, source_id, "related_to") is True
+
+
+def test_semantic_edge_candidate_exists_uses_pair_key_for_directional_relations() -> None:
+    source_id = ObjectId()
+    target_id = ObjectId()
+    db = FakeDb()
+    db.semantic_edge_candidates.rows.append(
+        {
+            "source_node_id": source_id,
+            "target_node_id": target_id,
+            "relation_type": "supports",
+            "pair_key": semantic_edge_candidate_pair_key(source_id, target_id, "supports"),
+        }
+    )
+
+    assert semantic_edge_candidate_exists(db, source_id, target_id, "supports") is True
+    assert semantic_edge_candidate_exists(db, target_id, source_id, "supports") is False
 
 
 def test_enqueue_vector_semantic_edge_candidate_batch_scopes_focus_nodes(monkeypatch) -> None:

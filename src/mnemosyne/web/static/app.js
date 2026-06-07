@@ -647,6 +647,9 @@ function vectorCandidatePreviewSummary(data) {
     focus.title ? `Focus: ${text(focus.title)} (${text(focus.model)}, text similarity profile)` : null,
     `Threshold: ${text(diagnostics.min_similarity)}`,
     `Scan: ${text(diagnostics.scanned_count)} scanned of ${text(diagnostics.candidate_scan_limit)} candidate limit`,
+    diagnostics.scan_truncated
+      ? "Scan status: truncated; raise the candidate scan limit or choose a narrower scope"
+      : "Scan status: complete within the candidate scan limit",
     `Returned: ${text(diagnostics.returned_count)} shown from ${text(diagnostics.candidate_count_before_limit)} above threshold`,
     `Excluded: ${text(exclusions.invalid_embedding)} invalid profile, ${text(exclusions.incompatible_embedding)} incompatible profile, ${text(exclusions.duplicate_text)} duplicate text, ${text(exclusions.below_threshold)} below threshold, ${text(exclusions.source_root)} root, ${text(exclusions.superseded)} superseded`,
   ].filter(Boolean);

@@ -750,6 +750,7 @@ def test_embedding_candidate_report_explains_scan_and_exclusions() -> None:
         "dimensions": 2,
     }
     assert report["diagnostics"]["scanned_count"] == 4
+    assert report["diagnostics"]["scan_truncated"] is False
     assert report["diagnostics"]["returned_count"] == 1
     assert report["diagnostics"]["exclusions"]["below_threshold"] == 1
     assert report["diagnostics"]["exclusions"]["incompatible_embedding"] == 1
@@ -822,7 +823,10 @@ def test_embedding_candidate_report_honors_candidate_scan_limit() -> None:
     assert [node["title"] for node in short_scan["nodes"]] == []
     assert [node["title"] for node in full_scan["nodes"]] == ["Late strong match"]
     assert short_scan["diagnostics"]["candidate_scan_limit"] == 100
+    assert short_scan["diagnostics"]["scanned_count"] == 100
+    assert short_scan["diagnostics"]["scan_truncated"] is True
     assert full_scan["diagnostics"]["candidate_scan_limit"] == 200
+    assert full_scan["diagnostics"]["scan_truncated"] is False
 
 
 def test_embedding_candidate_report_deduplicates_candidate_text_hashes() -> None:

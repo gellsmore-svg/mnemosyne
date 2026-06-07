@@ -451,6 +451,11 @@ def render_vector_semantic_candidates_text(report: dict) -> str:
                 f"{diagnostics.get('candidate_scan_limit')} candidate limit"
             ),
             (
+                "scan status: truncated; raise the candidate scan limit or choose a narrower scope"
+                if diagnostics.get("scan_truncated")
+                else "scan status: complete within the candidate scan limit"
+            ),
+            (
                 f"returned: {diagnostics.get('returned_count', 0)} shown from "
                 f"{diagnostics.get('candidate_count_before_limit', 0)} above threshold"
             ),

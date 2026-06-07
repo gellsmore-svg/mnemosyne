@@ -323,6 +323,7 @@ def embedding_candidate_report(
         "include_same_document": include_same_document,
         "min_similarity": threshold,
         "candidate_scan_limit": scan_limit,
+        "scan_truncated": False,
         "scanned_count": 0,
         "returned_count": 0,
         "exclusions": {
@@ -391,7 +392,10 @@ def embedding_candidate_report(
     focus_text_tokens = candidate_text_tokens(focus_text_key)
     seen_candidate_text_hashes: set[str] = set()
     seen_candidate_text_keys: set[str] = set()
-    for candidate in db.nodes.find(filters).limit(diagnostics["candidate_scan_limit"]):
+    for index, candidate in enumerate(db.nodes.find(filters).limit(scan_limit + 1)):
+        if index >= scan_limit:
+            diagnostics["scan_truncated"] = True
+            break
         diagnostics["scanned_count"] += 1
         if "source_root" in (candidate.get("labels") or []):
             diagnostics["exclusions"]["source_root"] += 1

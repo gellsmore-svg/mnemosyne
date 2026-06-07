@@ -622,6 +622,7 @@ def enqueue_semantic_edge_candidates(
                 "source_node_key": source.get("node_key"),
                 "target_node_key": candidate.get("node_key"),
                 "relation_type": relation,
+                "pair_key": semantic_edge_candidate_pair_key(source_id, target_id, relation),
                 "shared_labels": candidate.get("shared_labels") or [],
                 "shared_label_count": candidate.get("shared_label_count") or 0,
                 "source_title": source.get("title"),
@@ -706,6 +707,7 @@ def enqueue_vector_semantic_edge_candidates(
                 "source_node_key": source.get("node_key"),
                 "target_node_key": candidate.get("node_key"),
                 "relation_type": relation,
+                "pair_key": semantic_edge_candidate_pair_key(source_id, target_id, relation),
                 "shared_labels": candidate.get("shared_labels") or [],
                 "shared_label_count": candidate.get("shared_label_count") or 0,
                 "embedding_similarity": candidate.get("embedding_similarity"),
@@ -798,7 +800,7 @@ def enqueue_vector_semantic_edge_candidate_batch(
         "skipped_invalid_count": 0,
     }
     focus_results = []
-    dry_run_pair_keys: set[tuple[str, str, str]] = set()
+    dry_run_pair_keys: set[str] = set()
     for node in focus_nodes:
         if dry_run:
             result = vector_semantic_candidate_batch_dry_run_result(
@@ -870,7 +872,7 @@ def vector_semantic_candidate_batch_dry_run_result(
     relation_type: str,
     min_similarity: float,
     candidate_scan_limit: int | None,
-    batch_pair_keys: set[tuple[str, str, str]] | None = None,
+    batch_pair_keys: set[str] | None = None,
 ) -> dict[str, Any]:
     from mnemosyne.retrieval.queries import embedding_candidate_nodes
     from mnemosyne.retrieval.queries import shared_wording_report
@@ -942,6 +944,9 @@ def semantic_edge_candidate_exists(
     target_id: object,
     relation_type: str,
 ) -> bool:
+    pair_key = semantic_edge_candidate_pair_key(source_id, target_id, relation_type)
+    if db.semantic_edge_candidates.find_one({"pair_key": pair_key}):
+        return True
     if relation_type not in SYMMETRIC_SEMANTIC_RELATION_TYPES:
         return bool(
             db.semantic_edge_candidates.find_one(
@@ -952,12 +957,14 @@ def semantic_edge_candidate_exists(
                 }
             )
         )
-    for row in db.semantic_edge_candidates.find({"relation_type": relation_type}):
+    for row in db.semantic_edge_candidates.find(
+        {"relation_type": relation_type, "pair_key": {"$exists": False}}
+    ):
         if semantic_edge_candidate_pair_key(
             row.get("source_node_id"),
             row.get("target_node_id"),
             relation_type,
-        ) == semantic_edge_candidate_pair_key(source_id, target_id, relation_type):
+        ) == pair_key:
             return True
     return False
 
@@ -966,13 +973,13 @@ def semantic_edge_candidate_pair_key(
     source_id: object,
     target_id: object,
     relation_type: str,
-) -> tuple[str, str, str]:
+) -> str:
     source = str(source_id)
     target = str(target_id)
     if relation_type in SYMMETRIC_SEMANTIC_RELATION_TYPES:
         left, right = sorted((source, target))
-        return (relation_type, left, right)
-    return (relation_type, source, target)
+        return f"{relation_type}|{left}|{right}"
+    return f"{relation_type}|{source}|{target}"
 
 
 def list_semantic_edge_candidates(
