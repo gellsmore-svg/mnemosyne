@@ -880,6 +880,61 @@ def test_cli_semantic_edge_candidates_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_semantic_edge_candidates_text_format(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "semantic-edge-candidates",
+            "--status",
+            "pending",
+            "--limit",
+            "4",
+            "--format",
+            "text",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.list_semantic_edge_candidates",
+        lambda _db, status="pending", limit=20: [
+            {
+                "candidate_id": "candidate1",
+                "relation_type": "related_to",
+                "source_title": "Source",
+                "target_title": "Target",
+                "candidate_source": "embedding_similarity",
+                "embedding_similarity": 0.91,
+                "shared_wording": {
+                    "source_word_overlap": 0.49,
+                    "target_word_overlap": 0.51,
+                },
+                "review_hint": "Review hint: likely conceptual candidate.",
+                "source_text_preview": "Source preview.",
+                "target_text_preview": "Target preview.",
+            }
+        ],
+    )
+
+    main()
+
+    output = capsys.readouterr().out
+    assert "Semantic edge candidates: 1 shown" in output
+    assert "1. related_to | Source -> Target" in output
+    assert "id: candidate1" in output
+    assert "profile similarity 0.91" in output
+    assert "shared wording: source 49%, target 51%" in output
+    assert "Review hint: likely conceptual candidate." in output
+    assert "source text: Source preview." in output
+    assert "target text: Target preview." in output
+
+
 def test_cli_review_semantic_edge_candidate_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

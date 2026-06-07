@@ -322,6 +322,49 @@ def rebuild_document_from_existing_source(
     return inserted
 
 
+def render_semantic_edge_candidates_text(candidates: list[dict]) -> str:
+    if not candidates:
+        return "No semantic edge candidates found."
+    lines = [f"Semantic edge candidates: {len(candidates)} shown"]
+    for index, candidate in enumerate(candidates, start=1):
+        lines.append("")
+        lines.append(
+            f"{index}. {candidate.get('relation_type') or 'relation'} | "
+            f"{candidate.get('source_title') or candidate.get('source_node_id')} -> "
+            f"{candidate.get('target_title') or candidate.get('target_node_id')}"
+        )
+        lines.append(f"   id: {candidate.get('candidate_id')}")
+        evidence = (
+            f"profile similarity {candidate.get('embedding_similarity')}"
+            if candidate.get("candidate_source") == "embedding_similarity"
+            else f"labels {', '.join(candidate.get('shared_labels') or [])}"
+        )
+        lines.append(
+            f"   source: {candidate.get('candidate_source') or 'label_overlap'} | {evidence}"
+        )
+        shared_wording = candidate.get("shared_wording") or {}
+        if shared_wording:
+            lines.append(
+                "   shared wording: "
+                f"source {percent(shared_wording.get('source_word_overlap'))}, "
+                f"target {percent(shared_wording.get('target_word_overlap'))}"
+            )
+        if candidate.get("review_hint"):
+            lines.append(f"   {candidate['review_hint']}")
+        if candidate.get("source_text_preview"):
+            lines.append(f"   source text: {candidate['source_text_preview']}")
+        if candidate.get("target_text_preview"):
+            lines.append(f"   target text: {candidate['target_text_preview']}")
+    return "\n".join(lines)
+
+
+def percent(value: object) -> str:
+    try:
+        return f"{round(float(value) * 100)}%"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="mnemosyne")
     parser.add_argument("--config", default="config.yaml")
@@ -521,6 +564,7 @@ def main() -> None:
     semantic_queue = subcommands.add_parser("semantic-edge-candidates")
     semantic_queue.add_argument("--status", default="pending")
     semantic_queue.add_argument("--limit", type=int, default=20)
+    semantic_queue.add_argument("--format", choices=["json", "text"], default="json")
 
     semantic_candidate_review = subcommands.add_parser("review-semantic-edge-candidate")
     semantic_candidate_review.add_argument("candidate_id")
@@ -1296,19 +1340,23 @@ def main() -> None:
 
     if args.command == "semantic-edge-candidates":
         ensure_indexes(db)
-        print(
-            json.dumps(
-                {
-                    "ok": True,
-                    "candidates": list_semantic_edge_candidates(
-                        db,
-                        status=args.status,
-                        limit=args.limit,
-                    ),
-                },
-                indent=2,
-            )
+        candidates = list_semantic_edge_candidates(
+            db,
+            status=args.status,
+            limit=args.limit,
         )
+        if args.format == "text":
+            print(render_semantic_edge_candidates_text(candidates))
+        else:
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "candidates": candidates,
+                    },
+                    indent=2,
+                )
+            )
         return
 
     if args.command == "review-semantic-edge-candidate":
