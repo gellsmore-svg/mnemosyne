@@ -159,9 +159,11 @@ Run:
 
 Open `http://127.0.0.1:8765/`.
 
-The web UI can create/select sessions, search nodes, focus a node, ask questions with the default `ollama_cli` adapter or the diagnostic `mock` adapter, choose an Ollama model per request, show recent exchanges, show queue status, process `data/ingest/`, and list recent jobs. To call a local LLM from the browser, leave the adapter on default, choose a model such as `gemma3:1b`, optionally focus a node, and press Ask.
+The default Ask workspace is work-first: create/select a session, enter a prompt, choose an Ollama model per request, press Ask, read the response, and inspect the plain activity log. This is intended to work as a normal local LLM wrapper client rather than a developer console.
 
-If no additional Mongo node is retrieved and no focus node is selected, Mnemosyne still sends the submitted prompt context to the selected answer adapter. The answer panel includes a console trace showing ordered step input/output data for prompt intake, planner calls when enabled, tool execution, retrieval/context compilation, and answer adapter execution.
+Use the Developer toggle, or open `http://127.0.0.1:8765/?developer=1`, to reveal Browse/Ingestion tabs, focus-node override, adapter selection, retrieval-mode override, raw prompt/trace output, technical JSON reports, queue/status controls, semantic-edge review, and ingestion operations.
+
+If no additional Mongo node is retrieved and no focus node is selected, Mnemosyne still sends the submitted prompt context to the selected answer adapter. The readable activity log remains visible in work mode. Developer mode adds the raw console trace showing ordered step input/output data for prompt intake, planner calls when enabled, tool execution, retrieval/context compilation, and answer adapter execution.
 
 ## Restart
 

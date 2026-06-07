@@ -46,6 +46,27 @@ body {
   justify-content: flex-end;
 }
 
+.developer-only {
+  display: none !important;
+}
+
+body.developer-mode .developer-only {
+  display: revert !important;
+}
+
+body.developer-mode button.developer-only {
+  display: inline-block !important;
+}
+
+body.developer-mode .controls.developer-only,
+body.developer-mode .trace-panel.developer-only {
+  display: grid !important;
+}
+
+body.developer-mode .technical-report.developer-only {
+  display: block !important;
+}
+
 .tabs {
   display: flex;
   gap: 8px;
@@ -105,6 +126,10 @@ button.secondary {
   background: #475569;
 }
 
+button[aria-pressed="true"] {
+  background: #163a68;
+}
+
 input,
 select,
 textarea {
@@ -137,6 +162,7 @@ textarea {
 
 .controls,
 .session-row,
+.work-settings,
 .row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 140px 140px 140px 90px;
@@ -152,6 +178,16 @@ textarea {
 
 .row {
   grid-template-columns: minmax(0, 1fr) 90px;
+}
+
+.work-settings {
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+}
+
+.work-settings label {
+  color: #334155;
+  font-size: 13px;
 }
 
 .filter-grid {
@@ -479,6 +515,11 @@ body.epaper button.secondary {
   color: #000;
 }
 
+body.epaper button[aria-pressed="true"] {
+  background: #000;
+  color: #fff;
+}
+
 body.epaper input,
 body.epaper select,
 body.epaper textarea,
@@ -507,6 +548,10 @@ body.epaper .tabs {
 
 body.epaper .tab-button {
   min-width: 116px;
+}
+
+body.epaper .work-settings label {
+  color: #000;
 }
 
 body.epaper .answer-grid {

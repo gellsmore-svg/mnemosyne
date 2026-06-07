@@ -117,6 +117,22 @@ def test_health_endpoint() -> None:
     assert response.json()["ok"] is True
 
 
+def test_homepage_defaults_to_work_mode_with_developer_toggle() -> None:
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    html = response.text
+    assert 'id="developerMode"' in html
+    assert 'class="tab-button secondary developer-only" data-tab="browseTab"' in html
+    assert 'class="tab-button secondary developer-only" data-tab="ingestionTab"' in html
+    assert 'class="controls developer-only"' in html
+    assert 'class="technical-report developer-only"' in html
+    assert 'class="answer-panel trace-panel developer-only"' in html
+    assert 'id="model"' in html
+
+
 def test_process_inbox_activity_log_prefers_human_summary() -> None:
     log = process_inbox_activity_log(
         [{"status": "pending"}, {"status": "rejected"}],

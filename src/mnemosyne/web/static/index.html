@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mnemosyne</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260603-backfill-settings" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260607-work-mode" />
   </head>
   <body>
     <main id="appShell" class="shell ask-mode">
@@ -15,6 +15,7 @@
             <p id="health">Connecting...</p>
           </div>
           <div class="topbar-actions">
+            <button id="developerMode" class="secondary" type="button">Developer</button>
             <button id="displayMode" class="secondary" type="button">E-paper</button>
             <button id="refresh" type="button">Refresh</button>
           </div>
@@ -22,8 +23,8 @@
 
         <nav class="tabs" aria-label="Workspace sections">
           <button class="tab-button active" data-tab="askTab">Ask</button>
-          <button class="tab-button secondary" data-tab="browseTab">Browse</button>
-          <button class="tab-button secondary" data-tab="ingestionTab">Ingestion</button>
+          <button class="tab-button secondary developer-only" data-tab="browseTab">Browse</button>
+          <button class="tab-button secondary developer-only" data-tab="ingestionTab">Ingestion</button>
         </nav>
 
         <div id="askTab" class="tab-panel active">
@@ -43,16 +44,19 @@
                 <div class="prompt-submit-row">
                   <button id="ask" type="button">Ask</button>
                 </div>
-                <div class="controls">
+                <div class="work-settings">
+                  <label for="model">Model</label>
+                  <select id="model">
+                    <option value="">default model</option>
+                  </select>
+                </div>
+                <div class="controls developer-only">
                   <input id="nodeId" placeholder="Focus node ID (optional)" />
                   <select id="adapter">
                     <option value="">default</option>
                     <option value="mock">mock</option>
                     <option value="ollama_cli">ollama_cli</option>
                     <option value="ollama_http">ollama_http</option>
-                  </select>
-                  <select id="model">
-                    <option value="">default model</option>
                   </select>
                   <select id="retrievalMode">
                     <option value="">default retrieval</option>
@@ -68,12 +72,12 @@
               <section class="answer-panel activity-panel">
                 <h3>Activity Log</h3>
                 <div id="activityLog" class="activity-log">No activity log yet.</div>
-                <details class="technical-report">
+                <details class="technical-report developer-only">
                   <summary>Technical JSON report</summary>
                   <pre id="activityReport">No activity report yet.</pre>
                 </details>
               </section>
-              <section class="answer-panel trace-panel">
+              <section class="answer-panel trace-panel developer-only">
                 <h3>Prompt / Trace</h3>
                 <div id="runLog" class="console-log">No run yet.</div>
               </section>
@@ -200,6 +204,6 @@
       </aside>
     </main>
 
-    <script src="/static/app.js?v=20260603-backfill-settings"></script>
+    <script src="/static/app.js?v=20260607-work-mode"></script>
   </body>
 </html>

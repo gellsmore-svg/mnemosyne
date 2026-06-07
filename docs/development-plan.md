@@ -16,16 +16,108 @@ The next development phase should build an ingestion-quality spine while preserv
 
 The system should move in this order:
 
-1. Ingestion epoch and non-destructive rebuild foundation.
-2. Chronological source-date extraction.
-3. Human-readable ingestion activity logs.
-4. UI support for ingestion runs, epochs, and log inspection.
-5. Text similarity profile interface and semantic candidate substrate.
-6. LLM-assisted ingestion adapter.
-7. Reviewed semantic relationship promotion.
-8. Ranking, trust, and temporal integration.
+1. Preserve the current working baseline and rename the product/repo/package from Mnemosyne to Tirzah in a dedicated slice.
+2. Keep the Ask UI usable as a normal LLM wrapper client, with developer/debug controls behind a toggle.
+3. Add project-domain and conversation-domain fields so memory has explicit working boundaries.
+4. Add last prompt iteration records so thread continuity is inspectable.
+5. Add process objects and one working answer/retrieval process before expanding process coverage.
+6. Ingestion epoch and non-destructive rebuild foundation.
+7. Chronological source-date extraction.
+8. Human-readable ingestion activity logs.
+9. UI support for ingestion runs, epochs, and log inspection.
+10. Text similarity profile interface and semantic candidate substrate.
+11. LLM-assisted ingestion adapter.
+12. Reviewed semantic relationship promotion.
+13. Ranking, trust, and temporal integration.
 
 Internet-assisted reasoning, live server-pushed streaming, and process enforcement should not be pulled forward until ingestion epochs, semantic candidates, and reviewable provenance are stronger. Those features depend on trust and graph foundations that are not ready yet.
+
+## Immediate Product-Shape Slices
+
+### Slice 0A: Tirzah Rename
+
+Goal:
+
+- Rename the GitHub repository, product labels, package/module references, CLI command, documentation, and config examples from Mnemosyne to Tirzah.
+
+Required behavior:
+
+- Keep temporary compatibility for the old `mnemosyne` CLI command and Python import path.
+- Document Tirzah as the preferred name.
+- Avoid mixing the rename with ingestion/retrieval behavior changes.
+
+### Slice 0B: Work-First Ask UI
+
+Goal:
+
+- Make the Ask workspace usable as a clean LLM wrapper client for real work.
+
+Default work mode:
+
+- session selector;
+- prompt;
+- Ask button;
+- model selector;
+- response;
+- human-readable activity log.
+
+Developer mode:
+
+- Browse and Ingestion tabs;
+- focus-node override;
+- adapter selection;
+- retrieval-mode override;
+- raw prompt/trace panel;
+- technical JSON reports;
+- review/debug controls.
+
+Human transparency remains visible in work mode. Raw diagnostics and operational controls are developer-mode features.
+
+### Slice 0C: Domains And Continuity
+
+Goal:
+
+- Add explicit project-domain and conversation-domain concepts.
+- Save the last prompt iteration record for continuity.
+
+Required fields:
+
+- project domain;
+- conversation domain;
+- retrieved chunks;
+- skipped/rejected chunks;
+- process used;
+- final context package;
+- unresolved follow-up items.
+
+### Slice 0D: Process Objects
+
+Goal:
+
+- Add fixed process definitions that can be invoked by the LLM wrapper, user request, or runtime trigger.
+
+Initial process:
+
+- answer with context construction.
+
+Required behavior:
+
+- Python validates process availability and required steps.
+- The LLM may request or operate process steps through local tools.
+- Activity logs explain process use in plain language.
+
+### Slice 0E: Mahalath Linked Domain
+
+Goal:
+
+- Treat Mahalath as a linked local corpus/domain before considering code integration.
+
+Initial work:
+
+- inspect Mahalath source/ontology structure;
+- ingest representative Mahalath content under a separate project domain;
+- build text similarity profiles;
+- evaluate whether its ontology/process material should enrich Tirzah.
 
 ## Slice 1: Ingestion Epoch Foundation
 

@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const DISPLAY_MODE_KEY = "mnemosyne.displayMode";
+const DEVELOPER_MODE_KEY = "mnemosyne.developerMode";
 let latestEmbeddingBackfillRecommendation = null;
 
 async function api(path, options = {}) {
@@ -272,6 +273,9 @@ function activityPayload(step) {
 }
 
 function switchTab(tabId) {
+  if (!document.body.classList.contains("developer-mode") && tabId !== "askTab") {
+    tabId = "askTab";
+  }
   document.querySelectorAll(".tab-button").forEach((button) => {
     const active = button.dataset.tab === tabId;
     button.classList.toggle("active", active);
@@ -302,6 +306,37 @@ function setDisplayMode(mode) {
 
 function toggleDisplayMode() {
   setDisplayMode(document.body.classList.contains("epaper") ? "standard" : "epaper");
+}
+
+function requestedDeveloperMode() {
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get("developer");
+  if (fromUrl === "1" || fromUrl === "true") return true;
+  if (fromUrl === "0" || fromUrl === "false") return false;
+  return localStorage.getItem(DEVELOPER_MODE_KEY) === "true";
+}
+
+function setDeveloperMode(enabled, loadWorkspace = true) {
+  document.body.classList.toggle("developer-mode", enabled);
+  localStorage.setItem(DEVELOPER_MODE_KEY, enabled ? "true" : "false");
+  $("developerMode").textContent = enabled ? "Work mode" : "Developer";
+  $("developerMode").setAttribute("aria-pressed", enabled ? "true" : "false");
+  if (enabled && loadWorkspace) {
+    loadDeveloperWorkspace().catch((error) => {
+      $("health").textContent = error.message;
+    });
+  }
+  if (!enabled && !$("askTab").classList.contains("active")) {
+    switchTab("askTab");
+  }
+}
+
+function toggleDeveloperMode() {
+  setDeveloperMode(!document.body.classList.contains("developer-mode"));
+}
+
+function isDeveloperMode() {
+  return document.body.classList.contains("developer-mode");
 }
 
 async function loadHealth() {
@@ -1122,10 +1157,19 @@ async function browseIngestFolder() {
 }
 
 async function refresh() {
-  await Promise.all([
+  const loaders = [
     loadHealth(),
     loadRuntime(),
     loadSessions(),
+  ];
+  if (isDeveloperMode()) {
+    loaders.push(loadDeveloperWorkspace());
+  }
+  await Promise.all(loaders);
+}
+
+async function loadDeveloperWorkspace() {
+  await Promise.all([
     loadDocuments(),
     loadHistory(),
     loadQueue(),
@@ -1141,6 +1185,7 @@ $("ask").addEventListener("click", ask);
 $("createSession").addEventListener("click", createSession);
 $("search").addEventListener("click", searchNodes);
 $("refresh").addEventListener("click", refresh);
+$("developerMode").addEventListener("click", toggleDeveloperMode);
 $("displayMode").addEventListener("click", toggleDisplayMode);
 $("uploadSource").addEventListener("click", uploadSourceFiles);
 $("browseIngest").addEventListener("click", browseIngestFolder);
@@ -1193,6 +1238,7 @@ $("query").addEventListener("keydown", (event) => {
 });
 
 setDisplayMode(requestedDisplayMode());
+setDeveloperMode(requestedDeveloperMode(), false);
 
 refresh().catch((error) => {
   $("health").textContent = error.message;

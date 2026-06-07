@@ -2,11 +2,11 @@
 
 Date: 2026-05-29
 
-Status: canonical working product/design document. This document consolidates the current Mnemosyne requirements, implemented design, inferred decisions, and open work into one review entry point. The older detailed documents remain useful supporting records, but this file should be the first place to look when deciding what to build next.
+Status: canonical working product/design document. This document consolidates the current Mnemosyne requirements, implemented design, inferred decisions, and open work into one review entry point. The older detailed documents remain useful supporting records, but this file should be the first place to look when deciding what to build next. The product is expected to be renamed from Mnemosyne to Tirzah because the existing name conflicts with another memory-oriented GitHub project and is harder to use consistently.
 
 ## Product Intent
 
-Mnemosyne is a local-first memory engine for long-running LLM work. It preserves source material, builds document and semantic graph structures, retrieves evidence for questions, records continuity, and explains its own behavior in language a human can inspect.
+Mnemosyne, target name Tirzah, is a local-first memory engine for long-running LLM work. It preserves source material, builds document and semantic graph structures, retrieves evidence for questions, records continuity, and explains its own behavior in language a human can inspect.
 
 Mnemosyne should not become a closed chatbot. It should become a memory backend that can serve:
 
@@ -110,9 +110,125 @@ Operational controls must not compete with question-answering.
 
 The web UI should remain separated into:
 
-- Ask: prompt, answer, activity log, trace.
+- Ask: prompt, answer, activity log, and model selection for normal work.
 - Browse: node search, documents, exchange history.
 - Ingestion: source staging, inbox processing, semantic-edge review, ingest jobs.
+
+### Work Mode And Developer Mode
+
+The UI must work as a clean LLM wrapper client, not only as a developer console.
+
+Default work mode should show only what a user needs for normal work:
+
+- session selection;
+- prompt;
+- Ask button;
+- model choice;
+- response;
+- plain activity log.
+
+Developer mode should be available through a toggle. It may reveal:
+
+- Browse and Ingestion tabs;
+- focus-node override;
+- adapter selection;
+- retrieval-mode override;
+- raw process trace;
+- technical JSON report;
+- review/debug controls.
+
+Human transparency is not developer-only. The readable activity log remains visible in normal work mode. Developer mode is for raw diagnostics and operational controls, not for basic understanding.
+
+### Product Naming
+
+The current repository/package name is Mnemosyne. The target product name is Tirzah.
+
+Rename requirements:
+
+- GitHub repository should be renamed from `mnemosyne` to `tirzah`.
+- Python package, CLI command, UI labels, config names, and documentation should move to Tirzah naming.
+- The old `mnemosyne` CLI command and Python import path may remain as temporary compatibility paths during the transition.
+- Compatibility paths must warn or document that Tirzah is the preferred name.
+- The rename should be done as a dedicated implementation slice, separate from feature work.
+
+### Project And Conversation Domains
+
+Memory should support explicit working boundaries.
+
+A project domain groups source material, conversation domains, processes, reviewed relationships, current assumptions, and continuity records for a project.
+
+Examples:
+
+```text
+project_domain: tirzah
+project_domain: mahalath
+project_domain: rs5_clause_collection
+```
+
+A conversation domain groups memory that belongs to a particular conversation thread or work session. A project domain may contain one or more conversation domains. Conversation-domain memory should not automatically become project-domain memory; promotion should be explicit or governed by a process.
+
+Required fields for future nodes/exchanges:
+
+- project domain;
+- conversation domain;
+- source conversation/session ID where applicable;
+- promotion status: conversation-only, project-candidate, project-accepted, rejected.
+
+### Process Objects
+
+Processes must become first-class product elements.
+
+A process is an invokable fixed or semi-fixed procedure with:
+
+- name;
+- purpose;
+- trigger rules;
+- ordered steps;
+- optional steps;
+- required evidence;
+- allowed tools;
+- stopping conditions;
+- exception rules;
+- human approval points;
+- activity-log output.
+
+The LLM wrapper may use processes in three ways:
+
+- always apply a process for selected prompt types;
+- propose a process when relevance appears likely;
+- follow a process explicitly requested by the user, while explaining if the process appears unsuitable.
+
+Python remains responsible for validating process availability, enforcing required steps, recording exceptions, and preserving the process trace. The LLM may select, request, or execute steps through the local tool interface, but it does not silently bypass process rules.
+
+### Last Prompt Iteration Record
+
+Each prompt cycle should save a continuity record containing:
+
+- submitted prompt;
+- interpreted intent;
+- selected project domain;
+- selected conversation domain;
+- retrieved chunks;
+- rejected chunks;
+- selected process, if any;
+- LLM tool calls;
+- final context package;
+- answer;
+- unresolved follow-up items.
+
+The UI should expose the last used chunks/context records in a simple continuity panel so a user can understand and continue the prior thread.
+
+### Mahalath Integration
+
+Mahalath should first be treated as a linked local corpus/tool source rather than merged into the codebase.
+
+Initial integration requirements:
+
+- import Mahalath source material as a project domain or linked external domain;
+- build text similarity profiles for Mahalath content;
+- expose Mahalath documents/nodes in retrieval and review surfaces;
+- inspect Mahalath ontology material for possible process/domain enrichment;
+- only reuse Mahalath code after the corpus and ontology value is understood.
 
 ## Answer And Retrieval Requirements
 
