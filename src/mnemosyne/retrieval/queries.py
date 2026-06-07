@@ -701,15 +701,12 @@ def expand_proximity(
                 "endorsement_label": adjacent.get("endorsement_label"),
                 "edge": edge_summary(edge),
                 "proximity_score": edge_proximity_score(edge),
+                "_edge_expansion_priority": edge_expansion_priority(edge),
             }
         )
-    candidates.sort(
-        key=lambda item: (
-            item.get("proximity_score") or 0.0,
-            item.get("title") or "",
-        ),
-        reverse=True,
-    )
+    candidates.sort(key=proximity_output_sort_tuple)
+    for candidate in candidates:
+        candidate.pop("_edge_expansion_priority", None)
     return candidates[:limit]
 
 
@@ -802,7 +799,7 @@ def sorted_path_edges(
     return edges[:branch_limit]
 
 
-def edge_path_sort_tuple(edge: dict[str, Any], node_id: str) -> tuple[float, tuple[tuple[int, Any], ...]]:
+def edge_path_sort_tuple(edge: dict[str, Any], node_id: str) -> tuple[int, float, tuple[tuple[int, Any], ...]]:
     adjacent = adjacent_node_for_edge(edge, node_id) or {}
     adjacent_key = (
         adjacent.get("node_key")
@@ -812,7 +809,19 @@ def edge_path_sort_tuple(edge: dict[str, Any], node_id: str) -> tuple[float, tup
         or edge.get("source_node_id")
         or ""
     )
-    return (-edge_proximity_score(edge), natural_sort_key(str(adjacent_key)))
+    return (
+        -edge_expansion_priority(edge),
+        -edge_proximity_score(edge),
+        natural_sort_key(str(adjacent_key)),
+    )
+
+
+def proximity_output_sort_tuple(item: dict[str, Any]) -> tuple[float, float, tuple[tuple[int, Any], ...]]:
+    return (
+        -float(item.get("_edge_expansion_priority") or 0.0),
+        -float(item.get("proximity_score") or 0.0),
+        natural_sort_key(str(item.get("title") or item.get("node_id") or "")),
+    )
 
 
 def frontier_sort_tuple(path: dict[str, Any]) -> tuple[float, tuple[tuple[int, Any], ...]]:
@@ -892,6 +901,15 @@ def edge_summary(edge: dict[str, Any]) -> dict[str, Any]:
 
 def edge_proximity_score(edge: dict[str, Any]) -> float:
     return round(edge_numeric_value(edge.get("weight")) * edge_numeric_value(edge.get("confidence")), 4)
+
+
+def edge_expansion_priority(edge: dict[str, Any]) -> int:
+    provenance = edge.get("provenance") or {}
+    if provenance.get("source") == "semantic_candidate_review":
+        return 3
+    if edge.get("relation_type") == "contains":
+        return 1
+    return 2
 
 
 def edge_numeric_value(value: Any, default: float = 1.0) -> float:

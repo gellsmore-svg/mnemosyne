@@ -1324,6 +1324,69 @@ def test_expand_proximity_scores_adjacent_nodes() -> None:
     assert nodes[0]["edge"]["selection_min_similarity"] == 0.8
 
 
+def test_expand_proximity_prioritizes_reviewed_semantic_edges_over_contains() -> None:
+    document_id = ObjectId()
+    tree_id = ObjectId()
+    focus_id = ObjectId()
+    child_id = ObjectId()
+    related_id = ObjectId()
+    db = FakeDb(
+        [
+            {
+                "_id": focus_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Focus",
+                "text": "Focus text",
+            },
+            {
+                "_id": child_id,
+                "document_id": document_id,
+                "tree_id": tree_id,
+                "title": "Structural Child",
+                "text": "Child text",
+            },
+            {
+                "_id": related_id,
+                "document_id": ObjectId(),
+                "tree_id": ObjectId(),
+                "title": "Reviewed Meaning",
+                "text": "Related text",
+            },
+        ],
+        [
+            {
+                "_id": ObjectId(),
+                "source_node_id": focus_id,
+                "target_node_id": child_id,
+                "relation_type": "contains",
+                "weight": 1.0,
+                "confidence": 1.0,
+                "provenance": {"source": "node_parent_link"},
+            },
+            {
+                "_id": ObjectId(),
+                "source_node_id": focus_id,
+                "target_node_id": related_id,
+                "relation_type": "related_to",
+                "weight": 0.6,
+                "confidence": 0.7,
+                "provenance": {
+                    "source": "semantic_candidate_review",
+                    "reviewer": "tester",
+                },
+            },
+        ],
+    )
+
+    nodes = expand_proximity(db, str(focus_id), limit=1)
+
+    assert [node["title"] for node in nodes] == ["Reviewed Meaning"]
+    assert nodes[0]["proximity_score"] == 0.42
+    assert nodes[0]["edge"]["relation_type"] == "related_to"
+    assert nodes[0]["edge"]["provenance_source"] == "semantic_candidate_review"
+
+
 def test_expand_proximity_returns_empty_for_bad_node_id() -> None:
     assert expand_proximity(FakeDb([]), "bad") == []
 
