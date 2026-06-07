@@ -98,6 +98,27 @@ def test_embedding_adapter_factory_can_create_local_command_adapter() -> None:
     assert adapter.dimensions is None
 
 
+def test_local_command_adapter_accepts_model_returned_profile_dimensions(monkeypatch) -> None:
+    config = RuntimeConfig(
+        embedding_adapter="local_command",
+        embedding_model="local-profile",
+        profile_command=["profile-tool"],
+    )
+    adapter = LocalCommandEmbeddingAdapter(config)
+    monkeypatch.setattr(
+        adapter,
+        "_profile_vector",
+        lambda _text: [1.0] + [0.0] * 383,
+    )
+
+    payload = adapter.embed("Profile dimensionality comes from the local model.")
+
+    assert payload["adapter"] == "local_command_profile"
+    assert payload["dimensions"] == 384
+    assert len(payload["vector"]) == 384
+    assert adapter.dimensions == 384
+
+
 def test_embedding_adapter_factory_rejects_local_command_without_command() -> None:
     config = RuntimeConfig(embedding_adapter="local_command")
 

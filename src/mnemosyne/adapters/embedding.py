@@ -11,7 +11,7 @@ from typing import Any
 from urllib import error, request
 
 DEFAULT_EMBEDDING_DIMENSIONS = 16
-MAX_EMBEDDING_DIMENSIONS = 256
+MAX_MOCK_EMBEDDING_DIMENSIONS = 256
 DEFAULT_OLLAMA_EMBEDDING_MODEL = "nomic-embed-text:latest"
 HTTP_BACKED_EMBEDDING_ADAPTERS = {"ollama_http", "ollama_powershell"}
 
@@ -30,7 +30,7 @@ class MockEmbeddingAdapter:
     model = "mock-deterministic-v1"
 
     def __init__(self, dimensions: int = DEFAULT_EMBEDDING_DIMENSIONS) -> None:
-        self.dimensions = bounded_dimensions(dimensions)
+        self.dimensions = bounded_mock_dimensions(dimensions)
 
     def embed(self, text: str) -> dict[str, Any]:
         normalized = text or ""
@@ -413,12 +413,12 @@ def source_text_hash(text: str) -> str:
     return "sha256:" + hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
 
-def bounded_dimensions(value: Any, default: int = DEFAULT_EMBEDDING_DIMENSIONS) -> int:
+def bounded_mock_dimensions(value: Any, default: int = DEFAULT_EMBEDDING_DIMENSIONS) -> int:
     try:
         parsed = int(value)
     except (TypeError, ValueError):
         parsed = default
-    return max(1, min(parsed, MAX_EMBEDDING_DIMENSIONS))
+    return max(1, min(parsed, MAX_MOCK_EMBEDDING_DIMENSIONS))
 
 
 _DEFAULT_ADAPTER = MockEmbeddingAdapter()
