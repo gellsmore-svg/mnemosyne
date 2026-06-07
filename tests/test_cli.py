@@ -267,6 +267,74 @@ def test_cli_embedding_backfill_jobs_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_backfill_profiles_alias(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "backfill-profiles",
+            "--limit",
+            "7",
+            "--label",
+            "target",
+            "--document-id",
+            "doc1",
+            "--force",
+        ],
+    )
+    config = SimpleNamespace(mongo=SimpleNamespace(), runtime=SimpleNamespace())
+    embedder = SimpleNamespace(name="fake_profile")
+    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("mnemosyne.cli.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr(
+        "mnemosyne.cli.backfill_node_embeddings",
+        lambda _db, used_embedder, **kwargs: {
+            "ok": True,
+            "embedder": used_embedder.name,
+            **kwargs,
+        },
+    )
+
+    main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "embedder": "fake_profile",
+        "limit": 7,
+        "label": "target",
+        "document_id": "doc1",
+        "force": True,
+    }
+
+
+def test_cli_profile_backfill_jobs_alias(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "profile-backfill-jobs", "--status", "pending", "--limit", "3"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.list_embedding_backfill_jobs",
+        lambda _db, status=None, limit=20: [{"status": status, "limit": limit}],
+    )
+
+    main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "jobs": [{"status": "pending", "limit": 3}],
+    }
+
+
 def test_cli_queue_embedding_backfill_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
@@ -330,6 +398,80 @@ def test_cli_process_embedding_backfill_command(monkeypatch, capsys) -> None:
     assert json.loads(capsys.readouterr().out) == {
         "ok": True,
         "embedder": "fake_embedding",
+        "max_batches": 4,
+    }
+
+
+def test_cli_queue_profile_backfill_alias(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "queue-profile-backfill",
+            "--limit",
+            "9",
+            "--label",
+            "target",
+            "--document-id",
+            "doc1",
+            "--force",
+            "--created-by",
+            "tester",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.create_embedding_backfill_job",
+        lambda _db, **kwargs: {"job_id": "job1", **kwargs},
+    )
+
+    main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "job": {
+            "job_id": "job1",
+            "batch_limit": 9,
+            "label": "target",
+            "document_id": "doc1",
+            "force": True,
+            "created_by": "tester",
+        },
+    }
+
+
+def test_cli_process_profile_backfill_alias(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "process-profile-backfill", "--max-batches", "4"],
+    )
+    config = SimpleNamespace(mongo=SimpleNamespace(), runtime=SimpleNamespace())
+    embedder = SimpleNamespace(name="fake_profile")
+    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("mnemosyne.cli.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr(
+        "mnemosyne.cli.process_embedding_backfill_batches",
+        lambda _db, used_embedder, max_batches=1: {
+            "ok": True,
+            "embedder": used_embedder.name,
+            "max_batches": max_batches,
+        },
+    )
+
+    main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "embedder": "fake_profile",
         "max_batches": 4,
     }
 
@@ -975,6 +1117,52 @@ def test_cli_vector_semantic_candidates_text_format(monkeypatch, capsys) -> None
     assert "text: Target preview." in output
 
 
+def test_cli_profile_semantic_candidates_alias(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "profile-semantic-candidates",
+            "node1",
+            "--include-same-document",
+            "--min-similarity",
+            "0.82",
+            "--limit",
+            "3",
+            "--candidate-scan-limit",
+            "500",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.embedding_candidate_report",
+        lambda _db, node_id, **kwargs: {
+            "ok": True,
+            "nodes": [{"node_id": node_id, **kwargs}],
+            "diagnostics": {"returned_count": 1, **kwargs},
+        },
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["nodes"] == [
+        {
+            "node_id": "node1",
+            "include_same_document": True,
+            "min_similarity": 0.82,
+            "limit": 3,
+            "candidate_scan_limit": 500,
+        }
+    ]
+
+
 def test_cli_enqueue_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
@@ -1022,6 +1210,53 @@ def test_cli_enqueue_vector_semantic_candidates_command(monkeypatch, capsys) -> 
     }
 
 
+def test_cli_enqueue_profile_semantic_candidates_alias(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "enqueue-profile-semantic-candidates",
+            "node1",
+            "--include-same-document",
+            "--relation-type",
+            "supports",
+            "--created-by",
+            "cello",
+            "--min-similarity",
+            "0.82",
+            "--limit",
+            "3",
+            "--candidate-scan-limit",
+            "500",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.enqueue_vector_semantic_edge_candidates",
+        lambda _db, **kwargs: {"ok": True, **kwargs},
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "node_id": "node1",
+        "include_same_document": True,
+        "relation_type": "supports",
+        "created_by": "cello",
+        "min_similarity": 0.82,
+        "limit": 3,
+        "candidate_scan_limit": 500,
+    }
+
+
 def test_cli_enqueue_vector_semantic_batch_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
@@ -1029,6 +1264,65 @@ def test_cli_enqueue_vector_semantic_batch_command(monkeypatch, capsys) -> None:
         [
             "mnemosyne",
             "enqueue-vector-semantic-batch",
+            "--label",
+            "ams_domain",
+            "--document-id",
+            "doc1",
+            "--focus-limit",
+            "12",
+            "--candidates-per-node",
+            "2",
+            "--include-same-document",
+            "--relation-type",
+            "supports",
+            "--created-by",
+            "cello",
+            "--min-similarity",
+            "0.82",
+            "--candidate-scan-limit",
+            "500",
+            "--exclude-node-key",
+            "section-1",
+            "--dry-run",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.enqueue_vector_semantic_edge_candidate_batch",
+        lambda _db, **kwargs: {"ok": True, **kwargs},
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "label": "ams_domain",
+        "document_id": "doc1",
+        "focus_limit": 12,
+        "candidates_per_node": 2,
+        "include_same_document": True,
+        "relation_type": "supports",
+        "created_by": "cello",
+        "min_similarity": 0.82,
+        "candidate_scan_limit": 500,
+        "exclude_node_keys": ["section-1"],
+        "dry_run": True,
+    }
+
+
+def test_cli_enqueue_profile_semantic_batch_alias(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "enqueue-profile-semantic-batch",
             "--label",
             "ams_domain",
             "--document-id",

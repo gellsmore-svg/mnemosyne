@@ -547,6 +547,47 @@ def percent(value: object) -> str:
         return "n/a"
 
 
+def add_profile_backfill_arguments(command: argparse.ArgumentParser) -> None:
+    command.add_argument("--limit", type=int, default=100)
+    command.add_argument("--label", default=None)
+    command.add_argument("--document-id", default=None)
+    command.add_argument("--force", action="store_true")
+
+
+def add_profile_candidate_arguments(command: argparse.ArgumentParser) -> None:
+    command.add_argument("node_id")
+    command.add_argument("--include-same-document", action="store_true")
+    command.add_argument("--min-similarity", type=float, default=0.75)
+    command.add_argument("--limit", type=int, default=10)
+    command.add_argument("--candidate-scan-limit", type=int, default=None)
+    command.add_argument("--format", choices=["json", "text"], default="json")
+
+
+def add_enqueue_profile_candidate_arguments(command: argparse.ArgumentParser) -> None:
+    command.add_argument("node_id")
+    command.add_argument("--include-same-document", action="store_true")
+    command.add_argument("--relation-type", default="related_to")
+    command.add_argument("--created-by", default="user")
+    command.add_argument("--min-similarity", type=float, default=0.75)
+    command.add_argument("--limit", type=int, default=10)
+    command.add_argument("--candidate-scan-limit", type=int, default=None)
+
+
+def add_enqueue_profile_batch_arguments(command: argparse.ArgumentParser) -> None:
+    command.add_argument("--label", default=None)
+    command.add_argument("--document-id", default=None)
+    command.add_argument("--focus-limit", type=int, default=25)
+    command.add_argument("--candidates-per-node", type=int, default=2)
+    command.add_argument("--include-same-document", action="store_true")
+    command.add_argument("--relation-type", default="related_to")
+    command.add_argument("--created-by", default="user")
+    command.add_argument("--min-similarity", type=float, default=0.75)
+    command.add_argument("--candidate-scan-limit", type=int, default=None)
+    command.add_argument("--exclude-node-key", action="append", default=[])
+    command.add_argument("--dry-run", action="store_true")
+    command.add_argument("--format", choices=["json", "text"], default="json")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="mnemosyne")
     parser.add_argument("--config", default="config.yaml")
@@ -561,21 +602,31 @@ def main() -> None:
     structural_edges = subcommands.add_parser("backfill-structural-graph-edges")
     structural_edges.add_argument("--limit", type=int, default=None)
     embedding_backfill = subcommands.add_parser("backfill-embeddings")
-    embedding_backfill.add_argument("--limit", type=int, default=100)
-    embedding_backfill.add_argument("--label", default=None)
-    embedding_backfill.add_argument("--document-id", default=None)
-    embedding_backfill.add_argument("--force", action="store_true")
+    add_profile_backfill_arguments(embedding_backfill)
+    profile_backfill = subcommands.add_parser("backfill-profiles")
+    add_profile_backfill_arguments(profile_backfill)
     embedding_jobs = subcommands.add_parser("embedding-backfill-jobs")
     embedding_jobs.add_argument("--status", default=None)
     embedding_jobs.add_argument("--limit", type=int, default=20)
+    profile_jobs = subcommands.add_parser("profile-backfill-jobs")
+    profile_jobs.add_argument("--status", default=None)
+    profile_jobs.add_argument("--limit", type=int, default=20)
     queue_embedding_job = subcommands.add_parser("queue-embedding-backfill")
     queue_embedding_job.add_argument("--limit", type=int, default=100)
     queue_embedding_job.add_argument("--label", default=None)
     queue_embedding_job.add_argument("--document-id", default=None)
     queue_embedding_job.add_argument("--force", action="store_true")
     queue_embedding_job.add_argument("--created-by", default="cli")
+    queue_profile_job = subcommands.add_parser("queue-profile-backfill")
+    queue_profile_job.add_argument("--limit", type=int, default=100)
+    queue_profile_job.add_argument("--label", default=None)
+    queue_profile_job.add_argument("--document-id", default=None)
+    queue_profile_job.add_argument("--force", action="store_true")
+    queue_profile_job.add_argument("--created-by", default="cli")
     process_embedding_job = subcommands.add_parser("process-embedding-backfill")
     process_embedding_job.add_argument("--max-batches", type=int, default=1)
+    process_profile_job = subcommands.add_parser("process-profile-backfill")
+    process_profile_job.add_argument("--max-batches", type=int, default=1)
     subcommands.add_parser("enqueue-inbox")
     subcommands.add_parser("process-next")
     subcommands.add_parser("process-inbox")
@@ -709,12 +760,9 @@ def main() -> None:
     semantic_candidates.add_argument("--limit", type=int, default=10)
 
     vector_candidates = subcommands.add_parser("vector-semantic-candidates")
-    vector_candidates.add_argument("node_id")
-    vector_candidates.add_argument("--include-same-document", action="store_true")
-    vector_candidates.add_argument("--min-similarity", type=float, default=0.75)
-    vector_candidates.add_argument("--limit", type=int, default=10)
-    vector_candidates.add_argument("--candidate-scan-limit", type=int, default=None)
-    vector_candidates.add_argument("--format", choices=["json", "text"], default="json")
+    add_profile_candidate_arguments(vector_candidates)
+    profile_candidates = subcommands.add_parser("profile-semantic-candidates")
+    add_profile_candidate_arguments(profile_candidates)
 
     enqueue_semantic = subcommands.add_parser("enqueue-semantic-candidates")
     enqueue_semantic.add_argument("node_id")
@@ -724,29 +772,18 @@ def main() -> None:
     enqueue_semantic.add_argument("--limit", type=int, default=10)
 
     enqueue_vector_semantic = subcommands.add_parser("enqueue-vector-semantic-candidates")
-    enqueue_vector_semantic.add_argument("node_id")
-    enqueue_vector_semantic.add_argument("--include-same-document", action="store_true")
-    enqueue_vector_semantic.add_argument("--relation-type", default="related_to")
-    enqueue_vector_semantic.add_argument("--created-by", default="user")
-    enqueue_vector_semantic.add_argument("--min-similarity", type=float, default=0.75)
-    enqueue_vector_semantic.add_argument("--limit", type=int, default=10)
-    enqueue_vector_semantic.add_argument("--candidate-scan-limit", type=int, default=None)
+    add_enqueue_profile_candidate_arguments(enqueue_vector_semantic)
+    enqueue_profile_semantic = subcommands.add_parser("enqueue-profile-semantic-candidates")
+    add_enqueue_profile_candidate_arguments(enqueue_profile_semantic)
 
     enqueue_vector_semantic_batch = subcommands.add_parser(
         "enqueue-vector-semantic-batch"
     )
-    enqueue_vector_semantic_batch.add_argument("--label", default=None)
-    enqueue_vector_semantic_batch.add_argument("--document-id", default=None)
-    enqueue_vector_semantic_batch.add_argument("--focus-limit", type=int, default=25)
-    enqueue_vector_semantic_batch.add_argument("--candidates-per-node", type=int, default=2)
-    enqueue_vector_semantic_batch.add_argument("--include-same-document", action="store_true")
-    enqueue_vector_semantic_batch.add_argument("--relation-type", default="related_to")
-    enqueue_vector_semantic_batch.add_argument("--created-by", default="user")
-    enqueue_vector_semantic_batch.add_argument("--min-similarity", type=float, default=0.75)
-    enqueue_vector_semantic_batch.add_argument("--candidate-scan-limit", type=int, default=None)
-    enqueue_vector_semantic_batch.add_argument("--exclude-node-key", action="append", default=[])
-    enqueue_vector_semantic_batch.add_argument("--dry-run", action="store_true")
-    enqueue_vector_semantic_batch.add_argument("--format", choices=["json", "text"], default="json")
+    add_enqueue_profile_batch_arguments(enqueue_vector_semantic_batch)
+    enqueue_profile_semantic_batch = subcommands.add_parser(
+        "enqueue-profile-semantic-batch"
+    )
+    add_enqueue_profile_batch_arguments(enqueue_profile_semantic_batch)
 
     semantic_queue = subcommands.add_parser("semantic-edge-candidates")
     semantic_queue.add_argument("--status", default="pending")
@@ -970,7 +1007,7 @@ def main() -> None:
         )
         return
 
-    if args.command == "backfill-embeddings":
+    if args.command in {"backfill-embeddings", "backfill-profiles"}:
         ensure_indexes(db)
         print(
             json.dumps(
@@ -987,7 +1024,7 @@ def main() -> None:
         )
         return
 
-    if args.command == "embedding-backfill-jobs":
+    if args.command in {"embedding-backfill-jobs", "profile-backfill-jobs"}:
         ensure_indexes(db)
         print(
             json.dumps(
@@ -1004,7 +1041,7 @@ def main() -> None:
         )
         return
 
-    if args.command == "queue-embedding-backfill":
+    if args.command in {"queue-embedding-backfill", "queue-profile-backfill"}:
         ensure_indexes(db)
         print(
             json.dumps(
@@ -1024,7 +1061,7 @@ def main() -> None:
         )
         return
 
-    if args.command == "process-embedding-backfill":
+    if args.command in {"process-embedding-backfill", "process-profile-backfill"}:
         ensure_indexes(db)
         print(
             json.dumps(
@@ -1461,7 +1498,7 @@ def main() -> None:
         )
         return
 
-    if args.command == "vector-semantic-candidates":
+    if args.command in {"vector-semantic-candidates", "profile-semantic-candidates"}:
         ensure_indexes(db)
         report = embedding_candidate_report(
             db,
@@ -1494,7 +1531,10 @@ def main() -> None:
         )
         return
 
-    if args.command == "enqueue-vector-semantic-candidates":
+    if args.command in {
+        "enqueue-vector-semantic-candidates",
+        "enqueue-profile-semantic-candidates",
+    }:
         ensure_indexes(db)
         print(
             json.dumps(
@@ -1513,7 +1553,10 @@ def main() -> None:
         )
         return
 
-    if args.command == "enqueue-vector-semantic-batch":
+    if args.command in {
+        "enqueue-vector-semantic-batch",
+        "enqueue-profile-semantic-batch",
+    }:
         ensure_indexes(db)
         result = enqueue_vector_semantic_edge_candidate_batch(
             db,
