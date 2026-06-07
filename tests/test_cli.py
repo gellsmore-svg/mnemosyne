@@ -748,6 +748,80 @@ def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_vector_semantic_candidates_text_format(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "vector-semantic-candidates",
+            "node1",
+            "--min-similarity",
+            "0.82",
+            "--limit",
+            "3",
+            "--candidate-scan-limit",
+            "500",
+            "--format",
+            "text",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.embedding_candidate_report",
+        lambda _db, node_id, **_kwargs: {
+            "ok": True,
+            "nodes": [
+                {
+                    "node_id": "target1",
+                    "title": "Target",
+                    "embedding_similarity": 0.91,
+                    "embedding_rank_score": 0.9,
+                    "text_preview": "Target preview.",
+                    "provenance": {"source_path": "/tmp/source.md"},
+                }
+            ],
+            "diagnostics": {
+                "focus": {
+                    "node_id": node_id,
+                    "title": "Focus",
+                    "model": "profile-model",
+                },
+                "min_similarity": 0.82,
+                "scanned_count": 20,
+                "candidate_scan_limit": 500,
+                "returned_count": 1,
+                "candidate_count_before_limit": 1,
+                "exclusions": {
+                    "duplicate_text": 2,
+                    "below_threshold": 17,
+                    "invalid_embedding": 0,
+                    "incompatible_embedding": 0,
+                },
+            },
+        },
+    )
+
+    main()
+
+    output = capsys.readouterr().out
+    assert "Profile candidate preview: ready" in output
+    assert "focus: Focus | profile-model" in output
+    assert "threshold: 0.82" in output
+    assert "scan: 20 scanned of 500 candidate limit" in output
+    assert "returned: 1 shown from 1 above threshold" in output
+    assert "excluded: 2 duplicate text, 17 below threshold" in output
+    assert "1. Target | profile similarity 0.91" in output
+    assert "rank score: 0.9" in output
+    assert "source: /tmp/source.md" in output
+    assert "text: Target preview." in output
+
+
 def test_cli_enqueue_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

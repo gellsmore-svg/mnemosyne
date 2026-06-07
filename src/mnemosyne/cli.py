@@ -358,6 +358,57 @@ def render_semantic_edge_candidates_text(candidates: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def render_vector_semantic_candidates_text(report: dict) -> str:
+    diagnostics = report.get("diagnostics") or {}
+    focus = diagnostics.get("focus") or {}
+    exclusions = diagnostics.get("exclusions") or {}
+    lines = [
+        f"Profile candidate preview: {'ready' if report.get('ok') else 'needs attention'}",
+    ]
+    if report.get("reason"):
+        lines.append(f"reason: {report['reason']}")
+    if focus:
+        lines.append(
+            f"focus: {focus.get('title') or focus.get('node_id')} | "
+            f"{focus.get('model') or 'unknown model'}"
+        )
+    lines.extend(
+        [
+            f"threshold: {diagnostics.get('min_similarity')}",
+            (
+                f"scan: {diagnostics.get('scanned_count', 0)} scanned of "
+                f"{diagnostics.get('candidate_scan_limit')} candidate limit"
+            ),
+            (
+                f"returned: {diagnostics.get('returned_count', 0)} shown from "
+                f"{diagnostics.get('candidate_count_before_limit', 0)} above threshold"
+            ),
+            (
+                "excluded: "
+                f"{exclusions.get('duplicate_text', 0)} duplicate text, "
+                f"{exclusions.get('below_threshold', 0)} below threshold, "
+                f"{exclusions.get('invalid_embedding', 0)} invalid profile, "
+                f"{exclusions.get('incompatible_embedding', 0)} incompatible profile"
+            ),
+        ]
+    )
+    nodes = report.get("nodes") or []
+    for index, node in enumerate(nodes, start=1):
+        lines.append("")
+        lines.append(
+            f"{index}. {node.get('title') or node.get('node_id')} | "
+            f"profile similarity {node.get('embedding_similarity')}"
+        )
+        if node.get("embedding_rank_score") is not None:
+            lines.append(f"   rank score: {node.get('embedding_rank_score')}")
+        provenance = node.get("provenance") if isinstance(node.get("provenance"), dict) else {}
+        if provenance.get("source_path"):
+            lines.append(f"   source: {provenance['source_path']}")
+        if node.get("text_preview"):
+            lines.append(f"   text: {node['text_preview']}")
+    return "\n".join(lines)
+
+
 def render_vector_semantic_batch_text(result: dict) -> str:
     scope = result.get("scope") or {}
     lines = [
@@ -584,6 +635,7 @@ def main() -> None:
     vector_candidates.add_argument("--min-similarity", type=float, default=0.75)
     vector_candidates.add_argument("--limit", type=int, default=10)
     vector_candidates.add_argument("--candidate-scan-limit", type=int, default=None)
+    vector_candidates.add_argument("--format", choices=["json", "text"], default="json")
 
     enqueue_semantic = subcommands.add_parser("enqueue-semantic-candidates")
     enqueue_semantic.add_argument("node_id")
@@ -1320,19 +1372,18 @@ def main() -> None:
 
     if args.command == "vector-semantic-candidates":
         ensure_indexes(db)
-        print(
-            json.dumps(
-                embedding_candidate_report(
-                    db,
-                    args.node_id,
-                    include_same_document=args.include_same_document,
-                    min_similarity=args.min_similarity,
-                    limit=args.limit,
-                    candidate_scan_limit=args.candidate_scan_limit,
-                ),
-                indent=2,
-            )
+        report = embedding_candidate_report(
+            db,
+            args.node_id,
+            include_same_document=args.include_same_document,
+            min_similarity=args.min_similarity,
+            limit=args.limit,
+            candidate_scan_limit=args.candidate_scan_limit,
         )
+        if args.format == "text":
+            print(render_vector_semantic_candidates_text(report))
+        else:
+            print(json.dumps(report, indent=2))
         return
 
     if args.command == "enqueue-semantic-candidates":
