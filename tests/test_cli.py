@@ -392,6 +392,59 @@ def test_cli_expand_proximity_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_expand_proximity_text_format(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "expand-proximity",
+            "node1",
+            "--limit",
+            "2",
+            "--format",
+            "text",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.expand_proximity",
+        lambda _db, node_id, direction="both", relation_type=None, limit=10: [
+            {
+                "node_id": "related1",
+                "title": "Related Concept",
+                "text_preview": "Related concept preview.",
+                "proximity_score": 0.72,
+                "edge": {
+                    "edge_id": "edge1",
+                    "relation_type": "related_to",
+                    "provenance_source": "semantic_candidate_review",
+                    "reviewer": "tester",
+                    "candidate_source": "embedding_similarity",
+                    "embedding_similarity": 0.91,
+                    "selection_min_similarity": 0.8,
+                    "embedding_model": "local-profile",
+                },
+            }
+        ],
+    )
+
+    main()
+
+    output = capsys.readouterr().out
+    assert "Proximity expansion: 1 match(es) shown" in output
+    assert "Related Concept | related_to | score 0.72" in output
+    assert "edge: edge1 | semantic_candidate_review" in output
+    assert "reviewed by: tester" in output
+    assert "profile evidence: similarity 0.91 | threshold 0.8 | model local-profile" in output
+    assert "text: Related concept preview." in output
+
+
 def test_cli_expand_graph_paths_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

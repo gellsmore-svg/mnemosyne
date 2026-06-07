@@ -358,6 +358,36 @@ def render_semantic_edge_candidates_text(candidates: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def render_proximity_text(nodes: list[dict]) -> str:
+    if not nodes:
+        return "No proximity matches found."
+    lines = [f"Proximity expansion: {len(nodes)} match(es) shown"]
+    for index, node in enumerate(nodes, start=1):
+        edge = node.get("edge") or {}
+        lines.append("")
+        lines.append(
+            f"{index}. {node.get('title') or node.get('node_id')} | "
+            f"{edge.get('relation_type') or 'relation'} | score {node.get('proximity_score')}"
+        )
+        lines.append(f"   node: {node.get('node_id')}")
+        lines.append(
+            f"   edge: {edge.get('edge_id')} | "
+            f"{edge.get('provenance_source') or 'unknown source'}"
+        )
+        if edge.get("reviewer"):
+            lines.append(f"   reviewed by: {edge.get('reviewer')}")
+        if edge.get("candidate_source") == "embedding_similarity":
+            lines.append(
+                "   profile evidence: "
+                f"similarity {edge.get('embedding_similarity')} | "
+                f"threshold {edge.get('selection_min_similarity')} | "
+                f"model {edge.get('embedding_model')}"
+            )
+        if node.get("text_preview"):
+            lines.append(f"   text: {node['text_preview']}")
+    return "\n".join(lines)
+
+
 def render_vector_semantic_candidates_text(report: dict) -> str:
     diagnostics = report.get("diagnostics") or {}
     focus = diagnostics.get("focus") or {}
@@ -615,6 +645,7 @@ def main() -> None:
     proximity.add_argument("--direction", choices=["incoming", "outgoing", "both"], default="both")
     proximity.add_argument("--relation-type", default=None)
     proximity.add_argument("--limit", type=int, default=10)
+    proximity.add_argument("--format", choices=["json", "text"], default="json")
 
     graph_paths = subcommands.add_parser("expand-graph-paths")
     graph_paths.add_argument("node_id")
@@ -1314,17 +1345,21 @@ def main() -> None:
 
     if args.command == "expand-proximity":
         ensure_indexes(db)
+        nodes = expand_proximity(
+            db,
+            args.node_id,
+            direction=args.direction,
+            relation_type=args.relation_type,
+            limit=args.limit,
+        )
+        if args.format == "text":
+            print(render_proximity_text(nodes))
+            return
         print(
             json.dumps(
                 {
                     "ok": True,
-                    "nodes": expand_proximity(
-                        db,
-                        args.node_id,
-                        direction=args.direction,
-                        relation_type=args.relation_type,
-                        limit=args.limit,
-                    ),
+                    "nodes": nodes,
                 },
                 indent=2,
             )
