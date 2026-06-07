@@ -6,8 +6,8 @@ from typing import Any
 from bson import ObjectId
 from pymongo.database import Database
 
-from mnemosyne.adapters.embedding import default_embedding_adapter
-from mnemosyne.models.ingestion import (
+from tirzah.adapters.embedding import default_embedding_adapter
+from tirzah.models.ingestion import (
     DEFAULT_ENDORSEMENT_LABEL,
     SCHEMA_VERSION,
     DocumentRecord,
@@ -591,7 +591,7 @@ def enqueue_semantic_edge_candidates(
     if not relation:
         return {"ok": False, "reason": "invalid_relation_type", "relation_type": relation_type}
 
-    from mnemosyne.retrieval.queries import semantic_candidate_nodes
+    from tirzah.retrieval.queries import semantic_candidate_nodes
 
     candidates = semantic_candidate_nodes(
         db,
@@ -673,7 +673,7 @@ def enqueue_vector_semantic_edge_candidates(
         threshold = 0.75
     threshold = max(-1.0, min(threshold, 1.0))
 
-    from mnemosyne.retrieval.queries import embedding_candidate_nodes
+    from tirzah.retrieval.queries import embedding_candidate_nodes
 
     candidates = embedding_candidate_nodes(
         db,
@@ -874,8 +874,8 @@ def vector_semantic_candidate_batch_dry_run_result(
     candidate_scan_limit: int | None,
     batch_pair_keys: set[str] | None = None,
 ) -> dict[str, Any]:
-    from mnemosyne.retrieval.queries import embedding_candidate_nodes
-    from mnemosyne.retrieval.queries import shared_wording_report
+    from tirzah.retrieval.queries import embedding_candidate_nodes
+    from tirzah.retrieval.queries import shared_wording_report
 
     source_id = node.get("_id")
     source_text = str(node.get("text") or "")
@@ -1146,7 +1146,7 @@ def serialize_enriched_semantic_edge_candidate(db: Database, row: dict[str, Any]
 
 
 def enrich_semantic_edge_candidate_nodes(db: Database, row: dict[str, Any]) -> dict[str, Any]:
-    from mnemosyne.retrieval.queries import shared_wording_report
+    from tirzah.retrieval.queries import shared_wording_report
 
     enriched = dict(row)
     source = db.nodes.find_one({"_id": row.get("source_node_id")}) if row.get("source_node_id") else None

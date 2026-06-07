@@ -1,6 +1,6 @@
-# Mnemosyne
+# Tirzah
 
-Mnemosyne is a locally operated, graph-based memory and retrieval layer for LLM interactions. It is intended to provide structured, navigable, provenance-aware context instead of brute-force document loading.
+Tirzah is a locally operated, graph-based memory and retrieval layer for LLM interactions. It is intended to provide structured, navigable, provenance-aware context instead of brute-force document loading.
 
 Repository description:
 
@@ -11,7 +11,7 @@ Suggested GitHub topics: `llm`, `memory`, `retrieval`, `knowledge-graph`, `mongo
 ## Source Documents
 
 - `LLM_Memory_Architecture_Requirements_v0.3.md`
-- `Mnemosyne_Technical_Design_v0.1.md`
+- `Mnemosyne_Technical_Design_v0.1.md` historical source document
 
 ## Project Knowledge Repo
 
@@ -24,55 +24,58 @@ Suggested GitHub topics: `llm`, `memory`, `retrieval`, `knowledge-graph`, `mongo
 - `docs/repo-plan.md`
 - `docs/agentic-retrieval-process.md`
 - `docs/requirements-design-addendum.md`
+- `docs/code-module-boundaries.md`
 
 ## Current Status
 
 The domain is in early scaffold mode. The imported requirements and design documents have been reviewed into a compact repo of project information. MongoDB 8.0.23 is installed locally in WSL and verified running. The first CLI commands are available:
 
 ```bash
-.venv/bin/mnemosyne db-ping
-.venv/bin/mnemosyne ingest-one LLM_Memory_Architecture_Requirements_v0.3.md
-.venv/bin/mnemosyne ingest-one data/ingest/source.txt --label external_corpus --label memory_reference
-.venv/bin/mnemosyne ingest-folder /home/cello/domains/AMS --label ams_domain --label imported_domain --label research_corpus
-.venv/bin/mnemosyne backfill-source-metadata
-.venv/bin/mnemosyne enqueue-inbox
-.venv/bin/mnemosyne process-next
-.venv/bin/mnemosyne process-inbox
-.venv/bin/mnemosyne queue-status
-.venv/bin/mnemosyne queue-recent --limit 5
-.venv/bin/mnemosyne labels
-.venv/bin/mnemosyne sessions
-.venv/bin/mnemosyne active-documents --session-id default
-.venv/bin/mnemosyne create-session --title "Design review"
-.venv/bin/mnemosyne backfill-schema-metadata
-.venv/bin/mnemosyne show-tree <document_id>
-.venv/bin/mnemosyne list-docs --limit 5
-.venv/bin/mnemosyne show-doc <document_id>
-.venv/bin/mnemosyne rebuild-document <document_id> --force-replace
-.venv/bin/mnemosyne rebuild-by-label --label ams_domain --force-replace
-.venv/bin/mnemosyne search-nodes --query hierarchy --label source_chunk
-.venv/bin/mnemosyne search-nodes --document-id <document_id> --created-after 2026-05-17T14:50:00
-.venv/bin/mnemosyne node-context <node_id>
-.venv/bin/mnemosyne compile-context <node_id> --ancestor-depth 2 --sibling-window 1 --child-depth 1
-.venv/bin/mnemosyne render-context <node_id> --char-budget 4000
-.venv/bin/mnemosyne render-context <node_id> --char-budget 900 --json
-.venv/bin/mnemosyne build-prompt <node_id> --query "What should I know?" --token-budget 2000
-.venv/bin/mnemosyne build-prompt <node_id> --query "What should I know?" --text
-.venv/bin/mnemosyne ask "What should I know?" --node-id <node_id>
-.venv/bin/mnemosyne ask "What should I know?" --node-id <node_id> --adapter ollama_cli
-.venv/bin/mnemosyne ask "What should I know?" --node-id <node_id> --adapter ollama_cli --model gemma3:1b
-.venv/bin/mnemosyne ask "What should I know?" --retrieval-mode agentic --model gemma3:1b
-.venv/bin/mnemosyne chat --node-id <node_id>
-.venv/bin/mnemosyne chat --node-id <node_id> --adapter ollama_cli
-.venv/bin/mnemosyne chat --node-id <node_id> --adapter ollama_cli --model gemma3:1b
-.venv/bin/mnemosyne history --limit 5
+.venv/bin/tirzah db-ping
+.venv/bin/tirzah ingest-one LLM_Memory_Architecture_Requirements_v0.3.md
+.venv/bin/tirzah ingest-one data/ingest/source.txt --label external_corpus --label memory_reference
+.venv/bin/tirzah ingest-folder /home/cello/domains/AMS --label ams_domain --label imported_domain --label research_corpus
+.venv/bin/tirzah backfill-source-metadata
+.venv/bin/tirzah enqueue-inbox
+.venv/bin/tirzah process-next
+.venv/bin/tirzah process-inbox
+.venv/bin/tirzah queue-status
+.venv/bin/tirzah queue-recent --limit 5
+.venv/bin/tirzah labels
+.venv/bin/tirzah sessions
+.venv/bin/tirzah active-documents --session-id default
+.venv/bin/tirzah create-session --title "Design review"
+.venv/bin/tirzah backfill-schema-metadata
+.venv/bin/tirzah show-tree <document_id>
+.venv/bin/tirzah list-docs --limit 5
+.venv/bin/tirzah show-doc <document_id>
+.venv/bin/tirzah rebuild-document <document_id> --force-replace
+.venv/bin/tirzah rebuild-by-label --label ams_domain --force-replace
+.venv/bin/tirzah search-nodes --query hierarchy --label source_chunk
+.venv/bin/tirzah search-nodes --document-id <document_id> --created-after 2026-05-17T14:50:00
+.venv/bin/tirzah node-context <node_id>
+.venv/bin/tirzah compile-context <node_id> --ancestor-depth 2 --sibling-window 1 --child-depth 1
+.venv/bin/tirzah render-context <node_id> --char-budget 4000
+.venv/bin/tirzah render-context <node_id> --char-budget 900 --json
+.venv/bin/tirzah build-prompt <node_id> --query "What should I know?" --token-budget 2000
+.venv/bin/tirzah build-prompt <node_id> --query "What should I know?" --text
+.venv/bin/tirzah ask "What should I know?" --node-id <node_id>
+.venv/bin/tirzah ask "What should I know?" --node-id <node_id> --adapter ollama_cli
+.venv/bin/tirzah ask "What should I know?" --node-id <node_id> --adapter ollama_cli --model gemma3:1b
+.venv/bin/tirzah ask "What should I know?" --retrieval-mode agentic --model gemma3:1b
+.venv/bin/tirzah chat --node-id <node_id>
+.venv/bin/tirzah chat --node-id <node_id> --adapter ollama_cli
+.venv/bin/tirzah chat --node-id <node_id> --adapter ollama_cli --model gemma3:1b
+.venv/bin/tirzah history --limit 5
 ```
+
+The preferred CLI is now `tirzah`. The old `mnemosyne` command remains as a compatibility entry point during the rename transition.
 
 ## Current Findings
 
 Stage 1 now has enough working data to test retrieval behavior against both project memory and a larger imported corpus.
 
-Agentic mode is useful because it lets the first model call decide which Mnemosyne retrieval tools to use before the answer call. The current weak point is still planner/search discipline: the planner can choose broad or lossy search text, so Mnemosyne now preserves the initiating prompt as ranking context, expands fallback candidate pools, and demotes generic document root matches. A later stricter JSON planner mode would reduce malformed planner output and make tool calls easier to validate.
+Agentic mode is useful because it lets the first model call decide which Tirzah retrieval tools to use before the answer call. The current weak point is still planner/search discipline: the planner can choose broad or lossy search text, so Tirzah now preserves the initiating prompt as ranking context, expands fallback candidate pools, and demotes generic document root matches. A later stricter JSON planner mode would reduce malformed planner output and make tool calls easier to validate.
 
 A public-domain Project Gutenberg memory corpus has been imported as working data: `Memory: How to Develop, Train, and Use It` by William Walker Atkinson. It is labeled `external_corpus`, `public_domain`, and `memory_reference`. Source text is preserved as ingested, including Project Gutenberg front/back matter. It currently contains 357 nodes.
 
@@ -123,19 +126,19 @@ Text similarity profiles default to the deterministic `mock` adapter in committe
 Set `runtime.embedding_adapter: local_command`, `runtime.embedding_model: BAAI/bge-small-en-v1.5`, `runtime.embedding_dimensions: 384`, `runtime.profile_command: [.venv/bin/python, tools/profile_helper.py, --worker]`, and `runtime.profile_command_mode: worker`. In worker mode, the helper reads one `{"model": "...", "text": "..."}` request per stdin line and returns one `{"vector": [...]}` response per stdout line, keeping the model loaded across a batch. HTTP-backed profile adapters are retained only for temporary diagnostics and are blocked by default for ingestion and retrieval memory operations. Verify the selected adapter before ingestion:
 
 ```bash
-.venv/bin/mnemosyne embedding-smoke "Taj Mahal test"
-.venv/bin/mnemosyne embedding-smoke "Taj Mahal test" --adapter local_command --model BAAI/bge-small-en-v1.5
+.venv/bin/tirzah embedding-smoke "Taj Mahal test"
+.venv/bin/tirzah embedding-smoke "Taj Mahal test" --adapter local_command --model BAAI/bge-small-en-v1.5
 ```
 
 Existing active nodes can be given text similarity profiles in bounded batches without rebuilding documents:
 
 ```bash
-.venv/bin/mnemosyne backfill-profiles --limit 100
-.venv/bin/mnemosyne backfill-profiles --label ams_domain --limit 100
-.venv/bin/mnemosyne backfill-profiles --document-id <document_id> --force --limit 20
-.venv/bin/mnemosyne queue-profile-backfill --label ams_domain --limit 100
-.venv/bin/mnemosyne process-profile-backfill --max-batches 5
-.venv/bin/mnemosyne profile-backfill-jobs --status pending
+.venv/bin/tirzah backfill-profiles --limit 100
+.venv/bin/tirzah backfill-profiles --label ams_domain --limit 100
+.venv/bin/tirzah backfill-profiles --document-id <document_id> --force --limit 20
+.venv/bin/tirzah queue-profile-backfill --label ams_domain --limit 100
+.venv/bin/tirzah process-profile-backfill --max-batches 5
+.venv/bin/tirzah profile-backfill-jobs --status pending
 ```
 
 `backfill-profiles` performs one immediate bounded batch. `queue-profile-backfill` creates a persistent resumable job, and `process-profile-backfill --max-batches <n>` advances the next queued job by up to `n` bounded batches while preserving cursor state, activity logs, and blocked/completed status. The older `embedding` command names remain available as compatibility aliases. The web UI exposes the same job-batch control with a smaller synchronous-request cap.
@@ -143,18 +146,18 @@ Existing active nodes can be given text similarity profiles in bounded batches w
 Profile candidate previews are bounded by a separate scan cap. The default scan cap is quality-first at 1000 candidates, and the CLI/API/UI can override it up to 10000 when a wider diagnostic pass is needed:
 
 ```bash
-.venv/bin/mnemosyne profile-semantic-candidates <node_id> --candidate-scan-limit 5000
-.venv/bin/mnemosyne enqueue-profile-semantic-batch --label ams_domain --dry-run --format text
+.venv/bin/tirzah profile-semantic-candidates <node_id> --candidate-scan-limit 5000
+.venv/bin/tirzah enqueue-profile-semantic-batch --label ams_domain --dry-run --format text
 ```
 
-For the first memory-agent flow, pass `--retrieval-mode agentic` or choose `agentic` in the web UI. In this mode Mnemosyne calls the configured memory-agent model iteratively, feeding prior tool results back into the agent until it stops or reaches `retrieval.memory_agent_max_iterations`. The current allowed read-only tools are `search_nodes`, `compile_context`, and `list_documents`. The final answer call is separate and uses the final answer adapter/model. This is still a scaffold: it does not yet implement semantic graph traversal, source fallback, or the full compiled context corpus schema.
+For the first memory-agent flow, pass `--retrieval-mode agentic` or choose `agentic` in the web UI. In this mode Tirzah calls the configured memory-agent model iteratively, feeding prior tool results back into the agent until it stops or reaches `retrieval.memory_agent_max_iterations`. The current allowed read-only tools are `search_nodes`, `compile_context`, and `list_documents`. The final answer call is separate and uses the final answer adapter/model. This is still a scaffold: it does not yet implement semantic graph traversal, source fallback, or the full compiled context corpus schema.
 
 ## Web UI
 
 Run:
 
 ```bash
-.venv/bin/uvicorn mnemosyne.web.app:app --host 127.0.0.1 --port 8765
+.venv/bin/uvicorn tirzah.web.app:app --host 127.0.0.1 --port 8765
 ```
 
 Open `http://127.0.0.1:8765/`.
@@ -163,7 +166,7 @@ The default Ask workspace is work-first: create/select a session, enter a prompt
 
 Use the Developer toggle, or open `http://127.0.0.1:8765/?developer=1`, to reveal Browse/Ingestion tabs, focus-node override, adapter selection, retrieval-mode override, raw prompt/trace output, technical JSON reports, queue/status controls, semantic-edge review, and ingestion operations.
 
-If no additional Mongo node is retrieved and no focus node is selected, Mnemosyne still sends the submitted prompt context to the selected answer adapter. The readable activity log remains visible in work mode. Developer mode adds the raw console trace showing ordered step input/output data for prompt intake, planner calls when enabled, tool execution, retrieval/context compilation, and answer adapter execution.
+If no additional Mongo node is retrieved and no focus node is selected, Tirzah still sends the submitted prompt context to the selected answer adapter. The readable activity log remains visible in work mode. Developer mode adds the raw console trace showing ordered step input/output data for prompt intake, planner calls when enabled, tool execution, retrieval/context compilation, and answer adapter execution.
 
 ## Restart
 

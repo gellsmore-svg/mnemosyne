@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
-from mnemosyne.ingestion.dates import (
+from tirzah.ingestion.dates import (
     analyze_source_dates,
     explicit_date_candidates,
     filename_date_candidates,

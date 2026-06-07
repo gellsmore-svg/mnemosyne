@@ -2,8 +2,8 @@ from pathlib import Path
 
 from bson import ObjectId
 
-from mnemosyne.config import AppConfig
-from mnemosyne.ingestion.worker import discover_sources, process_next
+from tirzah.config import AppConfig
+from tirzah.ingestion.worker import discover_sources, process_next
 
 from test_repositories import FakeDb as RepoFakeDb
 
@@ -24,7 +24,7 @@ def test_discover_sources_handles_missing_folder(tmp_path: Path) -> None:
 
 
 def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path) -> None:
-    import mnemosyne.ingestion.worker as worker
+    import tirzah.ingestion.worker as worker
 
     updates = []
     completed_jobs = []
@@ -86,7 +86,7 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
 
 
 def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch, tmp_path: Path) -> None:
-    import mnemosyne.ingestion.worker as worker
+    import tirzah.ingestion.worker as worker
 
     updates = []
     missing = tmp_path / "missing.md"
@@ -126,7 +126,7 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
 
 
 def test_process_next_persists_embeddings_through_worker_ingestion(monkeypatch, tmp_path: Path) -> None:
-    import mnemosyne.ingestion.worker as worker
+    import tirzah.ingestion.worker as worker
 
     source = tmp_path / "source.md"
     source.write_text("# Source\n\nFirst paragraph.\n\nSecond paragraph.", encoding="utf-8")

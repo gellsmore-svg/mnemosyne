@@ -8,14 +8,14 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 from pymongo.database import Database
 
-from mnemosyne.db.repositories import DuplicateSourceError, commit_ingestion, summarize_node_text
-from mnemosyne.models.ingestion import (
+from tirzah.db.repositories import DuplicateSourceError, commit_ingestion, summarize_node_text
+from tirzah.models.ingestion import (
     DEFAULT_ENDORSEMENT_LABEL,
     IngestedNode,
     IngestionResult,
     SourceRef,
 )
-from mnemosyne.sessions.active_documents import record_active_documents
+from tirzah.sessions.active_documents import record_active_documents
 
 
 OUTPUT_INGESTION_SCHEMA_VERSION = 1
@@ -183,7 +183,7 @@ def output_job_to_ingestion_result(job: dict[str, Any]) -> IngestionResult:
     query = str(job.get("query") or "").strip()
     exchange_id = str(job.get("exchange_id") or "unknown")
     title = output_document_title(query=query, exchange_id=exchange_id)
-    source_path = f"mnemosyne://exchange/{exchange_id}/answer"
+    source_path = f"tirzah://exchange/{exchange_id}/answer"
     checksum = str(
         job.get("content_hash_sha256")
         or output_content_hash(

@@ -1018,7 +1018,7 @@ def render_context_document(
     title_marker = "#" * max(1, heading_level)
     section_marker = "#" * max(1, heading_level + 1)
     header = [
-        f"{title_marker} Mnemosyne Context",
+        f"{title_marker} Tirzah Context",
         "",
         f"Document: {document.get('title') or '<unknown>'}",
         f"Document ID: {document.get('document_id') or '<unknown>'}",
@@ -1131,7 +1131,7 @@ def build_prompt_envelope_without_context(
     instruction = system_instruction or default_no_context_system_instruction()
     context_text = "\n".join(
         [
-            "# Mnemosyne Context",
+            "# Tirzah Context",
             "",
             "## Runtime Facts",
             "- Mongo context lookup: ran",
@@ -1185,7 +1185,7 @@ def build_prompt_envelope_without_context(
 
 def default_system_instruction() -> str:
     return (
-        "Use the retrieved Mnemosyne context to answer the user query. "
+        "Use the retrieved Tirzah context to answer the user query. "
         "Prefer explicitly endorsed material when present, preserve provenance, "
         "and say when the retrieved context is insufficient."
     )
@@ -1197,7 +1197,7 @@ def default_no_context_system_instruction() -> str:
         "request, but the submitted prompt is still available. Treat the Runtime Facts as the "
         "source of truth about what happened in this request. If you discuss behind-the-scenes "
         "operation or context use, include this exact runtime fact: 'For this request, Mongo "
-        "lookup ran but no matching Mongo context was used.' Then explain the visible Mnemosyne "
+        "lookup ran but no matching Mongo context was used.' Then explain the visible Tirzah "
         "process in plain language: prompt intake, context lookup, tool or adapter calls, and "
         "answer generation. Do not withhold useful general answers solely because no matching "
         "context was retrieved."

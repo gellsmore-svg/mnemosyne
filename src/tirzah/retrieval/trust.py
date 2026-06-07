@@ -8,8 +8,8 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo.database import Database
 
-from mnemosyne.db.governance import get_trust_weighting_profile
-from mnemosyne.retrieval.queries import parsed_usage_score, serialize_node
+from tirzah.db.governance import get_trust_weighting_profile
+from tirzah.retrieval.queries import parsed_usage_score, serialize_node
 
 
 ENDORSEMENT_TRUST = {

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pymongo import MongoClient
 from pymongo.database import Database
 
-from mnemosyne.config import MongoConfig
+from tirzah.config import MongoConfig
 
 
 def get_database(config: MongoConfig) -> Database:

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 
-from mnemosyne.sessions.endorsements import (
+from tirzah.sessions.endorsements import (
     list_generated_output_nodes,
     update_node_endorsement,
 )

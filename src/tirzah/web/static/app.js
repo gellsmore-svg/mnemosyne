@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
-const DISPLAY_MODE_KEY = "mnemosyne.displayMode";
-const DEVELOPER_MODE_KEY = "mnemosyne.developerMode";
+const DISPLAY_MODE_KEY = "tirzah.displayMode";
+const DEVELOPER_MODE_KEY = "tirzah.developerMode";
 let latestEmbeddingBackfillRecommendation = null;
 
 async function api(path, options = {}) {
@@ -59,9 +59,9 @@ function renderConsole(trace) {
 function renderRunningActivity(payload) {
   $("activityReport").textContent = "Technical report will appear when the run finishes.";
   $("activityLog").replaceChildren(
-    activityEntry("Prompt received", `Session ${payload.session_id || "web"}. Mnemosyne is preparing the request.`),
+    activityEntry("Prompt received", `Session ${payload.session_id || "web"}. Tirzah is preparing the request.`),
     activityEntry("Context selection started", "The retrieval controller is checking whether memory context should be used."),
-    activityEntry("Waiting for model handoff", "If context is found, Mnemosyne will hand a readable prompt/context package to the selected LLM.")
+    activityEntry("Waiting for model handoff", "If context is found, Tirzah will hand a readable prompt/context package to the selected LLM.")
   );
 }
 
@@ -111,9 +111,9 @@ function activityEntry(title, body) {
 function activityTitle(stepName) {
   return {
     user_prompt: "Prompt captured",
-    retrieval_context: "Mnemosyne built the context package",
-    memory_agent_iteration: "Mnemosyne handed retrieval planning to the memory-agent LLM",
-    answer_adapter: "Mnemosyne handed the final prompt to the answer LLM",
+    retrieval_context: "Tirzah built the context package",
+    memory_agent_iteration: "Tirzah handed retrieval planning to the memory-agent LLM",
+    answer_adapter: "Tirzah handed the final prompt to the answer LLM",
     save_exchange: "Answer saved for continuity",
     request_started: "Request started",
     request_failed: "Request failed",
@@ -156,7 +156,7 @@ function memoryAgentSummary(input, output) {
   const status = text(output.stop_reason || output.status || "a decision");
   if (failed.length) {
     const first = failed[0];
-    return `Memory-agent iteration ${text(input.iteration)} used ${text(input.adapter)} / ${text(input.model)}. Mnemosyne ran ${toolResults.length} memory-tool call(s): ${okCount} succeeded, ${failed.length} need repair. First issue: ${text(first.tool)} - ${text(first.error)}.`;
+    return `Memory-agent iteration ${text(input.iteration)} used ${text(input.adapter)} / ${text(input.model)}. Tirzah ran ${toolResults.length} memory-tool call(s): ${okCount} succeeded, ${failed.length} need repair. First issue: ${text(first.tool)} - ${text(first.error)}.`;
   }
   return `Memory-agent iteration ${text(input.iteration)} used ${text(input.adapter)} / ${text(input.model)} and returned ${status}.`;
 }
@@ -169,9 +169,9 @@ function contextSummary(output) {
   const owner = decision.current_owner ? ` (${decision.current_owner})` : "";
   const reason = decision.reason ? ` Controller${owner}: ${decision.reason}` : "";
   if (included.length) {
-    return `Mnemosyne selected ${included.length} repository context record(s). Retrieval status: ${status}.${reason}`;
+    return `Tirzah selected ${included.length} repository context record(s). Retrieval status: ${status}.${reason}`;
   }
-  return `Mnemosyne did not include repository nodes. Retrieval status: ${status}.${reason}`;
+  return `Tirzah did not include repository nodes. Retrieval status: ${status}.${reason}`;
 }
 
 function evidenceSummaryText(summary) {
@@ -346,7 +346,7 @@ async function loadHealth() {
 
 async function loadRuntime() {
   const data = await api("/api/runtime");
-  window.mnemosyneRuntime = data;
+  window.tirzahRuntime = data;
   const adapter = $("adapter");
   const defaultAdapter = adapter.querySelector("option[value='']");
   defaultAdapter.textContent = `default (${data.default_adapter})`;
@@ -798,7 +798,7 @@ async function ask() {
   $("answerText").textContent = "Thinking...";
   $("answerMeta").innerHTML = "";
   renderRunningActivity(payload);
-  const timeout = window.mnemosyneRuntime?.ollama_timeout_seconds;
+  const timeout = window.tirzahRuntime?.ollama_timeout_seconds;
   renderConsole([
     {
       step: "request_started",

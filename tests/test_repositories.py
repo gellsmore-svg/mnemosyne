@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 
-from mnemosyne.db.repositories import (
+from tirzah.db.repositories import (
     backfill_node_embeddings,
     backfill_structural_graph_edges,
     bounded_graph_group_limit,
@@ -21,7 +21,7 @@ from mnemosyne.db.repositories import (
     semantic_edge_candidate_pair_key,
     summarize_node_text,
 )
-from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
+from tirzah.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
 
 class FakeEmbedder:
@@ -189,7 +189,7 @@ def test_commit_ingestion_annotates_nodes_with_embedding_metadata() -> None:
 
 
 def test_commit_ingestion_uses_supplied_embedder() -> None:
-    from mnemosyne.adapters.embedding import MockEmbeddingAdapter
+    from tirzah.adapters.embedding import MockEmbeddingAdapter
 
     db = FakeDb()
     result = IngestionResult(
@@ -721,7 +721,7 @@ def test_enqueue_semantic_edge_candidates_stores_pending_review_rows(monkeypatch
     )
 
     monkeypatch.setattr(
-        "mnemosyne.retrieval.queries.semantic_candidate_nodes",
+        "tirzah.retrieval.queries.semantic_candidate_nodes",
         lambda _db, node_id, limit=10, include_same_document=False: [
             {
                 "node_id": str(target_id),
@@ -778,7 +778,7 @@ def test_enqueue_vector_semantic_edge_candidates_stores_similarity_review_rows(m
     )
 
     monkeypatch.setattr(
-        "mnemosyne.retrieval.queries.embedding_candidate_nodes",
+        "tirzah.retrieval.queries.embedding_candidate_nodes",
         lambda _db, node_id, limit=10, include_same_document=False, min_similarity=0.75, **_kwargs: [
             {
                 "node_id": str(target_id),
@@ -931,7 +931,7 @@ def test_enqueue_vector_semantic_edge_candidate_batch_scopes_focus_nodes(monkeyp
         ][:limit]
 
     monkeypatch.setattr(
-        "mnemosyne.retrieval.queries.embedding_candidate_nodes",
+        "tirzah.retrieval.queries.embedding_candidate_nodes",
         fake_embedding_candidates,
     )
 
@@ -979,7 +979,7 @@ def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_does_not_insert(mo
     )
 
     monkeypatch.setattr(
-        "mnemosyne.retrieval.queries.embedding_candidate_nodes",
+        "tirzah.retrieval.queries.embedding_candidate_nodes",
         lambda _db, node_id, limit=10, include_same_document=False, min_similarity=0.75, **_kwargs: [
             {
                 "node_id": str(target_id),
@@ -1089,7 +1089,7 @@ def test_enqueue_vector_semantic_edge_candidate_batch_dry_run_skips_reciprocal_r
         ][:limit]
 
     monkeypatch.setattr(
-        "mnemosyne.retrieval.queries.embedding_candidate_nodes",
+        "tirzah.retrieval.queries.embedding_candidate_nodes",
         fake_embedding_candidates,
     )
 
@@ -1170,7 +1170,7 @@ def test_enqueue_vector_semantic_edge_candidate_batch_skips_reciprocal_related_t
         ][:limit]
 
     monkeypatch.setattr(
-        "mnemosyne.retrieval.queries.embedding_candidate_nodes",
+        "tirzah.retrieval.queries.embedding_candidate_nodes",
         fake_embedding_candidates,
     )
 

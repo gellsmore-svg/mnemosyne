@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Local text-similarity profile helper for Mnemosyne (Slice 6 Phase A).
+"""Local text-similarity profile helper for Tirzah (Slice 6 Phase A).
 
 Satisfies the LocalCommandEmbeddingAdapter contract in
-``src/mnemosyne/adapters/embedding.py``:
+``src/tirzah/adapters/embedding.py``:
 
   stdin:  JSON object  ``{"model": "<name>", "text": "<text>"}``
   stdout: JSON object  ``{"vector": [<float>, ...]}``  (one line, no trailing data)
@@ -12,7 +12,7 @@ In worker mode, pass ``--worker``. The helper then reads one JSON object per
 stdin line and writes one JSON object per stdout line. This keeps the model
 loaded across a whole backfill batch.
 
-The helper does not L2-normalise the vector. Mnemosyne does that on the
+The helper does not L2-normalise the vector. Tirzah does that on the
 Python side (``LocalCommandEmbeddingAdapter.embed`` calls ``l2_normalize``).
 
 Decisions baked in (recorded in ``.session-log.md`` 2026-06-05):
@@ -42,19 +42,19 @@ Configure in ``config.yaml`` (operator-side, one time, when ready to test):
 Verification (operator-side, takes ~1 minute after first model download):
 
     # 1. Determinism — same text twice must produce identical vectors.
-    .venv/bin/mnemosyne embedding-smoke "Taj Mahal test" > /tmp/a.json
-    .venv/bin/mnemosyne embedding-smoke "Taj Mahal test" > /tmp/b.json
+    .venv/bin/tirzah embedding-smoke "Taj Mahal test" > /tmp/a.json
+    .venv/bin/tirzah embedding-smoke "Taj Mahal test" > /tmp/b.json
     diff /tmp/a.json /tmp/b.json   # must be empty
 
     # 2. Different text — must produce a different vector.
-    .venv/bin/mnemosyne embedding-smoke "Some other text" > /tmp/c.json
+    .venv/bin/tirzah embedding-smoke "Some other text" > /tmp/c.json
     diff /tmp/a.json /tmp/c.json   # must be non-empty
 
     # 3. Dimensions — vector should be length 384.
     python3 -c "import json; print(len(json.load(open('/tmp/a.json'))['result']['vector']))"
 
     # 4. Atkinson candidate-quality check (357-node corpus):
-    .venv/bin/mnemosyne backfill-embeddings --label memory_reference --limit 50
+    .venv/bin/tirzah backfill-embeddings --label memory_reference --limit 50
     # then pick 5-8 seed nodes from Atkinson and run
     # `vector-semantic-candidates <node_id>` on each; on ≥ 4/5 seeds,
     # ≥ 3/5 top candidates should look semantically related to a human

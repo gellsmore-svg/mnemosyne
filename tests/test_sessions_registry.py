@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from mnemosyne.sessions.registry import (
+from tirzah.sessions.registry import (
     clean_session_id,
     create_session,
     list_sessions,

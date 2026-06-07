@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from mnemosyne.db.governance import (
+from tirzah.db.governance import (
     bounded_governance_limit,
     create_process_run,
     get_agent_identity,
@@ -10,7 +10,7 @@ from mnemosyne.db.governance import (
     list_trust_weighting_profiles,
     update_process_run,
 )
-from mnemosyne.db.indexes import seed_governance_defaults
+from tirzah.db.indexes import seed_governance_defaults
 
 
 def test_seed_governance_defaults_creates_shared_identity_and_weighting_profile() -> None:
@@ -18,7 +18,7 @@ def test_seed_governance_defaults_creates_shared_identity_and_weighting_profile(
 
     seed_governance_defaults(db)
 
-    assert db.agent_identities.rows[0]["identity_id"] == "mnemosyne_shared"
+    assert db.agent_identities.rows[0]["identity_id"] == "tirzah_shared"
     assert db.agent_identities.rows[0]["kind"] == "shared"
     assert db.agent_identities.rows[0]["weighting_profile_id"] == "default_balanced"
     assert db.trust_weighting_profiles.rows[0]["weighting_profile_id"] == "default_balanced"
@@ -43,11 +43,11 @@ def test_get_governance_row_returns_serialized_match_or_none() -> None:
     db = FakeDb()
     timestamp = datetime(2026, 5, 28, tzinfo=timezone.utc)
     db.agent_identities.rows.append(
-        {"_id": "internal", "identity_id": "mnemosyne_shared", "updated_at": timestamp}
+        {"_id": "internal", "identity_id": "tirzah_shared", "updated_at": timestamp}
     )
 
-    assert get_agent_identity(db, "mnemosyne_shared") == {
-        "identity_id": "mnemosyne_shared",
+    assert get_agent_identity(db, "tirzah_shared") == {
+        "identity_id": "tirzah_shared",
         "updated_at": "2026-05-28T00:00:00+00:00",
     }
     assert get_agent_identity(db, "missing") is None
@@ -81,7 +81,7 @@ def test_create_process_run_persists_restart_state() -> None:
         db,
         process_id="restart_continuity",
         session_id="session1",
-        identity_id="mnemosyne_shared",
+        identity_id="tirzah_shared",
         current_step_id="inspect_state",
         run_id="run1",
     )

@@ -1,4 +1,4 @@
-from mnemosyne.db.queue import bounded_limit, job_filter_query
+from tirzah.db.queue import bounded_limit, job_filter_query
 
 
 def test_job_filter_query_combines_status_reason_and_text_filters() -> None:

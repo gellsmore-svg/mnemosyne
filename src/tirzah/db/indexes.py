@@ -64,7 +64,7 @@ LABEL_DEFINITIONS = [
     {
         "key": "imported_domain",
         "scope": "node",
-        "description": "Material imported from another local domain into Mnemosyne for retrieval experiments.",
+        "description": "Material imported from another local domain into Tirzah for retrieval experiments.",
     },
     {
         "key": "research_corpus",
@@ -74,7 +74,7 @@ LABEL_DEFINITIONS = [
     {
         "key": "generated_output",
         "scope": "node",
-        "description": "Content produced by a model or Mnemosyne workflow and captured for later review.",
+        "description": "Content produced by a model or Tirzah workflow and captured for later review.",
     },
     {
         "key": "llm_answer",
@@ -85,8 +85,8 @@ LABEL_DEFINITIONS = [
 
 DEFAULT_AGENT_IDENTITIES = [
     {
-        "identity_id": "mnemosyne_shared",
-        "title": "Mnemosyne Shared Identity",
+        "identity_id": "tirzah_shared",
+        "title": "Tirzah Shared Identity",
         "kind": "shared",
         "description": "Default shared identity for project-wide retrieval and governance scaffolding.",
         "trusted_labels": [],

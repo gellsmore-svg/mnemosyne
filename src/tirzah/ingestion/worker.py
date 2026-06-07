@@ -5,20 +5,20 @@ from typing import Any
 
 from pymongo.database import Database
 
-from mnemosyne.adapters.embedding import embedding_adapter
-from mnemosyne.adapters.mock import MockIngestionAdapter
-from mnemosyne.config import AppConfig
-from mnemosyne.db.governance import create_process_run, update_process_run
-from mnemosyne.db.queue import claim_next_pending, complete_job, fail_job, reject_job, retry_job
-from mnemosyne.db.repositories import DuplicateSourceError, commit_ingestion
-from mnemosyne.ingestion.activity import (
+from tirzah.adapters.embedding import embedding_adapter
+from tirzah.adapters.mock import MockIngestionAdapter
+from tirzah.config import AppConfig
+from tirzah.db.governance import create_process_run, update_process_run
+from tirzah.db.queue import claim_next_pending, complete_job, fail_job, reject_job, retry_job
+from tirzah.db.repositories import DuplicateSourceError, commit_ingestion
+from tirzah.ingestion.activity import (
     attach_ingestion_activity,
     ingestion_activity_log,
     ingestion_activity_report,
 )
-from mnemosyne.ingestion.dates import annotate_source_dates
-from mnemosyne.ingestion.files import archive_source, move_request_file
-from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
+from tirzah.ingestion.dates import annotate_source_dates
+from tirzah.ingestion.files import archive_source, move_request_file
+from tirzah.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
 
 
 def discover_sources(ingest_dir: Path) -> list[Path]:

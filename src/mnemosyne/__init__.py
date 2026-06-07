@@ -1,5 +1,12 @@
-"""Mnemosyne package."""
+"""Compatibility import path for the renamed Tirzah package."""
 
-__all__ = ["__version__"]
+from __future__ import annotations
 
-__version__ = "0.1.0"
+import sys
+
+import tirzah as _tirzah
+
+__all__ = getattr(_tirzah, "__all__", [])
+__path__ = _tirzah.__path__
+
+sys.modules[__name__] = _tirzah

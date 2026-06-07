@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 
-import mnemosyne.ingestion.embedding_backfill as embedding_backfill
-from mnemosyne.ingestion.embedding_backfill import (
+import tirzah.ingestion.embedding_backfill as embedding_backfill
+from tirzah.ingestion.embedding_backfill import (
     create_embedding_backfill_job,
     list_embedding_backfill_jobs,
     process_embedding_backfill_batches,

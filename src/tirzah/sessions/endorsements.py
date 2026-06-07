@@ -7,7 +7,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo.database import Database
 
-from mnemosyne.retrieval.queries import serialize_node
+from tirzah.retrieval.queries import serialize_node
 
 
 ENDORSEMENT_LABELS = {

@@ -7,10 +7,10 @@ from typing import Any
 from bson import ObjectId
 from pymongo.database import Database
 
-from mnemosyne.sessions.active_documents import record_active_documents
-from mnemosyne.sessions.output_ingestion import queue_exchange_output
-from mnemosyne.sessions.registry import touch_session
-from mnemosyne.sessions.usage import record_node_usage
+from tirzah.sessions.active_documents import record_active_documents
+from tirzah.sessions.output_ingestion import queue_exchange_output
+from tirzah.sessions.registry import touch_session
+from tirzah.sessions.usage import record_node_usage
 
 
 def utc_now() -> datetime:

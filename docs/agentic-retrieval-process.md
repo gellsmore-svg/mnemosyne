@@ -2,28 +2,28 @@
 
 Last updated: 2026-05-21
 
-This document describes the implemented agentic retrieval and answer path in Mnemosyne. The current scaffold uses Python as the runtime substrate for tool execution, validation, budgeting, prompt assembly, provenance, and persistence. The intended product direction is that the memory-agent/controller owns the contextual strategy, while Python enforces the interface contract and keeps repository writes, budgets, provenance, and safety constraints reliable.
+This document describes the implemented agentic retrieval and answer path in Tirzah. The current scaffold uses Python as the runtime substrate for tool execution, validation, budgeting, prompt assembly, provenance, and persistence. The intended product direction is that the memory-agent/controller owns the contextual strategy, while Python enforces the interface contract and keeps repository writes, budgets, provenance, and safety constraints reliable.
 
 ## Runtime Roles
 
-Mnemosyne currently separates two LLM-facing roles:
+Tirzah currently separates two LLM-facing roles:
 
 - Memory-agent LLM: plans retrieval. It must not answer the user. It returns JSON tool calls or a done decision.
-- Final answer LLM: answers the user from the Mnemosyne tool results and rendered source context.
+- Final answer LLM: answers the user from the Tirzah tool results and rendered source context.
 
-Both roles are called through the adapter boundary in `mnemosyne.adapters.answer`. The final answer role may use `mock`, `ollama_cli`, or `ollama_http`; the memory-agent retrieval planner must use a local non-HTTP adapter such as `mock` or `ollama_cli`.
+Both roles are called through the adapter boundary in `tirzah.adapters.answer`. The final answer role may use `mock`, `ollama_cli`, or `ollama_http`; the memory-agent retrieval planner must use a local non-HTTP adapter such as `mock` or `ollama_cli`.
 
 ## Entry Point
 
 All ask flows enter `answer_query()`.
 
-Mnemosyne records an initial `process_trace` item:
+Tirzah records an initial `process_trace` item:
 
 - step: `user_prompt`
 - input: query, optional focus node, session, requested adapter/model, retrieval mode
 - output: submitted prompt text
 
-Runtime overrides are then applied. If `retrieval_mode` is `agentic`, Mnemosyne calls `answer_query_agentic()`. Otherwise it uses the direct focus-node retrieval path.
+Runtime overrides are then applied. If `retrieval_mode` is `agentic`, Tirzah calls `answer_query_agentic()`. Otherwise it uses the direct focus-node retrieval path.
 
 ## Agentic Orchestration
 
@@ -75,14 +75,14 @@ Before the memory-agent prompt is rendered, Python builds a deterministic query 
 For example, for:
 
 ```text
-What does the Mnemosyne technical design say the system is for?
+What does the Tirzah technical design say the system is for?
 ```
 
 Python derives:
 
-- lexical terms: `Mnemosyne`, `technical`, `design`, `system`
-- exact phrases: `Mnemosyne technical`, `technical design`, `design system`
-- named anchors: `Mnemosyne`
+- lexical terms: `Tirzah`, `technical`, `design`, `system`
+- exact phrases: `Tirzah technical`, `technical design`, `design system`
+- named anchors: `Tirzah`
 - near-match terms: bounded typo/near-token candidates when an initial search misses and a comparison vocabulary is available
 - suggested fallback searches: phrase probes first, then individual lexical terms
 
@@ -363,7 +363,7 @@ The mock adapter summarizes rendered context deterministically for tests and smo
 
 The final answer payload derives used nodes from `prompt["context_metadata"]["included"]`.
 
-For search results, included nodes are collected from records that actually survived answer-context assembly. If no compiled records exist but a top match was visible in the prompt, Mnemosyne records that visible top match as a `search_match`.
+For search results, included nodes are collected from records that actually survived answer-context assembly. If no compiled records exist but a top match was visible in the prompt, Tirzah records that visible top match as a `search_match`.
 
 This means `used_node_ids` means "nodes shown to the answer model", not "all nodes searched".
 

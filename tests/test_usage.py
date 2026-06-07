@@ -2,7 +2,7 @@ from datetime import datetime
 
 from bson import ObjectId
 
-from mnemosyne.sessions.usage import record_node_usage
+from tirzah.sessions.usage import record_node_usage
 
 
 class FakeUpdateResult:

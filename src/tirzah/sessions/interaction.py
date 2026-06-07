@@ -10,11 +10,11 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo.database import Database
 
-from mnemosyne.adapters.answer import answer_adapter
-from mnemosyne.config import AppConfig
-from mnemosyne.db.governance import create_process_run, list_agent_identities, update_process_run
-from mnemosyne.db.repositories import document_tree
-from mnemosyne.retrieval.queries import (
+from tirzah.adapters.answer import answer_adapter
+from tirzah.config import AppConfig
+from tirzah.db.governance import create_process_run, list_agent_identities, update_process_run
+from tirzah.db.repositories import document_tree
+from tirzah.retrieval.queries import (
     build_prompt_envelope,
     build_prompt_envelope_without_context,
     compile_context,
@@ -32,13 +32,13 @@ from mnemosyne.retrieval.queries import (
     search_nodes,
     semantic_candidate_nodes,
 )
-from mnemosyne.retrieval.trust import (
+from tirzah.retrieval.trust import (
     trust_temporal_diagnostic_for_node,
     trust_temporal_diagnostics_for_nodes,
 )
-from mnemosyne.sessions.activity_reports import answer_activity_log, answer_activity_report
-from mnemosyne.sessions.active_documents import list_active_documents
-from mnemosyne.sessions.exchanges import save_exchange
+from tirzah.sessions.activity_reports import answer_activity_log, answer_activity_report
+from tirzah.sessions.active_documents import list_active_documents
+from tirzah.sessions.exchanges import save_exchange
 
 
 TERMINAL_FALLBACK_REASONS = {"memory_agent_decision_failed"}
@@ -1004,7 +1004,7 @@ def build_source_fallback_prompt_envelope(
         "document/path provenance, and say when the excerpt is insufficient."
     )
     metadata_lines = [
-        "# Mnemosyne Context",
+        "# Tirzah Context",
         "",
         "## Active Document Source Fallback",
         f"- Document: {active_document.get('title') or '<unknown>'}",
@@ -1178,7 +1178,7 @@ def build_memory_agent_prompt(
     )
     return "\n".join(
         [
-            "You are the Mnemosyne memory-agent.",
+            "You are the Tirzah memory-agent.",
             "Your job is to gather memory/context for a separate final thinking LLM.",
             "Do not answer the user.",
             "Inspect prior tool results, decide whether more Mongo context is needed, and either call tools or stop.",
@@ -1205,7 +1205,7 @@ def build_memory_agent_prompt(
             "- Stop only when context is sufficient, clearly insufficient, or no further read-only tool call is useful.",
             "- When stopping, include controller_decision.action, controller_decision.reason, and controller_decision.confidence.",
             "- When stopping, include context_proposal.selected_node_ids for the nodes you believe should shape the final answer context.",
-            "- Mnemosyne will validate and budget your controller_decision and context_proposal; do not invent node IDs.",
+            "- Tirzah will validate and budget your controller_decision and context_proposal; do not invent node IDs.",
             "",
             f"focus_node_id: {focus_node_id or 'none'}",
             f"session_id: {session_id}",
@@ -2569,7 +2569,7 @@ def build_agentic_answer_envelope(
     context_proposal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     instruction = (
-        "Answer the user using the Mnemosyne tool results. "
+        "Answer the user using the Tirzah tool results. "
         "Prefer retrieved source context over general knowledge. "
         "If the tool results are insufficient, say so plainly."
     )
@@ -2601,7 +2601,7 @@ def build_agentic_answer_envelope(
             "## Controller Decision",
             controller_decision_text,
             "",
-            "## Mnemosyne Tool Results",
+            "## Tirzah Tool Results",
             "",
         ]
     )
@@ -2615,7 +2615,7 @@ def build_agentic_answer_envelope(
             "## Controller Decision",
             controller_decision_text,
             "",
-            "## Mnemosyne Tool Results",
+            "## Tirzah Tool Results",
             context_text,
         ]
     ).rstrip() + "\n"

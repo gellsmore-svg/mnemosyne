@@ -1,4 +1,4 @@
-from mnemosyne.sessions.exchanges import bounded_limit, dedupe_ids, exchange_filter_query
+from tirzah.sessions.exchanges import bounded_limit, dedupe_ids, exchange_filter_query
 
 
 def test_exchange_filter_query_combines_session_runtime_and_text_filters() -> None:

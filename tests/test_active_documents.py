@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 
-from mnemosyne.sessions.active_documents import (
+from tirzah.sessions.active_documents import (
     list_active_documents,
     record_active_documents,
     valid_object_ids,
@@ -73,7 +73,7 @@ class FakeDb:
                     "_id": node_id,
                     "document_id": document_id,
                     "title": "System Name",
-                    "labels": ["source_section", "mnemosyne"],
+                    "labels": ["source_section", "tirzah"],
                     "provenance": {},
                 },
                 {
@@ -108,7 +108,7 @@ def test_record_active_documents_upserts_session_document_registry() -> None:
     assert row["document_id"] == str(document_id)
     assert row["title"] == "Technical Design"
     assert row["source"] == {"path": "design.md"}
-    assert row["labels"] == ["mnemosyne", "source_section"]
+    assert row["labels"] == ["source_section", "tirzah"]
     assert row["node_ids"] == [str(node_id)]
     assert row["reference_count"] == 2
 
@@ -123,7 +123,7 @@ def test_record_active_documents_accumulates_labels_across_references() -> None:
 
     row = db.active_documents.rows[0]
     assert row["node_ids"] == [str(node_id), str(db.other_node_id)]
-    assert row["labels"] == ["mnemosyne", "source_section", "retrieval_note"]
+    assert row["labels"] == ["source_section", "tirzah", "retrieval_note"]
     assert row["reference_count"] == 2
 
 

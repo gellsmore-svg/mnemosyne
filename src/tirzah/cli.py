@@ -6,11 +6,11 @@ from pathlib import Path
 
 from bson import ObjectId
 
-from mnemosyne.adapters.embedding import embedding_adapter
-from mnemosyne.adapters.mock import MockIngestionAdapter
-from mnemosyne.config import load_config
-from mnemosyne.db.client import get_database
-from mnemosyne.db.governance import (
+from tirzah.adapters.embedding import embedding_adapter
+from tirzah.adapters.mock import MockIngestionAdapter
+from tirzah.config import load_config
+from tirzah.db.client import get_database
+from tirzah.db.governance import (
     PROCESS_RUN_STATUSES,
     create_process_run,
     get_agent_identity,
@@ -25,8 +25,8 @@ from mnemosyne.db.governance import (
     list_trust_weighting_profiles,
     update_process_run,
 )
-from mnemosyne.db.indexes import ensure_indexes
-from mnemosyne.db.repositories import (
+from tirzah.db.indexes import ensure_indexes
+from tirzah.db.repositories import (
     DuplicateSourceError,
     backfill_node_embeddings,
     backfill_schema_metadata,
@@ -44,18 +44,18 @@ from mnemosyne.db.repositories import (
     rebuild_document,
     review_semantic_edge_candidate,
 )
-from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
-from mnemosyne.ingestion.activity import attach_ingestion_activity, ingestion_activity_report
-from mnemosyne.ingestion.dates import analyze_source_dates, annotate_source_dates
-from mnemosyne.ingestion.embedding_backfill import (
+from tirzah.db.queue import enqueue_source, queue_summary, recent_jobs
+from tirzah.ingestion.activity import attach_ingestion_activity, ingestion_activity_report
+from tirzah.ingestion.dates import analyze_source_dates, annotate_source_dates
+from tirzah.ingestion.embedding_backfill import (
     create_embedding_backfill_job,
     list_embedding_backfill_jobs,
     process_embedding_backfill_batches,
 )
-from mnemosyne.ingestion.files import archive_source, move_request_file, sha256_file
-from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
-from mnemosyne.ingestion.worker import discover_sources, process_next
-from mnemosyne.retrieval.queries import (
+from tirzah.ingestion.files import archive_source, move_request_file, sha256_file
+from tirzah.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
+from tirzah.ingestion.worker import discover_sources, process_next
+from tirzah.retrieval.queries import (
     build_prompt_envelope,
     compile_context,
     expand_graph_paths,
@@ -70,20 +70,20 @@ from mnemosyne.retrieval.queries import (
     embedding_candidate_report,
     semantic_candidate_nodes,
 )
-from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
-from mnemosyne.sessions.active_documents import list_active_documents
-from mnemosyne.sessions.exchanges import recent_exchanges
-from mnemosyne.sessions.endorsements import (
+from tirzah.retrieval.trust import trust_temporal_diagnostic_for_node
+from tirzah.sessions.active_documents import list_active_documents
+from tirzah.sessions.exchanges import recent_exchanges
+from tirzah.sessions.endorsements import (
     ENDORSEMENT_LABELS,
     list_generated_output_nodes,
     update_node_endorsement,
 )
-from mnemosyne.sessions.interaction import answer_query
-from mnemosyne.sessions.output_ingestion import (
+from tirzah.sessions.interaction import answer_query
+from tirzah.sessions.output_ingestion import (
     list_output_ingestion_jobs,
     process_next_output_ingestion,
 )
-from mnemosyne.sessions.registry import create_session, list_sessions
+from tirzah.sessions.registry import create_session, list_sessions
 
 
 STRUCTURAL_NODE_LABELS = {"source_root", "source_section", "source_chunk"}
@@ -589,7 +589,7 @@ def add_enqueue_profile_batch_arguments(command: argparse.ArgumentParser) -> Non
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="mnemosyne")
+    parser = argparse.ArgumentParser(prog="tirzah")
     parser.add_argument("--config", default="config.yaml")
 
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -1721,7 +1721,7 @@ def main() -> None:
 
     if args.command == "chat":
         ensure_indexes(db)
-        print("Mnemosyne chat. Type /exit to quit.")
+        print("Tirzah chat. Type /exit to quit.")
         while True:
             try:
                 query = input("> ").strip()

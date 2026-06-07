@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 
-from mnemosyne.retrieval.queries import (
+from tirzah.retrieval.queries import (
     build_prompt_envelope,
     build_prompt_envelope_without_context,
     context_record,

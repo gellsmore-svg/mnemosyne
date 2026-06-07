@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mnemosyne.ingestion.files import archive_source, move_request_file, sha256_file
+from tirzah.ingestion.files import archive_source, move_request_file, sha256_file
 
 
 def test_sha256_file_is_content_based(tmp_path: Path) -> None:

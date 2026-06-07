@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from bson import ObjectId
 
-from mnemosyne.retrieval.trust import (
+from tirzah.retrieval.trust import (
     temporal_recency_component,
     trust_temporal_diagnostic,
     trust_temporal_diagnostic_for_node,

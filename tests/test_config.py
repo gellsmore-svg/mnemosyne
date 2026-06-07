@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mnemosyne.config import load_config
+from tirzah.config import load_config
 
 
 def test_load_config_reads_queue_max_attempts(tmp_path: Path) -> None:

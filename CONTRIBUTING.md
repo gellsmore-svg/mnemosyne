@@ -1,6 +1,6 @@
 # Contributing
 
-Mnemosyne is currently a fast-moving local prototype. Keep changes small, tested, and tied to the project roadmap in `docs/build-roadmap.md`.
+Tirzah is currently a fast-moving local prototype. Keep changes small, tested, and tied to the project roadmap in `docs/build-roadmap.md`.
 
 ## Development
 

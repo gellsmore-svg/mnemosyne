@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from mnemosyne.models.ingestion import IngestionResult
+from tirzah.models.ingestion import IngestionResult
 
 
 def ingestion_activity_report(

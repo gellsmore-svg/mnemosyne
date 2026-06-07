@@ -8,7 +8,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from pymongo.database import Database
 
-from mnemosyne.db.repositories import (
+from tirzah.db.repositories import (
     backfill_node_embeddings,
     bounded_candidate_limit,
     count_backfill_embedding_candidates,

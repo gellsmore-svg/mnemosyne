@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mnemosyne.adapters.mock import MockIngestionAdapter
+from tirzah.adapters.mock import MockIngestionAdapter
 
 
 def test_mock_adapter_uses_first_heading_as_title() -> None:

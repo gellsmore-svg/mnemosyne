@@ -1,8 +1,8 @@
 from bson import ObjectId
 
-from mnemosyne.config import AppConfig, RuntimeConfig
-from mnemosyne.sessions.activity_reports import evidence_summary_lines
-from mnemosyne.sessions.interaction import (
+from tirzah.config import AppConfig, RuntimeConfig
+from tirzah.sessions.activity_reports import evidence_summary_lines
+from tirzah.sessions.interaction import (
     active_document_default_node_id,
     active_document_reference_query,
     active_document_vocabulary_values,
@@ -114,7 +114,7 @@ def mongo_matches(row, query):
 
 
 def test_select_focus_node_returns_none_without_matches(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     monkeypatch.setattr(interaction, "search_nodes", lambda *args, **kwargs: [])
 
@@ -122,19 +122,19 @@ def test_select_focus_node_returns_none_without_matches(monkeypatch) -> None:
 
 
 def test_select_focus_node_falls_back_to_ranked_terms(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
-        if query == "Mnemosyne" and label == "source_chunk":
+        if query == "Tirzah" and label == "source_chunk":
             return [
                 {
                     "node_id": "generic",
                     "title": "Worker Smoke",
-                    "text_preview": "Mnemosyne ingestion worker",
+                    "text_preview": "Tirzah ingestion worker",
                 },
                 {
                     "node_id": "technical",
-                    "title": "Mnemosyne Technical Design Document",
+                    "title": "Tirzah Technical Design Document",
                     "text_preview": "Architecture notes",
                 },
             ]
@@ -142,7 +142,7 @@ def test_select_focus_node_falls_back_to_ranked_terms(monkeypatch) -> None:
 
     monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
 
-    assert select_focus_node(FakeDb(), "What does the Mnemosyne technical design say?") == "technical"
+    assert select_focus_node(FakeDb(), "What does the Tirzah technical design say?") == "technical"
 
 
 def test_direct_retrieval_decision_skips_low_intent_and_generic_prompts() -> None:
@@ -154,14 +154,14 @@ def test_direct_retrieval_decision_skips_low_intent_and_generic_prompts() -> Non
     assert generic["category"] == "generic_prompt"
     assert generic["should_search_corpus"] is False
 
-    repository = direct_retrieval_decision("What does the Mnemosyne technical design say?")
+    repository = direct_retrieval_decision("What does the Tirzah technical design say?")
     assert repository["category"] == "repository_query"
     assert repository["should_search_corpus"] is True
     assert repository["minimum_match_score"] >= 1
 
 
 def test_direct_context_controller_decision_marks_scaffold_owner() -> None:
-    retrieval = direct_retrieval_decision("What does the Mnemosyne technical design say?")
+    retrieval = direct_retrieval_decision("What does the Tirzah technical design say?")
     decision = direct_context_controller_decision(
         retrieval_decision=retrieval,
         selected_node_id="node1",
@@ -189,7 +189,7 @@ def test_validate_controller_decision_reports_schema_issues() -> None:
 
 
 def test_select_focus_node_rejects_weak_best_match(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
         if label == "source_chunk":
@@ -215,7 +215,7 @@ def test_active_document_reference_query_detects_session_references() -> None:
 
 
 def test_select_active_document_focus_node_scopes_search_to_active_document(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     calls = []
     monkeypatch.setattr(
@@ -247,7 +247,7 @@ def test_select_active_document_focus_node_scopes_search_to_active_document(monk
 
 
 def test_select_active_document_focus_node_falls_back_to_document_root(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     document_id = ObjectId()
     root_id = ObjectId()
@@ -276,7 +276,7 @@ def test_select_active_document_focus_node_falls_back_to_document_root(monkeypat
 def test_select_active_document_focus_node_checks_later_documents_before_default(
     monkeypatch,
 ) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     first_document_id = ObjectId()
     second_document_id = ObjectId()
@@ -362,7 +362,7 @@ def test_active_document_default_node_uses_active_node_without_root() -> None:
 
 
 def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     captured = {}
 
@@ -430,7 +430,7 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
 
 
 def test_answer_query_does_not_retrieve_corpus_for_greeting(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     calls = []
 
@@ -460,7 +460,7 @@ def test_answer_query_does_not_retrieve_corpus_for_greeting(monkeypatch) -> None
 
 
 def test_answer_query_handles_empty_prompt_without_retrieval_crash(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     class FakeAnswerAdapter:
         def answer(self, prompt):
@@ -482,7 +482,7 @@ def test_answer_query_handles_empty_prompt_without_retrieval_crash(monkeypatch) 
 
 
 def test_answer_query_forces_no_context_direct_path_for_agentic_greeting(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     class FakeAnswerAdapter:
         def answer(self, prompt):
@@ -509,7 +509,7 @@ def test_answer_query_forces_no_context_direct_path_for_agentic_greeting(monkeyp
 
 
 def test_answer_query_records_process_run(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     created = []
     updates = []
@@ -560,7 +560,7 @@ def test_answer_query_records_process_run(monkeypatch) -> None:
 
 
 def test_answer_query_continues_when_process_run_create_fails(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     class FakeAnswerAdapter:
         def answer(self, prompt):
@@ -587,7 +587,7 @@ def test_answer_query_continues_when_process_run_create_fails(monkeypatch) -> No
 
 
 def test_answer_query_continues_when_process_run_update_fails(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     class FakeAnswerAdapter:
         def answer(self, prompt):
@@ -619,7 +619,7 @@ def test_answer_query_continues_when_process_run_update_fails(monkeypatch) -> No
 
 
 def test_answer_query_marks_process_run_blocked_when_adapter_fails(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     updates = []
 
@@ -655,7 +655,7 @@ def test_answer_query_marks_process_run_blocked_when_adapter_fails(monkeypatch) 
 
 
 def test_answer_query_marks_process_run_blocked_when_exchange_save_fails(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     updates = []
 
@@ -700,7 +700,7 @@ def test_answer_query_marks_process_run_blocked_when_exchange_save_fails(monkeyp
 
 
 def test_answer_query_marks_process_run_blocked_when_retrieval_fails(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     updates = []
 
@@ -733,7 +733,7 @@ def test_answer_query_marks_process_run_blocked_when_retrieval_fails(monkeypatch
 
 
 def test_answer_query_uses_active_document_source_fallback(monkeypatch, tmp_path) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     source_path = tmp_path / "active-source.md"
     source_path.write_text(
@@ -794,7 +794,7 @@ def test_answer_query_uses_active_document_source_fallback_after_no_focus_match(
     monkeypatch,
     tmp_path,
 ) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     source_path = tmp_path / "active-source.md"
     source_path.write_text(
@@ -905,7 +905,7 @@ def test_active_document_source_fallback_respects_small_prompt_budget(tmp_path) 
 
 
 def test_answer_query_uses_active_document_reference_before_corpus(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     class FakeAnswerAdapter:
         def answer(self, prompt):
@@ -1001,7 +1001,7 @@ def test_parse_tool_calls_scans_invalid_whole_object_response() -> None:
 
 
 def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     prompts = []
 
@@ -1076,11 +1076,11 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
     }
     assert result["activity_report"]["context_construction"]["evidence_summary"] == evidence_summary
     assert "Evidence summary: 1 memory-tool result(s), 1 successful and 0 failed." in result["activity_log"]
-    assert "Mnemosyne Tool Results" in prompts[2]
+    assert "Tirzah Tool Results" in prompts[2]
 
 
 def test_agentic_answer_query_marks_process_run_blocked_when_planning_fails(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     updates = []
 
@@ -1114,13 +1114,13 @@ def test_agentic_answer_query_marks_process_run_blocked_when_planning_fails(monk
 
 
 def test_agentic_answer_query_marks_process_run_blocked_when_adapter_fails(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     updates = []
 
     class FakeAnswerAdapter:
         def answer(self, prompt):
-            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+            if "You are the Tirzah memory-agent." in prompt["prompt_text"]:
                 return {
                     "adapter": "fake",
                     "answer": '{"status":"done","tool_calls":[]}',
@@ -1154,13 +1154,13 @@ def test_agentic_answer_query_marks_process_run_blocked_when_adapter_fails(monke
 
 
 def test_agentic_answer_query_marks_process_run_blocked_when_exchange_save_fails(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     updates = []
 
     class FakeAnswerAdapter:
         def answer(self, prompt):
-            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+            if "You are the Tirzah memory-agent." in prompt["prompt_text"]:
                 return {
                     "adapter": "fake",
                     "answer": '{"status":"done","tool_calls":[]}',
@@ -1204,7 +1204,7 @@ def test_agentic_answer_query_marks_process_run_blocked_when_exchange_save_fails
 
 
 def test_agentic_answer_query_falls_back_when_planner_stops_without_tools(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     prompts = []
     executed = []
@@ -1212,7 +1212,7 @@ def test_agentic_answer_query_falls_back_when_planner_stops_without_tools(monkey
     class FakeAnswerAdapter:
         def answer(self, prompt):
             prompts.append(prompt["prompt_text"])
-            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+            if "You are the Tirzah memory-agent." in prompt["prompt_text"]:
                 return {
                     "adapter": "fake",
                     "answer": '{"status":"done","tool_calls":[],"compiled_context_notes":"none"}',
@@ -1267,11 +1267,11 @@ def test_agentic_answer_query_falls_back_when_planner_stops_without_tools(monkey
         "answer_adapter",
     ]
     assert result["answer"] == "final answer"
-    assert "Mnemosyne Tool Results" in prompts[-1]
+    assert "Tirzah Tool Results" in prompts[-1]
 
 
 def test_agentic_answer_query_stops_after_parse_failure_fallback_context(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     prompts = []
     executed = []
@@ -1279,7 +1279,7 @@ def test_agentic_answer_query_stops_after_parse_failure_fallback_context(monkeyp
     class FakeAnswerAdapter:
         def answer(self, prompt):
             prompts.append(prompt["prompt_text"])
-            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+            if "You are the Tirzah memory-agent." in prompt["prompt_text"]:
                 return {
                     "adapter": "fake",
                     "answer": "not json",
@@ -1327,15 +1327,15 @@ def test_agentic_answer_query_stops_after_parse_failure_fallback_context(monkeyp
         "memory_agent_decision_failed"
     )
     assert result["process_trace"][1]["output"]["stop_reason"] == "fallback_context_gathered"
-    assert "Mnemosyne Tool Results" in prompts[-1]
+    assert "Tirzah Tool Results" in prompts[-1]
 
 
 def test_agentic_answer_query_marks_unavailable_fallback_context(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     class FakeAnswerAdapter:
         def answer(self, prompt):
-            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+            if "You are the Tirzah memory-agent." in prompt["prompt_text"]:
                 return {
                     "adapter": "fake",
                     "answer": "not json",
@@ -1361,7 +1361,7 @@ def test_agentic_answer_query_marks_unavailable_fallback_context(monkeypatch) ->
 
 
 def test_agentic_answer_query_stops_when_planner_fails_after_context(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     prompts = []
 
@@ -1374,7 +1374,7 @@ def test_agentic_answer_query_stops_when_planner_fails_after_context(monkeypatch
                     "answer": '{"status":"continue","tool_calls":[{"tool":"search_nodes","arguments":{"query":"memory"}}]}',
                     "used_node_ids": [],
                 }
-            if "You are the Mnemosyne memory-agent." in prompt["prompt_text"]:
+            if "You are the Tirzah memory-agent." in prompt["prompt_text"]:
                 return {
                     "adapter": "fake",
                     "answer": "not json",
@@ -1423,7 +1423,7 @@ def test_agentic_answer_query_stops_when_planner_fails_after_context(monkeypatch
     assert result["process_trace"][2]["output"]["stop_reason"] == (
         "memory_agent_failed_after_tool_context"
     )
-    assert "Mnemosyne Tool Results" in prompts[-1]
+    assert "Tirzah Tool Results" in prompts[-1]
 
 
 def test_parse_memory_agent_decision_accepts_done_status() -> None:
@@ -1563,7 +1563,7 @@ def test_memory_agent_runtime_does_not_inherit_http_answer_adapter() -> None:
 
 
 def test_memory_agent_trace_records_runtime_json_controls(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     class FakeAnswerAdapter:
         def answer(self, prompt):
@@ -1604,26 +1604,26 @@ def test_memory_agent_trace_records_runtime_json_controls(monkeypatch) -> None:
 
 def test_build_memory_agent_prompt_includes_query_assembly_guidance() -> None:
     prompt = build_memory_agent_prompt(
-        query="What does the Mnemosyne technical design say the system is for?",
+        query="What does the Tirzah technical design say the system is for?",
         focus_node_id=None,
         session_id="design-session",
         active_documents=[
             {
                 "document_id": "doc1",
-                "title": "Mnemosyne Technical Design",
+                "title": "Tirzah Technical Design",
             }
         ],
         history=[],
     )
 
     assert "Query assembly:" in prompt
-    assert "- Lexical terms: Mnemosyne, technical, design, system" in prompt
-    assert "- Exact phrases: Mnemosyne technical, technical design, design system" in prompt
-    assert "- Named anchors: Mnemosyne" in prompt
+    assert "- Lexical terms: Tirzah, technical, design, system" in prompt
+    assert "- Exact phrases: Tirzah technical, technical design, design system" in prompt
+    assert "- Named anchors: Tirzah" in prompt
     assert "- Near-match terms: none" in prompt
-    assert "- Suggested fallback searches: Mnemosyne technical" in prompt
+    assert "- Suggested fallback searches: Tirzah technical" in prompt
     assert "session_id: design-session" in prompt
-    assert "Mnemosyne Technical Design" in prompt
+    assert "Tirzah Technical Design" in prompt
 
 
 def test_build_memory_agent_prompt_includes_active_identity_summary() -> None:
@@ -1634,8 +1634,8 @@ def test_build_memory_agent_prompt_includes_active_identity_summary() -> None:
         active_documents=[],
         active_identities=[
             {
-                "identity_id": "mnemosyne_shared",
-                "title": "Mnemosyne Shared Identity",
+                "identity_id": "tirzah_shared",
+                "title": "Tirzah Shared Identity",
                 "kind": "shared",
                 "description": "Project-wide retrieval and governance scaffold.",
                 "trusted_labels": ["memory_reference"],
@@ -1652,7 +1652,7 @@ def test_build_memory_agent_prompt_includes_active_identity_summary() -> None:
     )
 
     assert "Active identities:" in prompt
-    assert "mnemosyne_shared" in prompt
+    assert "tirzah_shared" in prompt
     assert "default_balanced" in prompt
     assert "read_only_memory_agent" in prompt
     assert "ignored_large_field" not in prompt
@@ -1671,7 +1671,7 @@ def test_memory_agent_tool_summary_includes_search_diagnostics() -> None:
                             "node_id": "node1",
                             "title": "System Name",
                             "labels": ["source_section"],
-                            "text_preview": "Mnemosyne is a memory layer.",
+                            "text_preview": "Tirzah is a memory layer.",
                         }
                     ]
                 },
@@ -1679,7 +1679,7 @@ def test_memory_agent_tool_summary_includes_search_diagnostics() -> None:
                     "query_assembly": {
                         "lexical_terms": ["technical", "design"],
                         "exact_phrases": ["technical design"],
-                        "anchor_terms": ["Mnemosyne"],
+                        "anchor_terms": ["Tirzah"],
                         "near_match_terms": [],
                     },
                     "fallback_queries": [
@@ -1694,7 +1694,7 @@ def test_memory_agent_tool_summary_includes_search_diagnostics() -> None:
     assert summary[0]["query_assembly"] == {
         "lexical_terms": ["technical", "design"],
         "exact_phrases": ["technical design"],
-        "anchor_terms": ["Mnemosyne"],
+        "anchor_terms": ["Tirzah"],
         "near_match_terms": [],
     }
     assert summary[0]["fallback_queries"] == [
@@ -1723,7 +1723,7 @@ def test_memory_agent_tool_summary_includes_trust_diagnostic() -> None:
                             "node_id": "node1",
                             "title": "System Name",
                             "labels": ["source_section"],
-                            "text_preview": "Mnemosyne is a memory layer.",
+                            "text_preview": "Tirzah is a memory layer.",
                             "trust_diagnostic": diagnostic,
                         }
                     ]
@@ -1947,14 +1947,14 @@ def test_compact_fallback_query_details_skips_missing_queries_and_caps() -> None
 
 
 def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     calls = []
 
     def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
         calls.append(query)
-        if query == "Mnemosyne":
-            return [{"node_id": "node1", "title": "Mnemosyne"}]
+        if query == "Tirzah":
+            return [{"node_id": "node1", "title": "Tirzah"}]
         return []
 
     monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
@@ -1962,18 +1962,18 @@ def test_execute_search_nodes_tool_falls_back_to_terms(monkeypatch) -> None:
 
     output, details = execute_search_nodes_tool(
         FakeDb(),
-        query="technical desig\ndesign Mnemosyne",
+        query="technical desig\ndesign Tirzah",
     )
 
-    assert output["matches"] == [{"node_id": "node1", "title": "Mnemosyne"}]
+    assert output["matches"] == [{"node_id": "node1", "title": "Tirzah"}]
     assert output["compiled_contexts"] == []
-    assert calls[0] == "technical desig design Mnemosyne"
+    assert calls[0] == "technical desig design Tirzah"
     assert "desig design" in details["query_assembly"]["exact_phrases"]
-    assert any(item["query"] == "Mnemosyne" for item in details["fallback_queries"])
+    assert any(item["query"] == "Tirzah" for item in details["fallback_queries"])
 
 
 def test_execute_search_nodes_tool_passes_active_identity(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     identities = []
 
@@ -2005,7 +2005,7 @@ def test_execute_search_nodes_tool_passes_active_identity(monkeypatch) -> None:
 
 
 def test_execute_search_nodes_tool_adds_trust_diagnostics(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5, identity=None):
         return [{"node_id": "node1", "title": "Memory", "labels": ["source_chunk"]}]
@@ -2035,7 +2035,7 @@ def test_execute_search_nodes_tool_adds_trust_diagnostics(monkeypatch) -> None:
 
 
 def test_execute_search_nodes_tool_batches_trust_diagnostics(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     calls = []
 
@@ -2071,7 +2071,7 @@ def test_execute_search_nodes_tool_batches_trust_diagnostics(monkeypatch) -> Non
 
 
 def test_execute_tool_calls_can_list_active_documents(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     monkeypatch.setattr(
         interaction,
@@ -2102,7 +2102,7 @@ def test_execute_tool_calls_can_list_active_documents(monkeypatch) -> None:
 
 
 def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     monkeypatch.setattr(
         interaction,
@@ -2291,7 +2291,7 @@ def test_execute_tool_calls_can_run_exact_lookup_tools(monkeypatch) -> None:
 
 
 def test_execute_tool_calls_returns_instructional_tool_errors() -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     results = interaction.execute_tool_calls(
         FakeDb(),
@@ -2311,7 +2311,7 @@ def test_execute_tool_calls_returns_instructional_tool_errors() -> None:
 
 
 def test_memory_agent_history_keeps_tool_repair_guidance() -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     results = interaction.execute_tool_calls(
         FakeDb(),
@@ -2337,7 +2337,7 @@ def test_memory_agent_history_keeps_tool_repair_guidance() -> None:
 
 
 def test_answer_activity_report_summarizes_tool_repair_guidance() -> None:
-    from mnemosyne.sessions.activity_reports import answer_activity_log, answer_activity_report
+    from tirzah.sessions.activity_reports import answer_activity_log, answer_activity_report
 
     result = {
         "ok": True,
@@ -2493,14 +2493,14 @@ def test_active_document_vocabulary_values_extracts_titles_sources_and_labels() 
         [
             {
                 "title": "Technical Design",
-                "source": {"path": "/tmp/Mnemosyne_Technical_Design.md"},
-                "labels": ["mnemosyne_design"],
+                "source": {"path": "/tmp/Tirzah_Technical_Design.md"},
+                "labels": ["tirzah_design"],
             }
         ]
     ) == [
         "Technical Design",
-        "/tmp/Mnemosyne_Technical_Design.md",
-        "mnemosyne_design",
+        "/tmp/Tirzah_Technical_Design.md",
+        "tirzah_design",
     ]
 
 
@@ -2526,7 +2526,7 @@ def test_memory_agent_prompt_uses_active_documents_for_near_match_guidance() -> 
 def test_execute_search_nodes_tool_uses_session_active_documents_for_near_match_terms(
     monkeypatch,
 ) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     calls = []
 
@@ -2561,7 +2561,7 @@ def test_execute_search_nodes_tool_uses_session_active_documents_for_near_match_
 def test_near_match_vocabulary_can_use_active_documents_without_document_collection(
     monkeypatch,
 ) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     monkeypatch.setattr(
         interaction,
@@ -2584,7 +2584,7 @@ def test_near_match_vocabulary_can_use_active_documents_without_document_collect
 
 
 def test_execute_search_nodes_tool_uses_near_match_terms_after_empty_search(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     calls = []
 
@@ -2608,7 +2608,7 @@ def test_execute_search_nodes_tool_uses_near_match_terms_after_empty_search(monk
 
 
 def test_execute_search_nodes_tool_uses_near_match_terms_after_weak_match(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     calls = []
 
@@ -2633,21 +2633,21 @@ def test_execute_search_nodes_tool_uses_near_match_terms_after_weak_match(monkey
 
 
 def test_execute_search_nodes_tool_uses_original_query_for_intent_terms(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5):
         if query == "system":
             return [
                 {
                     "node_id": "generic",
-                    "title": "Mnemosyne Technical Design Document",
+                    "title": "Tirzah Technical Design Document",
                     "text_preview": "Header",
                     "labels": ["source_root"],
                 },
                 {
                     "node_id": "concept",
                     "title": "1. System Name and Concept",
-                    "text_preview": "Mnemosyne is a locally operated memory layer.",
+                    "text_preview": "Tirzah is a locally operated memory layer.",
                     "labels": ["source_section"],
                 },
             ]
@@ -2658,16 +2658,16 @@ def test_execute_search_nodes_tool_uses_original_query_for_intent_terms(monkeypa
 
     output, details = execute_search_nodes_tool(
         FakeDb(),
-        query="Mnemosyne technical design",
-        original_query="What does the Mnemosyne technical design say the system is for?",
+        query="Tirzah technical design",
+        original_query="What does the Tirzah technical design say the system is for?",
     )
 
     assert output["matches"][0]["node_id"] == "concept"
     assert details["ranking_query"] == (
-        "Mnemosyne technical design What does the say system is for"
+        "Tirzah technical design What does the say system is for"
     )
     assert details["query_assembly"]["lexical_terms"] == [
-        "Mnemosyne",
+        "Tirzah",
         "technical",
         "design",
         "system",
@@ -2676,7 +2676,7 @@ def test_execute_search_nodes_tool_uses_original_query_for_intent_terms(monkeypa
 
 
 def test_ranked_focus_matches_uses_near_match_terms_after_empty_search(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     calls = []
 
@@ -2703,7 +2703,7 @@ def test_ranked_focus_matches_uses_near_match_terms_after_empty_search(monkeypat
 
 
 def test_ranked_focus_matches_uses_near_match_terms_after_weak_match(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     calls = []
 
@@ -2732,12 +2732,12 @@ def test_ranked_focus_matches_uses_near_match_terms_after_weak_match(monkeypatch
 
 
 def test_execute_search_nodes_tool_compiles_top_match(monkeypatch) -> None:
-    import mnemosyne.sessions.interaction as interaction
+    import tirzah.sessions.interaction as interaction
 
     monkeypatch.setattr(
         interaction,
         "search_nodes",
-        lambda *args, **kwargs: [{"node_id": "node1", "title": "Mnemosyne"}],
+        lambda *args, **kwargs: [{"node_id": "node1", "title": "Tirzah"}],
     )
     monkeypatch.setattr(
         interaction,
@@ -2745,42 +2745,42 @@ def test_execute_search_nodes_tool_compiles_top_match(monkeypatch) -> None:
         lambda _db, node_id: {"focus_node_id": node_id, "records": []},
     )
 
-    output, _details = execute_search_nodes_tool(FakeDb(), query="Mnemosyne")
+    output, _details = execute_search_nodes_tool(FakeDb(), query="Tirzah")
 
     assert output["compiled_contexts"] == [{"focus_node_id": "node1", "records": []}]
 
 
 def test_score_node_match_prefers_specific_title_terms() -> None:
     technical = {
-        "title": "Mnemosyne Technical Design Document",
+        "title": "Tirzah Technical Design Document",
         "text_preview": "Architecture notes",
     }
     generic = {
         "title": "Worker Smoke",
-        "text_preview": "Mnemosyne ingestion worker",
+        "text_preview": "Tirzah ingestion worker",
     }
 
-    assert score_node_match(technical, "Mnemosyne technical design") > score_node_match(
+    assert score_node_match(technical, "Tirzah technical design") > score_node_match(
         generic,
-        "Mnemosyne technical design",
+        "Tirzah technical design",
     )
 
 
 def test_score_node_match_prefers_intent_section_over_generic_header() -> None:
     generic = {
-        "title": "Mnemosyne Technical Design Document",
+        "title": "Tirzah Technical Design Document",
         "text_preview": "Header",
         "labels": ["source_root"],
     }
     concept = {
         "title": "1. System Name and Concept",
-        "text_preview": "Mnemosyne is a locally operated memory layer.",
+        "text_preview": "Tirzah is a locally operated memory layer.",
         "labels": ["source_section"],
     }
 
-    assert score_node_match(concept, "Mnemosyne technical design system") > score_node_match(
+    assert score_node_match(concept, "Tirzah technical design system") > score_node_match(
         generic,
-        "Mnemosyne technical design system",
+        "Tirzah technical design system",
     )
 
 
@@ -2791,28 +2791,28 @@ def test_score_node_match_keeps_named_project_above_broad_corpus_hits() -> None:
         "labels": ["source_section", "ams_domain"],
         "provenance": {"source_path": "/home/cello/domains/AMS/coherence.md"},
     }
-    mnemosyne_concept = {
+    tirzah_concept = {
         "title": "1. System Name and Concept",
-        "text_preview": "Mnemosyne is a locally operated memory layer.",
+        "text_preview": "Tirzah is a locally operated memory layer.",
         "labels": ["source_section"],
-        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+        "provenance": {"source_path": "Tirzah_Technical_Design_v0.1.md"},
     }
 
     assert score_node_match(
-        mnemosyne_concept,
-        "What does the Mnemosyne technical design say the system is for?",
+        tirzah_concept,
+        "What does the Tirzah technical design say the system is for?",
     ) > score_node_match(
         ams_system,
-        "What does the Mnemosyne technical design say the system is for?",
+        "What does the Tirzah technical design say the system is for?",
     )
 
 
 def test_score_node_match_allows_partial_multi_anchor_matches() -> None:
     partial = {
-        "title": "Mnemosyne Technical Design Document",
+        "title": "Tirzah Technical Design Document",
         "text_preview": "Architecture notes.",
         "labels": ["source_section"],
-        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+        "provenance": {"source_path": "Tirzah_Technical_Design_v0.1.md"},
     }
     weak = {
         "title": "Technical notes",
@@ -2823,94 +2823,94 @@ def test_score_node_match_allows_partial_multi_anchor_matches() -> None:
 
     assert score_node_match(
         partial,
-        "Compare AMS Mnemosyne Technical design notes",
+        "Compare AMS Tirzah Technical design notes",
     ) > score_node_match(
         weak,
-        "Compare AMS Mnemosyne Technical design notes",
+        "Compare AMS Tirzah Technical design notes",
     )
 
 
 def test_score_node_match_ignores_sentence_initial_stopword_anchor() -> None:
     row = {
-        "title": "Mnemosyne Configuration",
+        "title": "Tirzah Configuration",
         "text_preview": "Configuration notes.",
         "labels": ["source_section"],
     }
 
-    assert score_node_match(row, "This Mnemosyne configuration") > 0
+    assert score_node_match(row, "This Tirzah configuration") > 0
 
 
 def test_score_node_match_ignores_command_verb_anchor() -> None:
     row = {
-        "title": "Mnemosyne Configuration",
+        "title": "Tirzah Configuration",
         "text_preview": "Configuration notes.",
         "labels": ["source_section"],
     }
 
-    assert score_node_match(row, "Find Mnemosyne configuration") > 0
+    assert score_node_match(row, "Find Tirzah configuration") > 0
 
 
 def test_score_node_match_demotes_document_root() -> None:
     root = {
-        "title": "Mnemosyne Technical Design Document",
+        "title": "Tirzah Technical Design Document",
         "text_preview": "System Name and Concept",
         "labels": ["source_root"],
     }
     section = {
         "title": "1. System Name and Concept",
-        "text_preview": "Mnemosyne is a memory layer.",
+        "text_preview": "Tirzah is a memory layer.",
         "labels": ["source_section"],
     }
 
-    assert score_node_match(section, "Mnemosyne technical design system") > score_node_match(
+    assert score_node_match(section, "Tirzah technical design system") > score_node_match(
         root,
-        "Mnemosyne technical design system",
+        "Tirzah technical design system",
     )
 
 
 def test_score_node_match_demotes_document_metadata_section_below_concept() -> None:
     metadata_section = {
-        "title": "Mnemosyne Technical Design Document",
+        "title": "Tirzah Technical Design Document",
         "text_preview": "**Version:** 0.1\n**Status:** For Review\n**Date:** May 2026",
         "labels": ["source_section"],
-        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+        "provenance": {"source_path": "Tirzah_Technical_Design_v0.1.md"},
     }
     concept = {
         "title": "1. System Name and Concept",
-        "text_preview": "Mnemosyne is a locally operated memory layer.",
+        "text_preview": "Tirzah is a locally operated memory layer.",
         "labels": ["source_section"],
-        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+        "provenance": {"source_path": "Tirzah_Technical_Design_v0.1.md"},
     }
 
     assert score_node_match(
         concept,
-        "What does the Mnemosyne technical design say the system is for?",
+        "What does the Tirzah technical design say the system is for?",
     ) > score_node_match(
         metadata_section,
-        "What does the Mnemosyne technical design say the system is for?",
+        "What does the Tirzah technical design say the system is for?",
     )
 
 
 def test_score_node_match_demotes_separator_only_chunks() -> None:
     separator = {
-        "title": "Mnemosyne Technical Design Document / paragraph 2",
+        "title": "Tirzah Technical Design Document / paragraph 2",
         "text_preview": "---",
         "labels": ["source_chunk"],
-        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+        "provenance": {"source_path": "Tirzah_Technical_Design_v0.1.md"},
     }
     concept = {
         "title": "1. System Name and Concept",
-        "text_preview": "Mnemosyne is a locally operated memory layer.",
+        "text_preview": "Tirzah is a locally operated memory layer.",
         "labels": ["source_section"],
-        "provenance": {"source_path": "Mnemosyne_Technical_Design_v0.1.md"},
+        "provenance": {"source_path": "Tirzah_Technical_Design_v0.1.md"},
     }
 
     assert score_node_match(
         concept,
-        "What does the Mnemosyne technical design say the system is for?",
+        "What does the Tirzah technical design say the system is for?",
     ) > score_node_match(
         separator,
-        "What does the Mnemosyne technical design say the system is for?",
+        "What does the Tirzah technical design say the system is for?",
     )
 
 
@@ -2923,19 +2923,19 @@ def test_combined_query_text_deduplicates_planner_and_original_terms() -> None:
 def test_build_query_assembly_extracts_terms_phrases_and_anchors() -> None:
     assembly = build_query_assembly(
         "technical design",
-        "What does the Mnemosyne technical design say the system is for?",
+        "What does the Tirzah technical design say the system is for?",
     )
 
     assert assembly["ranking_query"] == (
-        "technical design What does the Mnemosyne say system is for"
+        "technical design What does the Tirzah say system is for"
     )
-    assert assembly["lexical_terms"] == ["technical", "design", "Mnemosyne", "system"]
+    assert assembly["lexical_terms"] == ["technical", "design", "Tirzah", "system"]
     assert assembly["exact_phrases"][:3] == [
         "technical design",
-        "Mnemosyne technical",
+        "Tirzah technical",
         "design system",
     ]
-    assert assembly["anchor_terms"] == ["Mnemosyne"]
+    assert assembly["anchor_terms"] == ["Tirzah"]
     assert assembly["near_match_terms"] == []
 
 
@@ -2966,8 +2966,8 @@ def test_near_match_terms_skips_exact_matches_and_low_scores() -> None:
 
 
 def test_vocabulary_terms_extracts_bounded_content_terms() -> None:
-    assert vocabulary_terms(["Mnemosyne Technical Design", "/tmp/source.md"], limit=3) == [
-        "Mnemosyne",
+    assert vocabulary_terms(["Tirzah Technical Design", "/tmp/source.md"], limit=3) == [
+        "Tirzah",
         "Technical",
         "Design",
     ]
@@ -3004,8 +3004,8 @@ def test_build_query_assembly_keeps_underscore_terms_for_near_matches() -> None:
 
 
 def test_fallback_queries_prefers_phrases_before_single_terms() -> None:
-    assert fallback_queries("Mnemosyne technical design system")[:3] == [
-        "Mnemosyne technical",
+    assert fallback_queries("Tirzah technical design system")[:3] == [
+        "Tirzah technical",
         "technical design",
         "design system",
     ]
@@ -3224,12 +3224,12 @@ def test_render_tool_results_renders_context_as_markdown() -> None:
                 "arguments": {"query": "system"},
                 "details": {
                     "query_assembly": {
-                        "lexical_terms": ["system", "Mnemosyne"],
-                        "exact_phrases": ["Mnemosyne system"],
-                        "anchor_terms": ["Mnemosyne"],
+                        "lexical_terms": ["system", "Tirzah"],
+                        "exact_phrases": ["Tirzah system"],
+                        "anchor_terms": ["Tirzah"],
                     },
                     "fallback_queries": [
-                        {"query": "Mnemosyne system", "result_count": 2},
+                        {"query": "Tirzah system", "result_count": 2},
                         {"query": "system", "result_count": 5},
                     ],
                 },
@@ -3249,7 +3249,7 @@ def test_render_tool_results_renders_context_as_markdown() -> None:
                                     "labels": ["source_section"],
                                     "endorsement_label": "unreviewed",
                                     "provenance": {},
-                                    "text": "Mnemosyne is a memory layer.",
+                                    "text": "Tirzah is a memory layer.",
                                 }
                             ],
                         },
@@ -3276,18 +3276,18 @@ def test_render_tool_results_renders_context_as_markdown() -> None:
     )
 
     assert "### search_nodes" in rendered
-    assert "# Mnemosyne Context" in rendered
-    assert "Mnemosyne is a memory layer." in rendered
+    assert "# Tirzah Context" in rendered
+    assert "Tirzah is a memory layer." in rendered
     assert "It assembles context." in rendered
     assert "Compiled context 1:" in rendered
     assert "Compiled context 2:" in rendered
-    assert "- Lexical terms: system, Mnemosyne" in rendered
-    assert "- Exact phrases: Mnemosyne system" in rendered
-    assert "- Named anchors: Mnemosyne" in rendered
+    assert "- Lexical terms: system, Tirzah" in rendered
+    assert "- Exact phrases: Tirzah system" in rendered
+    assert "- Named anchors: Tirzah" in rendered
     assert "- Near-match terms: none" in rendered
-    assert "- Fallback searches: Mnemosyne system (2), system (5)" in rendered
-    assert "#### Mnemosyne Context" in rendered
-    assert "\n# Mnemosyne Context" not in rendered
+    assert "- Fallback searches: Tirzah system (2), system (5)" in rendered
+    assert "#### Tirzah Context" in rendered
+    assert "\n# Tirzah Context" not in rendered
     assert "#### Compiled context" not in rendered
     assert '"top_contexts"' not in rendered
 
@@ -3463,18 +3463,18 @@ def test_render_tool_results_renders_semantic_candidate_context_as_markdown() ->
 
 def test_agentic_answer_envelope_includes_structured_context_document() -> None:
     envelope = build_agentic_answer_envelope(
-        query="What is Mnemosyne?",
+        query="What is Tirzah?",
         tool_results=[
             {
                 "index": 0,
                 "tool": "search_nodes",
-                "arguments": {"query": "Mnemosyne"},
+                "arguments": {"query": "Tirzah"},
                 "ok": True,
                 "details": {
-                    "normalized_query": "Mnemosyne",
-                    "ranking_query": "Mnemosyne",
-                    "query_assembly": {"lexical_terms": ["Mnemosyne"]},
-                    "fallback_queries": [{"query": "Mnemosyne", "result_count": 1}],
+                    "normalized_query": "Tirzah",
+                    "ranking_query": "Tirzah",
+                    "query_assembly": {"lexical_terms": ["Tirzah"]},
+                    "fallback_queries": [{"query": "Tirzah", "result_count": 1}],
                 },
                 "output": {
                     "matches": [{"node_id": "node1", "title": "System Name"}],
@@ -3491,7 +3491,7 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
                                     "labels": ["source_section"],
                                     "endorsement_label": "unreviewed",
                                     "provenance": {"source_path": "design.md"},
-                                    "text": "Mnemosyne is a memory layer.",
+                                    "text": "Tirzah is a memory layer.",
                                 }
                             ],
                         }
@@ -3520,7 +3520,7 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
     context_document = envelope["context_metadata"]["context_document"]
     assert context_document["schema_version"] == 1
     assert context_document["kind"] == "agentic_answer_context"
-    assert context_document["query"] == "What is Mnemosyne?"
+    assert context_document["query"] == "What is Tirzah?"
     assert context_document["controller_decision"]["mode"] == "agentic"
     assert context_document["controller_decision"]["current_owner"] == "memory_agent_controller"
     assert envelope["context_metadata"]["controller_decision"] == context_document["controller_decision"]
@@ -3546,9 +3546,9 @@ def test_agentic_answer_envelope_includes_structured_context_document() -> None:
         "labels": ["source_section"],
         "endorsement_label": "unreviewed",
         "provenance": {"source_path": "design.md"},
-        "text": "Mnemosyne is a memory layer.",
-        "chars": 28,
-    }
+        "text": "Tirzah is a memory layer.",
+            "chars": 25,
+        }
     tree_output = context_document["tool_results"][1]["output"]
     assert tree_output["node_count"] == 25
     assert len(tree_output["nodes"]) == 20

@@ -3,7 +3,7 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mnemosyne"
+name = "tirzah"
 version = "0.1.0"
 description = "Local graph-based memory and retrieval layer for LLM interactions."
 readme = "README.md"
@@ -47,12 +47,13 @@ profiles = [
 ]
 
 [project.scripts]
-mnemosyne = "mnemosyne.cli:main"
+tirzah = "tirzah.cli:main"
+mnemosyne = "tirzah.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/gellsmore-svg/mnemosyne"
-Repository = "https://github.com/gellsmore-svg/mnemosyne"
-Issues = "https://github.com/gellsmore-svg/mnemosyne/issues"
+Homepage = "https://github.com/gellsmore-svg/tirzah"
+Repository = "https://github.com/gellsmore-svg/tirzah"
+Issues = "https://github.com/gellsmore-svg/tirzah/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

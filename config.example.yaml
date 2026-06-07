@@ -1,5 +1,6 @@
 mongo:
   uri: mongodb://localhost:27017
+  # Kept on the existing development database during the product rename so local corpora remain visible.
   database: mnemosyne_dev
 
 paths:

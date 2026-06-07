@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from bson import ObjectId
 
-from mnemosyne.cli import (
+from tirzah.cli import (
     chronological_folder_source_plan,
     discover_folder_sources,
     document_ids_for_label,
@@ -134,8 +134,8 @@ def test_rebuild_document_uses_original_source_path_for_adapter_title(
         captured["title"] = result.title
         return {"document_id": str(document_id), "replaced": True}
 
-    monkeypatch.setattr("mnemosyne.cli.get_document", lambda _db, _document_id: db.document)
-    monkeypatch.setattr("mnemosyne.cli.rebuild_document", fake_rebuild)
+    monkeypatch.setattr("tirzah.cli.get_document", lambda _db, _document_id: db.document)
+    monkeypatch.setattr("tirzah.cli.rebuild_document", fake_rebuild)
 
     result = rebuild_document_from_existing_source(db, str(document_id))
 
@@ -144,15 +144,15 @@ def test_rebuild_document_uses_original_source_path_for_adapter_title(
 
 
 def test_cli_graph_edges_command(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(sys, "argv", ["mnemosyne", "graph-edges", "node1", "--limit", "2"])
+    monkeypatch.setattr(sys, "argv", ["tirzah", "graph-edges", "node1", "--limit", "2"])
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.graph_edges_for_node",
+        "tirzah.cli.graph_edges_for_node",
         lambda _db, node_id, direction="both", relation_type=None, limit=10: [
             {"node_id": node_id, "direction": direction, "limit": limit}
         ],
@@ -171,16 +171,16 @@ def test_cli_backfill_structural_graph_edges_command(monkeypatch, capsys) -> Non
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "backfill-structural-graph-edges", "--limit", "7"],
+        ["tirzah", "backfill-structural-graph-edges", "--limit", "7"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.backfill_structural_graph_edges",
+        "tirzah.cli.backfill_structural_graph_edges",
         lambda _db, limit=None: {
             "scanned_node_count": limit,
             "edge_count": 3,
@@ -206,7 +206,7 @@ def test_cli_backfill_embeddings_command(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "backfill-embeddings",
             "--limit",
             "7",
@@ -219,12 +219,12 @@ def test_cli_backfill_embeddings_command(monkeypatch, capsys) -> None:
     )
     config = SimpleNamespace(mongo=SimpleNamespace(), runtime=SimpleNamespace())
     embedder = SimpleNamespace(name="fake_embedding")
-    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
-    monkeypatch.setattr("mnemosyne.cli.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr("tirzah.cli.load_config", lambda _path: config)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.embedding_adapter", lambda _runtime: embedder)
     monkeypatch.setattr(
-        "mnemosyne.cli.backfill_node_embeddings",
+        "tirzah.cli.backfill_node_embeddings",
         lambda _db, used_embedder, **kwargs: {
             "ok": True,
             "embedder": used_embedder.name,
@@ -249,13 +249,13 @@ def test_cli_embedding_backfill_jobs_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "embedding-backfill-jobs", "--status", "pending", "--limit", "3"],
+        ["tirzah", "embedding-backfill-jobs", "--status", "pending", "--limit", "3"],
     )
-    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: SimpleNamespace(mongo=SimpleNamespace()))
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.load_config", lambda _path: SimpleNamespace(mongo=SimpleNamespace()))
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.list_embedding_backfill_jobs",
+        "tirzah.cli.list_embedding_backfill_jobs",
         lambda _db, status=None, limit=20: [{"status": status, "limit": limit}],
     )
 
@@ -272,7 +272,7 @@ def test_cli_backfill_profiles_alias(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "backfill-profiles",
             "--limit",
             "7",
@@ -285,12 +285,12 @@ def test_cli_backfill_profiles_alias(monkeypatch, capsys) -> None:
     )
     config = SimpleNamespace(mongo=SimpleNamespace(), runtime=SimpleNamespace())
     embedder = SimpleNamespace(name="fake_profile")
-    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
-    monkeypatch.setattr("mnemosyne.cli.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr("tirzah.cli.load_config", lambda _path: config)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.embedding_adapter", lambda _runtime: embedder)
     monkeypatch.setattr(
-        "mnemosyne.cli.backfill_node_embeddings",
+        "tirzah.cli.backfill_node_embeddings",
         lambda _db, used_embedder, **kwargs: {
             "ok": True,
             "embedder": used_embedder.name,
@@ -314,16 +314,16 @@ def test_cli_profile_backfill_jobs_alias(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "profile-backfill-jobs", "--status", "pending", "--limit", "3"],
+        ["tirzah", "profile-backfill-jobs", "--status", "pending", "--limit", "3"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.list_embedding_backfill_jobs",
+        "tirzah.cli.list_embedding_backfill_jobs",
         lambda _db, status=None, limit=20: [{"status": status, "limit": limit}],
     )
 
@@ -340,7 +340,7 @@ def test_cli_queue_embedding_backfill_command(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "queue-embedding-backfill",
             "--limit",
             "9",
@@ -353,11 +353,11 @@ def test_cli_queue_embedding_backfill_command(monkeypatch, capsys) -> None:
             "tester",
         ],
     )
-    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: SimpleNamespace(mongo=SimpleNamespace()))
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.load_config", lambda _path: SimpleNamespace(mongo=SimpleNamespace()))
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.create_embedding_backfill_job",
+        "tirzah.cli.create_embedding_backfill_job",
         lambda _db, **kwargs: {"job_id": "job1", **kwargs},
     )
 
@@ -377,15 +377,15 @@ def test_cli_queue_embedding_backfill_command(monkeypatch, capsys) -> None:
 
 
 def test_cli_process_embedding_backfill_command(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(sys, "argv", ["mnemosyne", "process-embedding-backfill", "--max-batches", "4"])
+    monkeypatch.setattr(sys, "argv", ["tirzah", "process-embedding-backfill", "--max-batches", "4"])
     config = SimpleNamespace(mongo=SimpleNamespace(), runtime=SimpleNamespace())
     embedder = SimpleNamespace(name="fake_embedding")
-    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
-    monkeypatch.setattr("mnemosyne.cli.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr("tirzah.cli.load_config", lambda _path: config)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.embedding_adapter", lambda _runtime: embedder)
     monkeypatch.setattr(
-        "mnemosyne.cli.process_embedding_backfill_batches",
+        "tirzah.cli.process_embedding_backfill_batches",
         lambda _db, used_embedder, max_batches=1: {
             "ok": True,
             "embedder": used_embedder.name,
@@ -407,7 +407,7 @@ def test_cli_queue_profile_backfill_alias(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "queue-profile-backfill",
             "--limit",
             "9",
@@ -421,13 +421,13 @@ def test_cli_queue_profile_backfill_alias(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.create_embedding_backfill_job",
+        "tirzah.cli.create_embedding_backfill_job",
         lambda _db, **kwargs: {"job_id": "job1", **kwargs},
     )
 
@@ -450,16 +450,16 @@ def test_cli_process_profile_backfill_alias(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "process-profile-backfill", "--max-batches", "4"],
+        ["tirzah", "process-profile-backfill", "--max-batches", "4"],
     )
     config = SimpleNamespace(mongo=SimpleNamespace(), runtime=SimpleNamespace())
     embedder = SimpleNamespace(name="fake_profile")
-    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
-    monkeypatch.setattr("mnemosyne.cli.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr("tirzah.cli.load_config", lambda _path: config)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.embedding_adapter", lambda _runtime: embedder)
     monkeypatch.setattr(
-        "mnemosyne.cli.process_embedding_backfill_batches",
+        "tirzah.cli.process_embedding_backfill_batches",
         lambda _db, used_embedder, max_batches=1: {
             "ok": True,
             "embedder": used_embedder.name,
@@ -477,15 +477,15 @@ def test_cli_process_profile_backfill_alias(monkeypatch, capsys) -> None:
 
 
 def test_cli_graph_status_command(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(sys, "argv", ["mnemosyne", "graph-status", "--limit", "3"])
+    monkeypatch.setattr(sys, "argv", ["tirzah", "graph-status", "--limit", "3"])
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.graph_edge_status",
+        "tirzah.cli.graph_edge_status",
         lambda _db, limit=10: {
             "edge_count": 12,
             "relation_types": [{"value": "contains", "count": 12}],
@@ -510,16 +510,16 @@ def test_cli_graph_status_text_format(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "graph-status", "--limit", "3", "--format", "text"],
+        ["tirzah", "graph-status", "--limit", "3", "--format", "text"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.graph_edge_status",
+        "tirzah.cli.graph_edge_status",
         lambda _db, limit=10: {
             "edge_count": 20,
             "relation_types": [
@@ -546,15 +546,15 @@ def test_cli_graph_status_text_format(monkeypatch, capsys) -> None:
 
 
 def test_cli_list_docs_command(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(sys, "argv", ["mnemosyne", "list-docs", "--limit", "2"])
+    monkeypatch.setattr(sys, "argv", ["tirzah", "list-docs", "--limit", "2"])
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.list_documents",
+        "tirzah.cli.list_documents",
         lambda _db, limit=20: [{"document_id": "doc1", "title": "Doc", "limit": limit}],
     )
 
@@ -570,16 +570,16 @@ def test_cli_list_docs_text_format(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "list-docs", "--limit", "2", "--format", "text"],
+        ["tirzah", "list-docs", "--limit", "2", "--format", "text"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.list_documents",
+        "tirzah.cli.list_documents",
         lambda _db, limit=20: [
             {
                 "document_id": "doc1",
@@ -610,16 +610,16 @@ def test_cli_expand_proximity_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "expand-proximity", "node1", "--direction", "incoming"],
+        ["tirzah", "expand-proximity", "node1", "--direction", "incoming"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.expand_proximity",
+        "tirzah.cli.expand_proximity",
         lambda _db, node_id, direction="both", relation_type=None, limit=10: [
             {"node_id": node_id, "direction": direction, "limit": limit}
         ],
@@ -639,7 +639,7 @@ def test_cli_expand_proximity_text_format(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "expand-proximity",
             "node1",
             "--limit",
@@ -649,13 +649,13 @@ def test_cli_expand_proximity_text_format(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.expand_proximity",
+        "tirzah.cli.expand_proximity",
         lambda _db, node_id, direction="both", relation_type=None, limit=10: [
             {
                 "node_id": "related1",
@@ -692,7 +692,7 @@ def test_cli_expand_graph_paths_command(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "expand-graph-paths",
             "node1",
             "--direction",
@@ -702,11 +702,11 @@ def test_cli_expand_graph_paths_command(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
 
     def fake_expand_graph_paths(
         _db,
@@ -727,7 +727,7 @@ def test_cli_expand_graph_paths_command(monkeypatch, capsys) -> None:
             }
         ]
 
-    monkeypatch.setattr("mnemosyne.cli.expand_graph_paths", fake_expand_graph_paths)
+    monkeypatch.setattr("tirzah.cli.expand_graph_paths", fake_expand_graph_paths)
 
     main()
 
@@ -750,16 +750,16 @@ def test_cli_semantic_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "semantic-candidates", "node1", "--include-same-document"],
+        ["tirzah", "semantic-candidates", "node1", "--include-same-document"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.semantic_candidate_nodes",
+        "tirzah.cli.semantic_candidate_nodes",
         lambda _db, node_id, limit=10, include_same_document=False: [
             {
                 "node_id": node_id,
@@ -789,7 +789,7 @@ def test_cli_create_semantic_edge_command(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "create-semantic-edge",
             "source1",
             "target1",
@@ -806,13 +806,13 @@ def test_cli_create_semantic_edge_command(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.create_reviewed_semantic_edge",
+        "tirzah.cli.create_reviewed_semantic_edge",
         lambda _db, **kwargs: {"ok": True, "edge": kwargs},
     )
 
@@ -838,7 +838,7 @@ def test_cli_enqueue_semantic_candidates_command(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "enqueue-semantic-candidates",
             "node1",
             "--include-same-document",
@@ -851,13 +851,13 @@ def test_cli_enqueue_semantic_candidates_command(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.enqueue_semantic_edge_candidates",
+        "tirzah.cli.enqueue_semantic_edge_candidates",
         lambda _db, **kwargs: {"ok": True, **kwargs},
     )
 
@@ -883,7 +883,7 @@ def test_cli_embedding_smoke_command(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "embedding-smoke",
             "Taj Mahal",
             "--adapter",
@@ -893,10 +893,10 @@ def test_cli_embedding_smoke_command(monkeypatch, capsys) -> None:
             "--allow-http-diagnostic",
         ],
     )
-    monkeypatch.setattr("mnemosyne.cli.load_config", lambda _path: config)
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.load_config", lambda _path: config)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
     monkeypatch.setattr(
-        "mnemosyne.cli.embedding_smoke_payload",
+        "tirzah.cli.embedding_smoke_payload",
         lambda cfg, text: {
             "ok": True,
             "text": text,
@@ -917,7 +917,7 @@ def test_cli_embedding_smoke_command(monkeypatch, capsys) -> None:
 
 
 def test_embedding_smoke_payload_returns_structured_adapter_errors() -> None:
-    from mnemosyne.cli import embedding_smoke_payload
+    from tirzah.cli import embedding_smoke_payload
 
     class FailingAdapter:
         name = "failing_embedding"
@@ -928,7 +928,7 @@ def test_embedding_smoke_payload_returns_structured_adapter_errors() -> None:
 
     config = SimpleNamespace(runtime=SimpleNamespace())
 
-    import mnemosyne.cli as cli
+    import tirzah.cli as cli
 
     original_factory = cli.embedding_adapter
     cli.embedding_adapter = lambda _runtime: FailingAdapter()
@@ -947,7 +947,7 @@ def test_embedding_smoke_payload_returns_structured_adapter_errors() -> None:
 
 
 def test_embedding_smoke_payload_reports_disallowed_http_adapter() -> None:
-    from mnemosyne.cli import embedding_smoke_payload
+    from tirzah.cli import embedding_smoke_payload
 
     config = SimpleNamespace(
         runtime=SimpleNamespace(
@@ -967,7 +967,7 @@ def test_embedding_smoke_payload_reports_disallowed_http_adapter() -> None:
 
 
 def test_embedding_smoke_payload_reports_missing_local_profile_command() -> None:
-    from mnemosyne.cli import embedding_smoke_payload
+    from tirzah.cli import embedding_smoke_payload
 
     config = SimpleNamespace(
         runtime=SimpleNamespace(
@@ -992,7 +992,7 @@ def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "vector-semantic-candidates",
             "node1",
             "--include-same-document",
@@ -1005,13 +1005,13 @@ def test_cli_vector_semantic_candidates_command(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.embedding_candidate_report",
+        "tirzah.cli.embedding_candidate_report",
         lambda _db, node_id, **kwargs: {
             "ok": True,
             "nodes": [{"node_id": node_id, **kwargs}],
@@ -1048,7 +1048,7 @@ def test_cli_vector_semantic_candidates_text_format(monkeypatch, capsys) -> None
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "vector-semantic-candidates",
             "node1",
             "--min-similarity",
@@ -1062,13 +1062,13 @@ def test_cli_vector_semantic_candidates_text_format(monkeypatch, capsys) -> None
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.embedding_candidate_report",
+        "tirzah.cli.embedding_candidate_report",
         lambda _db, node_id, **_kwargs: {
             "ok": True,
             "nodes": [
@@ -1122,7 +1122,7 @@ def test_cli_profile_semantic_candidates_alias(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "profile-semantic-candidates",
             "node1",
             "--include-same-document",
@@ -1135,13 +1135,13 @@ def test_cli_profile_semantic_candidates_alias(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.embedding_candidate_report",
+        "tirzah.cli.embedding_candidate_report",
         lambda _db, node_id, **kwargs: {
             "ok": True,
             "nodes": [{"node_id": node_id, **kwargs}],
@@ -1168,7 +1168,7 @@ def test_cli_enqueue_vector_semantic_candidates_command(monkeypatch, capsys) -> 
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "enqueue-vector-semantic-candidates",
             "node1",
             "--include-same-document",
@@ -1185,13 +1185,13 @@ def test_cli_enqueue_vector_semantic_candidates_command(monkeypatch, capsys) -> 
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.enqueue_vector_semantic_edge_candidates",
+        "tirzah.cli.enqueue_vector_semantic_edge_candidates",
         lambda _db, **kwargs: {"ok": True, **kwargs},
     )
 
@@ -1215,7 +1215,7 @@ def test_cli_enqueue_profile_semantic_candidates_alias(monkeypatch, capsys) -> N
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "enqueue-profile-semantic-candidates",
             "node1",
             "--include-same-document",
@@ -1232,13 +1232,13 @@ def test_cli_enqueue_profile_semantic_candidates_alias(monkeypatch, capsys) -> N
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.enqueue_vector_semantic_edge_candidates",
+        "tirzah.cli.enqueue_vector_semantic_edge_candidates",
         lambda _db, **kwargs: {"ok": True, **kwargs},
     )
 
@@ -1262,7 +1262,7 @@ def test_cli_enqueue_vector_semantic_batch_command(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "enqueue-vector-semantic-batch",
             "--label",
             "ams_domain",
@@ -1287,13 +1287,13 @@ def test_cli_enqueue_vector_semantic_batch_command(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.enqueue_vector_semantic_edge_candidate_batch",
+        "tirzah.cli.enqueue_vector_semantic_edge_candidate_batch",
         lambda _db, **kwargs: {"ok": True, **kwargs},
     )
 
@@ -1321,7 +1321,7 @@ def test_cli_enqueue_profile_semantic_batch_alias(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "enqueue-profile-semantic-batch",
             "--label",
             "ams_domain",
@@ -1346,13 +1346,13 @@ def test_cli_enqueue_profile_semantic_batch_alias(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.enqueue_vector_semantic_edge_candidate_batch",
+        "tirzah.cli.enqueue_vector_semantic_edge_candidate_batch",
         lambda _db, **kwargs: {"ok": True, **kwargs},
     )
 
@@ -1380,7 +1380,7 @@ def test_cli_enqueue_vector_semantic_batch_text_format(monkeypatch, capsys) -> N
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "enqueue-vector-semantic-batch",
             "--label",
             "ams_domain",
@@ -1394,13 +1394,13 @@ def test_cli_enqueue_vector_semantic_batch_text_format(monkeypatch, capsys) -> N
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.enqueue_vector_semantic_edge_candidate_batch",
+        "tirzah.cli.enqueue_vector_semantic_edge_candidate_batch",
         lambda _db, **_kwargs: {
             "ok": True,
             "candidate_count": 1,
@@ -1460,16 +1460,16 @@ def test_cli_semantic_edge_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "semantic-edge-candidates", "--status", "pending", "--limit", "4"],
+        ["tirzah", "semantic-edge-candidates", "--status", "pending", "--limit", "4"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.list_semantic_edge_candidates",
+        "tirzah.cli.list_semantic_edge_candidates",
         lambda _db, status="pending", limit=20: [{"status": status, "limit": limit}],
     )
 
@@ -1487,7 +1487,7 @@ def test_cli_semantic_edge_candidates_text_format(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "semantic-edge-candidates",
             "--status",
             "pending",
@@ -1498,13 +1498,13 @@ def test_cli_semantic_edge_candidates_text_format(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.list_semantic_edge_candidates",
+        "tirzah.cli.list_semantic_edge_candidates",
         lambda _db, status="pending", limit=20: [
             {
                 "candidate_id": "candidate1",
@@ -1542,7 +1542,7 @@ def test_cli_review_semantic_edge_candidate_command(monkeypatch, capsys) -> None
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "review-semantic-edge-candidate",
             "candidate1",
             "--action",
@@ -1558,13 +1558,13 @@ def test_cli_review_semantic_edge_candidate_command(monkeypatch, capsys) -> None
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.review_semantic_edge_candidate",
+        "tirzah.cli.review_semantic_edge_candidate",
         lambda _db, **kwargs: {"ok": True, **kwargs},
     )
 
@@ -1583,16 +1583,16 @@ def test_cli_review_semantic_edge_candidate_command(monkeypatch, capsys) -> None
 
 
 def test_cli_agent_identities_command(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(sys, "argv", ["mnemosyne", "agent-identities", "--limit", "3"])
+    monkeypatch.setattr(sys, "argv", ["tirzah", "agent-identities", "--limit", "3"])
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.list_agent_identities",
-        lambda _db, limit=20: [{"identity_id": "mnemosyne_shared", "limit": limit}],
+        "tirzah.cli.list_agent_identities",
+        lambda _db, limit=20: [{"identity_id": "tirzah_shared", "limit": limit}],
     )
 
     main()
@@ -1600,20 +1600,20 @@ def test_cli_agent_identities_command(monkeypatch, capsys) -> None:
     output = json.loads(capsys.readouterr().out)
     assert output == {
         "ok": True,
-        "identities": [{"identity_id": "mnemosyne_shared", "limit": 3}],
+        "identities": [{"identity_id": "tirzah_shared", "limit": 3}],
     }
 
 
 def test_cli_agent_identity_command(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(sys, "argv", ["mnemosyne", "agent-identity", "mnemosyne_shared"])
+    monkeypatch.setattr(sys, "argv", ["tirzah", "agent-identity", "tirzah_shared"])
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.get_agent_identity",
+        "tirzah.cli.get_agent_identity",
         lambda _db, identity_id: {"identity_id": identity_id},
     )
 
@@ -1622,7 +1622,7 @@ def test_cli_agent_identity_command(monkeypatch, capsys) -> None:
     output = json.loads(capsys.readouterr().out)
     assert output == {
         "ok": True,
-        "identity": {"identity_id": "mnemosyne_shared"},
+        "identity": {"identity_id": "tirzah_shared"},
     }
 
 
@@ -1630,16 +1630,16 @@ def test_cli_trust_weighting_profiles_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "trust-weighting-profiles", "--limit", "2"],
+        ["tirzah", "trust-weighting-profiles", "--limit", "2"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.list_trust_weighting_profiles",
+        "tirzah.cli.list_trust_weighting_profiles",
         lambda _db, limit=20: [{"weighting_profile_id": "default_balanced", "limit": limit}],
     )
 
@@ -1656,16 +1656,16 @@ def test_cli_trust_weighting_profile_command_reports_missing(monkeypatch, capsys
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "trust-weighting-profile", "missing"],
+        ["tirzah", "trust-weighting-profile", "missing"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.get_trust_weighting_profile",
+        "tirzah.cli.get_trust_weighting_profile",
         lambda _db, weighting_profile_id: None,
     )
 
@@ -1682,16 +1682,16 @@ def test_cli_trust_diagnostic_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "trust-diagnostic", "node1", "--profile-id", "default_balanced"],
+        ["tirzah", "trust-diagnostic", "node1", "--profile-id", "default_balanced"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.trust_temporal_diagnostic_for_node",
+        "tirzah.cli.trust_temporal_diagnostic_for_node",
         lambda _db, node_id, weighting_profile_id=None: {
             "node_id": node_id,
             "profile_id": weighting_profile_id,
@@ -1711,16 +1711,16 @@ def test_cli_process_runs_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["mnemosyne", "process-runs", "--session-id", "s1", "--status", "active", "--limit", "2"],
+        ["tirzah", "process-runs", "--session-id", "s1", "--status", "active", "--limit", "2"],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.list_process_runs",
+        "tirzah.cli.list_process_runs",
         lambda _db, session_id=None, status=None, limit=20: [
             {"run_id": "run1", "session_id": session_id, "status": status, "limit": limit}
         ],
@@ -1740,25 +1740,25 @@ def test_cli_start_process_run_command(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "start-process-run",
             "restart_continuity",
             "--session-id",
             "s1",
             "--identity-id",
-            "mnemosyne_shared",
+            "tirzah_shared",
             "--current-step-id",
             "inspect_state",
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.create_process_run",
+        "tirzah.cli.create_process_run",
         lambda _db, **kwargs: {"run_id": "run1", **kwargs},
     )
 
@@ -1775,7 +1775,7 @@ def test_cli_update_process_run_command(monkeypatch, capsys) -> None:
         sys,
         "argv",
         [
-            "mnemosyne",
+            "tirzah",
             "update-process-run",
             "run1",
             "--status",
@@ -1789,13 +1789,13 @@ def test_cli_update_process_run_command(monkeypatch, capsys) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.cli.load_config",
+        "tirzah.cli.load_config",
         lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
     )
-    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
-    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
     monkeypatch.setattr(
-        "mnemosyne.cli.update_process_run",
+        "tirzah.cli.update_process_run",
         lambda _db, run_id, **kwargs: {"run_id": run_id, **kwargs},
     )
 

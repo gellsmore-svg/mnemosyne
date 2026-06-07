@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from mnemosyne.ingestion.activity import ingestion_activity_log, ingestion_activity_report
-from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
+from tirzah.ingestion.activity import ingestion_activity_log, ingestion_activity_report
+from tirzah.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
 
 def test_ingestion_activity_log_summarizes_success() -> None:

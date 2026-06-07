@@ -253,7 +253,7 @@ Status: Phase A implemented (stub-capable text similarity profile substrate); Ph
 
 Phase A implemented behavior:
 
-- A dependency-free profile adapter boundary lives in `mnemosyne.adapters.embedding`, with a deterministic `MockEmbeddingAdapter` and an `embedding_adapter(config)` factory selected by `runtime.embedding_adapter` / `runtime.embedding_dimensions`.
+- A dependency-free profile adapter boundary lives in `tirzah.adapters.embedding`, with a deterministic `MockEmbeddingAdapter` and an `embedding_adapter(config)` factory selected by `runtime.embedding_adapter` / `runtime.embedding_dimensions`.
 - HTTP-backed `ollama_http` and `ollama_powershell` profile adapters were built as temporary diagnostics, but they are not compliant for ingestion or retrieval memory operations. The default remains `mock`.
 - A non-HTTP `local_command` profile adapter is available behind the same boundary. It calls a configured local executable over stdin/stdout JSON, so a local model runner can be plugged in without routing ingestion or retrieval memory operations through HTTP.
 - Runtime and ingestion status now expose profile-adapter readiness, including HTTP-policy blocking and missing `runtime.profile_command` for `local_command`.
@@ -262,7 +262,7 @@ Phase A implemented behavior:
 - Ingestion activity reports/logs now surface the profiled node count, profile model, and dimensions.
 - This phase intentionally does not change search ranking, answer behavior, or memory-agent write authority.
 - Stored text similarity profiles can now be read by operator CLI/API/web controls to propose pending semantic-edge candidates, distinguished from label-overlap candidates by `candidate_source: embedding_similarity` and similarity/model/dimension metadata.
-- `mnemosyne enqueue-profile-semantic-batch` (compatibility alias: `enqueue-vector-semantic-batch`), `/api/review/enqueue-vector-semantic-batch`, and the matching Ingestion-tab controls can queue profile-derived candidates across a bounded focus-node scope. Repeated `--exclude-node-key` filters let operators skip templated focus rows such as concept-visit `section-1` headers, and dry runs preview candidates plus duplicate skips without writing pending rows. This exists to make larger profile baselines reviewable without changing the review rule: candidates still require explicit acceptance before they become semantic relationships.
+- `tirzah enqueue-profile-semantic-batch` (compatibility alias: `enqueue-vector-semantic-batch`), `/api/review/enqueue-vector-semantic-batch`, and the matching Ingestion-tab controls can queue profile-derived candidates across a bounded focus-node scope. Repeated `--exclude-node-key` filters let operators skip templated focus rows such as concept-visit `section-1` headers, and dry runs preview candidates plus duplicate skips without writing pending rows. This exists to make larger profile baselines reviewable without changing the review rule: candidates still require explicit acceptance before they become semantic relationships.
 - Profile backfill recommendations are operator-configurable through `runtime.profile_backfill_recommended_batch_limit` and `runtime.profile_backfill_web_max_batches`, defaulting to 25 nodes and 10 web batches per run.
 - Profile backfill jobs expose their recovery behavior: node writes are saved individually, but the job cursor is saved after a completed batch. If interrupted mid-batch, requeue the job; missing-profile jobs skip profiles already written during replay, while forced jobs may rebuild the interrupted batch.
 

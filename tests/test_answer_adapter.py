@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from mnemosyne.adapters.answer import (
+from tirzah.adapters.answer import (
     MockAnswerAdapter,
     OllamaCliAnswerAdapter,
     OllamaHttpAnswerAdapter,
@@ -10,12 +10,12 @@ from mnemosyne.adapters.answer import (
     repair_duplicate_wrap_fragments,
     summarize_context_text,
 )
-from mnemosyne.config import RuntimeConfig
+from tirzah.config import RuntimeConfig
 
 
 def test_summarize_context_text_ignores_metadata_lines() -> None:
     summary = summarize_context_text(
-        "# Mnemosyne Context\n"
+        "# Tirzah Context\n"
         "Document: Doc\n"
         "Document ID: doc1\n"
         "## Context Records\n"
@@ -41,7 +41,7 @@ def test_mock_answer_adapter_returns_used_nodes() -> None:
 
 
 def test_clean_ollama_output_strips_spinner_and_ansi() -> None:
-    assert clean_ollama_output("\x1b[?25l⠙ \x1b[Kmnemosyne-ok\n") == "mnemosyne-ok"
+    assert clean_ollama_output("\x1b[?25l⠙ \x1b[Ktirzah-ok\n") == "tirzah-ok"
 
 
 def test_clean_ollama_output_applies_cursor_rewrites() -> None:
@@ -232,7 +232,7 @@ def test_ollama_http_adapter_sends_format_and_think(monkeypatch) -> None:
         captured["timeout"] = timeout
         return FakeResponse()
 
-    import mnemosyne.adapters.answer as answer_module
+    import tirzah.adapters.answer as answer_module
 
     monkeypatch.setattr(answer_module.request, "urlopen", fake_urlopen)
 

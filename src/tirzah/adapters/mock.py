@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mnemosyne.models.ingestion import IngestedNode, IngestionResult, SourceRef
+from tirzah.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
 
 class MockIngestionAdapter:

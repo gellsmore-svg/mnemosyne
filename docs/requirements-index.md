@@ -4,7 +4,7 @@ Last updated: 2026-05-17
 
 This file is a compact implementation index for `LLM_Memory_Architecture_Requirements_v0.3.md`.
 
-Current product-level requirements and implementation design are consolidated in `docs/consolidated-requirements-and-design.md`. That document should be used as the review entry point when assessing the present UI, answer behavior, ingestion transparency, retrieval guardrails, governance direction, repository rebuild requirements, and near-term product design.
+Current product-level requirements and implementation design are consolidated in `docs/consolidated-requirements-and-design.md`. That document should be used as the review entry point when assessing the present UI, answer behavior, ingestion transparency, retrieval guardrails, governance direction, repository rebuild requirements, and near-term product design. Code organization boundaries are tracked in `docs/code-module-boundaries.md`.
 
 ## Ingestion
 
@@ -64,7 +64,7 @@ Current product-level requirements and implementation design are consolidated in
 | Area | Requirement IDs | Implementation Notes |
 |---|---|---|
 | Local web UI | REQ-UI-01 to REQ-UI-06 | Stage 2; tabbed session threads. |
-| Practical integrations | Inferred application requirement | See `docs/practical-applications.md`; Mnemosyne should expose memory APIs usable by web importers, coding agents, CLI workflows, voice transcript tools, and FOSS clients. |
+| Practical integrations | Inferred application requirement | See `docs/practical-applications.md`; Tirzah should expose memory APIs usable by web importers, coding agents, CLI workflows, voice transcript tools, and FOSS clients. |
 | Local operation | REQ-NFR-01 | Cloud APIs optional only. |
 | Async pipelines | REQ-NFR-02 | Ingestion/consolidation do not block UI. |
 | Hardware baseline | REQ-NFR-03 | 32GB RAM target, GTX 3060 mobile, 8GB initial constraint noted. |

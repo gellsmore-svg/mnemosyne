@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from pymongo.database import Database
 
-from mnemosyne.sessions.active_documents import valid_object_ids
+from tirzah.sessions.active_documents import valid_object_ids
 
 
 def utc_now() -> datetime:

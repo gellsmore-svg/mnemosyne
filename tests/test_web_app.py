@@ -4,9 +4,9 @@ from pathlib import Path
 from bson import ObjectId
 from fastapi.testclient import TestClient
 
-from mnemosyne.config import RuntimeConfig, load_config
-from mnemosyne.db.client import get_database
-from mnemosyne.web.app import (
+from tirzah.config import RuntimeConfig, load_config
+from tirzah.db.client import get_database
+from tirzah.web.app import (
     annotate_embedding_coverage,
     app,
     embedding_backfill_batch_failure_reason,
@@ -149,7 +149,7 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_ingestion_epochs",
+        "tirzah.web.app.list_ingestion_epochs",
         lambda _db, limit=8: [
             {
                 "ingestion_epoch": "epoch1",
@@ -160,13 +160,13 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_process_runs",
+        "tirzah.web.app.list_process_runs",
         lambda _db, session_id=None, status=None, limit=20: [
             {"run_id": "run1", "session_id": session_id, "status": status, "limit": limit}
         ],
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.embedding_coverage",
+        "tirzah.web.app.embedding_coverage",
         lambda _db, label=None: {
             "total_active_nodes": 4,
             "embedded_active_nodes": 3,
@@ -181,7 +181,7 @@ def test_ingestion_status_endpoint_reports_epochs_and_runs(monkeypatch) -> None:
         },
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.embedding_backfill_status",
+        "tirzah.web.app.embedding_backfill_status",
         lambda _db, coverage, **_kwargs: {
             "status": "pending",
             "summary": "1 recent profile backfill job(s) are queued.",
@@ -254,17 +254,17 @@ def test_backfill_embeddings_endpoint_uses_configured_adapter(monkeypatch) -> No
     embedder = {"name": "fake"}
     updates = []
 
-    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", lambda _runtime: embedder)
+    monkeypatch.setattr("tirzah.web.app.embedding_adapter", lambda _runtime: embedder)
     monkeypatch.setattr(
-        "mnemosyne.web.app.create_process_run",
+        "tirzah.web.app.create_process_run",
         lambda _db, **kwargs: {"run_id": "run1", **kwargs},
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.update_process_run",
+        "tirzah.web.app.update_process_run",
         lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.backfill_node_embeddings",
+        "tirzah.web.app.backfill_node_embeddings",
         lambda _db, used_embedder, **kwargs: {
             "ok": True,
             "adapter": used_embedder["name"],
@@ -308,17 +308,17 @@ def test_backfill_embeddings_endpoint_marks_process_blocked_on_batch_failure(mon
     client = TestClient(app)
     updates = []
 
-    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", lambda _runtime: "embedder")
+    monkeypatch.setattr("tirzah.web.app.embedding_adapter", lambda _runtime: "embedder")
     monkeypatch.setattr(
-        "mnemosyne.web.app.create_process_run",
+        "tirzah.web.app.create_process_run",
         lambda _db, **kwargs: {"run_id": "run2", **kwargs},
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.update_process_run",
+        "tirzah.web.app.update_process_run",
         lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.backfill_node_embeddings",
+        "tirzah.web.app.backfill_node_embeddings",
         lambda *_args, **_kwargs: {
             "ok": False,
             "reason": "all_embedding_updates_failed",
@@ -343,24 +343,24 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
     updates = []
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.create_embedding_backfill_job",
+        "tirzah.web.app.create_embedding_backfill_job",
         lambda _db, **kwargs: {"job_id": "job1", **kwargs},
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_embedding_backfill_jobs",
+        "tirzah.web.app.list_embedding_backfill_jobs",
         lambda _db, status=None, limit=10: [{"job_id": "job1", "status": status, "limit": limit}],
     )
-    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", lambda _runtime: "embedder")
+    monkeypatch.setattr("tirzah.web.app.embedding_adapter", lambda _runtime: "embedder")
     monkeypatch.setattr(
-        "mnemosyne.web.app.create_process_run",
+        "tirzah.web.app.create_process_run",
         lambda _db, **kwargs: {"run_id": "run1", **kwargs},
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.update_process_run",
+        "tirzah.web.app.update_process_run",
         lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.process_embedding_backfill_batches",
+        "tirzah.web.app.process_embedding_backfill_batches",
         lambda _db, embedder, max_batches=1: {
             "ok": True,
             "status": "completed",
@@ -376,7 +376,7 @@ def test_embedding_backfill_job_endpoints(monkeypatch) -> None:
         },
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.requeue_processing_embedding_backfill_job",
+        "tirzah.web.app.requeue_processing_embedding_backfill_job",
         lambda _db, job_id, reason, actor: {
             "ok": True,
             "status": "pending",
@@ -448,7 +448,7 @@ def test_embedding_backfill_requeue_endpoint_rejects_non_processing_job(monkeypa
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.requeue_processing_embedding_backfill_job",
+        "tirzah.web.app.requeue_processing_embedding_backfill_job",
         lambda _db, job_id, reason, actor: {
             "ok": False,
             "status": "not_requeued",
@@ -492,12 +492,12 @@ def test_process_embedding_backfill_job_clamps_web_batch_count(monkeypatch) -> N
     client = TestClient(app)
     calls = []
 
-    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", lambda _runtime: "embedder")
+    monkeypatch.setattr("tirzah.web.app.embedding_adapter", lambda _runtime: "embedder")
     monkeypatch.setattr(
-        "mnemosyne.web.app.create_process_run",
+        "tirzah.web.app.create_process_run",
         lambda _db, **kwargs: {"run_id": "run1", **kwargs},
     )
-    monkeypatch.setattr("mnemosyne.web.app.update_process_run", lambda _db, run_id, **kwargs: None)
+    monkeypatch.setattr("tirzah.web.app.update_process_run", lambda _db, run_id, **kwargs: None)
 
     def fake_batches(_db, _embedder, max_batches=1):
         calls.append(max_batches)
@@ -512,7 +512,7 @@ def test_process_embedding_backfill_job_clamps_web_batch_count(monkeypatch) -> N
             "results": [],
         }
 
-    monkeypatch.setattr("mnemosyne.web.app.process_embedding_backfill_batches", fake_batches)
+    monkeypatch.setattr("tirzah.web.app.process_embedding_backfill_batches", fake_batches)
 
     response = client.post("/api/process-embedding-backfill-job", params={"max_batches": 50})
 
@@ -526,18 +526,18 @@ def test_backfill_embeddings_endpoint_blocks_disallowed_embedding_adapter(monkey
     updates = []
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.create_process_run",
+        "tirzah.web.app.create_process_run",
         lambda _db, **kwargs: {"run_id": "run1", **kwargs},
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.update_process_run",
+        "tirzah.web.app.update_process_run",
         lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
     )
 
     def disallowed_adapter(_runtime):
         raise ValueError("HTTP-backed embedding adapter is not allowed.")
 
-    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", disallowed_adapter)
+    monkeypatch.setattr("tirzah.web.app.embedding_adapter", disallowed_adapter)
 
     response = client.post("/api/backfill-embeddings", json={"limit": 2})
 
@@ -554,18 +554,18 @@ def test_process_embedding_backfill_job_blocks_disallowed_embedding_adapter(monk
     updates = []
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.create_process_run",
+        "tirzah.web.app.create_process_run",
         lambda _db, **kwargs: {"run_id": "run1", **kwargs},
     )
     monkeypatch.setattr(
-        "mnemosyne.web.app.update_process_run",
+        "tirzah.web.app.update_process_run",
         lambda _db, run_id, **kwargs: updates.append({"run_id": run_id, **kwargs}),
     )
 
     def disallowed_adapter(_runtime):
         raise ValueError("HTTP-backed embedding adapter is not allowed.")
 
-    monkeypatch.setattr("mnemosyne.web.app.embedding_adapter", disallowed_adapter)
+    monkeypatch.setattr("tirzah.web.app.embedding_adapter", disallowed_adapter)
 
     response = client.post("/api/process-embedding-backfill-job", params={"max_batches": 2})
 
@@ -743,7 +743,7 @@ def test_annotate_embedding_coverage_reports_operator_action_states() -> None:
 
 def test_embedding_backfill_status_reports_pending_jobs(monkeypatch) -> None:
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_embedding_backfill_jobs",
+        "tirzah.web.app.list_embedding_backfill_jobs",
         lambda _db, limit=20: [
             {"job_id": "job1", "status": "pending", "batch_limit": 10},
             {"job_id": "job2", "status": "completed", "batch_limit": 10},
@@ -760,7 +760,7 @@ def test_embedding_backfill_status_reports_pending_jobs(monkeypatch) -> None:
 
 def test_embedding_backfill_status_reports_blocked_jobs(monkeypatch) -> None:
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_embedding_backfill_jobs",
+        "tirzah.web.app.list_embedding_backfill_jobs",
         lambda _db, limit=20: [{"job_id": "job1", "status": "blocked", "reason": "failed"}],
     )
 
@@ -772,7 +772,7 @@ def test_embedding_backfill_status_reports_blocked_jobs(monkeypatch) -> None:
 
 
 def test_embedding_backfill_status_reports_needed_when_no_job_exists(monkeypatch) -> None:
-    monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+    monkeypatch.setattr("tirzah.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
     status = embedding_backfill_status(None, {"missing_active_embeddings": 5})
 
@@ -784,7 +784,7 @@ def test_embedding_backfill_status_reports_needed_when_no_job_exists(monkeypatch
 
 
 def test_embedding_backfill_status_blocks_recommendation_for_disallowed_adapter(monkeypatch) -> None:
-    monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+    monkeypatch.setattr("tirzah.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
     status = embedding_backfill_status(
         None,
@@ -800,7 +800,7 @@ def test_embedding_backfill_status_blocks_recommendation_for_disallowed_adapter(
 
 
 def test_embedding_backfill_status_blocks_missing_local_profile_command(monkeypatch) -> None:
-    monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+    monkeypatch.setattr("tirzah.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
     status = embedding_backfill_status(
         None,
@@ -816,7 +816,7 @@ def test_embedding_backfill_status_blocks_missing_local_profile_command(monkeypa
 
 
 def test_embedding_backfill_status_reports_not_needed_when_coverage_complete(monkeypatch) -> None:
-    monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+    monkeypatch.setattr("tirzah.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
     status = embedding_backfill_status(None, {"missing_active_embeddings": 0})
 
@@ -826,7 +826,7 @@ def test_embedding_backfill_status_reports_not_needed_when_coverage_complete(mon
 
 
 def test_embedding_backfill_status_reports_real_backfill_needed_for_mock_coverage(monkeypatch) -> None:
-    monkeypatch.setattr("mnemosyne.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+    monkeypatch.setattr("tirzah.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
     status = embedding_backfill_status(
         None,
@@ -905,7 +905,7 @@ def test_index_serves_html() -> None:
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "Mnemosyne" in response.text
+    assert "Tirzah" in response.text
 
 
 def test_queue_endpoint() -> None:
@@ -1056,8 +1056,8 @@ def test_governance_agent_identities_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_agent_identities",
-        lambda _db, limit=20: [{"identity_id": "mnemosyne_shared", "limit": limit}],
+        "tirzah.web.app.list_agent_identities",
+        lambda _db, limit=20: [{"identity_id": "tirzah_shared", "limit": limit}],
     )
 
     response = client.get("/api/governance/agent-identities", params={"limit": 2})
@@ -1065,7 +1065,7 @@ def test_governance_agent_identities_endpoint(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json() == {
         "ok": True,
-        "identities": [{"identity_id": "mnemosyne_shared", "limit": 2}],
+        "identities": [{"identity_id": "tirzah_shared", "limit": 2}],
     }
 
 
@@ -1073,16 +1073,16 @@ def test_governance_agent_identity_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.get_agent_identity",
+        "tirzah.web.app.get_agent_identity",
         lambda _db, identity_id: {"identity_id": identity_id},
     )
 
-    response = client.get("/api/governance/agent-identities/mnemosyne_shared")
+    response = client.get("/api/governance/agent-identities/tirzah_shared")
 
     assert response.status_code == 200
     assert response.json() == {
         "ok": True,
-        "identity": {"identity_id": "mnemosyne_shared"},
+        "identity": {"identity_id": "tirzah_shared"},
     }
 
 
@@ -1090,7 +1090,7 @@ def test_governance_trust_weighting_profiles_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_trust_weighting_profiles",
+        "tirzah.web.app.list_trust_weighting_profiles",
         lambda _db, limit=20: [{"weighting_profile_id": "default_balanced", "limit": limit}],
     )
 
@@ -1107,7 +1107,7 @@ def test_governance_trust_weighting_profile_endpoint_reports_missing(monkeypatch
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.get_trust_weighting_profile",
+        "tirzah.web.app.get_trust_weighting_profile",
         lambda _db, weighting_profile_id: None,
     )
 
@@ -1124,7 +1124,7 @@ def test_governance_trust_diagnostic_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.trust_temporal_diagnostic_for_node",
+        "tirzah.web.app.trust_temporal_diagnostic_for_node",
         lambda _db, node_id, weighting_profile_id=None: {
             "node_id": node_id,
             "profile_id": weighting_profile_id,
@@ -1147,7 +1147,7 @@ def test_governance_policies_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_governance_policies",
+        "tirzah.web.app.list_governance_policies",
         lambda _db, limit=20: [{"policy_id": "read_only", "limit": limit}],
     )
 
@@ -1164,7 +1164,7 @@ def test_governance_policy_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.get_governance_policy",
+        "tirzah.web.app.get_governance_policy",
         lambda _db, policy_id: {"policy_id": policy_id},
     )
 
@@ -1181,7 +1181,7 @@ def test_governance_process_objects_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_process_objects",
+        "tirzah.web.app.list_process_objects",
         lambda _db, limit=20: [{"process_id": "review_before_write", "limit": limit}],
     )
 
@@ -1198,7 +1198,7 @@ def test_governance_process_object_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.get_process_object",
+        "tirzah.web.app.get_process_object",
         lambda _db, process_id: {"process_id": process_id},
     )
 
@@ -1215,7 +1215,7 @@ def test_governance_process_runs_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_process_runs",
+        "tirzah.web.app.list_process_runs",
         lambda _db, session_id=None, status=None, limit=20: [
             {"run_id": "run1", "session_id": session_id, "status": status, "limit": limit}
         ],
@@ -1237,7 +1237,7 @@ def test_governance_process_run_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.get_process_run",
+        "tirzah.web.app.get_process_run",
         lambda _db, run_id: {"run_id": run_id},
     )
 
@@ -1254,7 +1254,7 @@ def test_governance_create_process_run_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.create_process_run",
+        "tirzah.web.app.create_process_run",
         lambda _db, **kwargs: {"run_id": "run1", **kwargs},
     )
 
@@ -1263,7 +1263,7 @@ def test_governance_create_process_run_endpoint(monkeypatch) -> None:
         json={
             "process_id": "restart_continuity",
             "session_id": "s1",
-            "identity_id": "mnemosyne_shared",
+            "identity_id": "tirzah_shared",
             "current_step_id": "inspect_state",
         },
     )
@@ -1294,7 +1294,7 @@ def test_governance_update_process_run_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.update_process_run",
+        "tirzah.web.app.update_process_run",
         lambda _db, run_id, **kwargs: {"run_id": run_id, **kwargs},
     )
 
@@ -1352,7 +1352,7 @@ def test_process_output_ingestion_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.process_next_output_ingestion",
+        "tirzah.web.app.process_next_output_ingestion",
         lambda _db: {"ok": True, "status": "idle"},
     )
 
@@ -1366,7 +1366,7 @@ def test_generated_output_review_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_generated_output_nodes",
+        "tirzah.web.app.list_generated_output_nodes",
         lambda _db, limit=20, endorsement_label=None: [
             {"node_id": "node1", "endorsement_label": endorsement_label, "limit": limit}
         ],
@@ -1389,7 +1389,7 @@ def test_generated_output_review_endpoint_reports_invalid_filter(monkeypatch) ->
     def fake_list(*_args, **_kwargs):
         raise ValueError("Unsupported endorsement label: trusted")
 
-    monkeypatch.setattr("mnemosyne.web.app.list_generated_output_nodes", fake_list)
+    monkeypatch.setattr("tirzah.web.app.list_generated_output_nodes", fake_list)
 
     response = client.get(
         "/api/review/generated-output",
@@ -1404,7 +1404,7 @@ def test_endorse_node_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.update_node_endorsement",
+        "tirzah.web.app.update_node_endorsement",
         lambda _db, node_id, endorsement_label, reviewer="user", note=None: {
             "ok": True,
             "node_id": node_id,
@@ -1438,7 +1438,7 @@ def test_semantic_edge_candidates_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.list_semantic_edge_candidates",
+        "tirzah.web.app.list_semantic_edge_candidates",
         lambda _db, status="pending", limit=20: [
             {"candidate_id": "candidate1", "status": status, "limit": limit}
         ],
@@ -1460,7 +1460,7 @@ def test_enqueue_label_semantic_edge_candidates_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.enqueue_semantic_edge_candidates",
+        "tirzah.web.app.enqueue_semantic_edge_candidates",
         lambda _db, **kwargs: {"ok": True, "source": "label", **kwargs},
     )
 
@@ -1492,7 +1492,7 @@ def test_enqueue_vector_semantic_edge_candidates_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.enqueue_vector_semantic_edge_candidates",
+        "tirzah.web.app.enqueue_vector_semantic_edge_candidates",
         lambda _db, **kwargs: {"ok": True, "source": "vector", **kwargs},
     )
 
@@ -1528,7 +1528,7 @@ def test_vector_semantic_candidates_preview_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.embedding_candidate_report",
+        "tirzah.web.app.embedding_candidate_report",
         lambda _db, **kwargs: {
             "ok": True,
             "nodes": [{"node_id": kwargs["node_id"], "title": "Target"}],
@@ -1566,7 +1566,7 @@ def test_enqueue_vector_semantic_batch_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.enqueue_vector_semantic_edge_candidate_batch",
+        "tirzah.web.app.enqueue_vector_semantic_edge_candidate_batch",
         lambda _db, **kwargs: {"ok": True, **kwargs},
     )
 
@@ -1624,7 +1624,7 @@ def test_review_semantic_edge_candidate_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
     monkeypatch.setattr(
-        "mnemosyne.web.app.review_semantic_edge_candidate",
+        "tirzah.web.app.review_semantic_edge_candidate",
         lambda _db, **kwargs: {"ok": True, **kwargs},
     )
 
@@ -1664,7 +1664,7 @@ def test_history_endpoint_filters_seeded_rows() -> None:
                 "schema_version": 1,
                 "session_id": session_id,
                 "focus_node_id": None,
-                "query": "Mnemosyne design purpose",
+                "query": "Tirzah design purpose",
                 "answer": {
                     "adapter": "ollama_cli",
                     "model": "qwen3.6:latest",
@@ -1695,7 +1695,7 @@ def test_history_endpoint_filters_seeded_rows() -> None:
             params={
                 "limit": 3,
                 "session_id": session_id,
-                "q": "Mnemosyne",
+                "q": "Tirzah",
                 "adapter": "ollama_cli",
                 "model": "qwen3.6:latest",
             },
@@ -1706,7 +1706,7 @@ def test_history_endpoint_filters_seeded_rows() -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True
-    assert [row["query"] for row in data["exchanges"]] == ["Mnemosyne design purpose"]
+    assert [row["query"] for row in data["exchanges"]] == ["Tirzah design purpose"]
 
 
 def test_jobs_endpoint_filters_seeded_rows() -> None:

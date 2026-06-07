@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from mnemosyne.models.ingestion import IngestionResult
+from tirzah.models.ingestion import IngestionResult
 
 
 MONTHS = {

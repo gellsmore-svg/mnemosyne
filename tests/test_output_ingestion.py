@@ -4,8 +4,8 @@ import pytest
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
-from mnemosyne.sessions.exchanges import save_exchange
-from mnemosyne.sessions.output_ingestion import (
+from tirzah.sessions.exchanges import save_exchange
+from tirzah.sessions.output_ingestion import (
     answer_output_text,
     list_output_ingestion_jobs,
     output_content_hash,
@@ -142,7 +142,7 @@ def test_save_exchange_does_not_score_nodes_when_exchange_insert_fails() -> None
 
 
 def test_save_exchange_records_score_count_before_output_queue_failure(monkeypatch) -> None:
-    import mnemosyne.sessions.exchanges as exchanges
+    import tirzah.sessions.exchanges as exchanges
 
     db = FakeDb()
     node_id = str(ObjectId())
@@ -230,7 +230,7 @@ def test_output_job_to_ingestion_result_preserves_provenance() -> None:
     result = output_job_to_ingestion_result(job)
 
     assert result.title == "LLM Answer: What changed?"
-    assert result.source.path == "mnemosyne://exchange/exchange1/answer"
+    assert result.source.path == "tirzah://exchange/exchange1/answer"
     assert result.source.kind == "llm_answer"
     assert result.source.checksum_sha256 == "hash"
     assert result.tree_label == "llm_output"

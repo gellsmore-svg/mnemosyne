@@ -2,13 +2,13 @@
 
 Date: 2026-05-29
 
-Status: canonical working product/design document. This document consolidates the current Mnemosyne requirements, implemented design, inferred decisions, and open work into one review entry point. The older detailed documents remain useful supporting records, but this file should be the first place to look when deciding what to build next. The product is expected to be renamed from Mnemosyne to Tirzah because the existing name conflicts with another memory-oriented GitHub project and is harder to use consistently.
+Status: canonical working product/design document. This document consolidates the current Tirzah requirements, implemented design, inferred decisions, and open work into one review entry point. The older detailed documents remain useful supporting records, but this file should be the first place to look when deciding what to build next. The product was renamed from Mnemosyne to Tirzah because the previous name conflicted with another memory-oriented GitHub project and was harder to use consistently.
 
 ## Product Intent
 
-Mnemosyne, target name Tirzah, is a local-first memory engine for long-running LLM work. It preserves source material, builds document and semantic graph structures, retrieves evidence for questions, records continuity, and explains its own behavior in language a human can inspect.
+Tirzah is a local-first memory engine for long-running LLM work. It preserves source material, builds document and semantic graph structures, retrieves evidence for questions, records continuity, and explains its own behavior in language a human can inspect.
 
-Mnemosyne should not become a closed chatbot. It should become a memory backend that can serve:
+Tirzah should not become a closed chatbot. It should become a memory backend that can serve:
 
 - the current local web UI;
 - CLI workflows;
@@ -141,7 +141,7 @@ Human transparency is not developer-only. The readable activity log remains visi
 
 ### Product Naming
 
-The current repository/package name is Mnemosyne. The target product name is Tirzah.
+The previous repository/package name was Mnemosyne. The target product name is Tirzah.
 
 Rename requirements:
 
@@ -274,11 +274,11 @@ Current allowed memory-agent tools:
 - `list_active_documents`;
 - `list_documents`.
 
-Mnemosyne validates memory-agent tool calls, executes them through the Python runtime, records observations, and feeds compact summaries back into later planner iterations. If the LLM makes an invalid call, the tool layer returns an instructional error with usage guidance and a repair instruction so the next iteration can recover.
+Tirzah validates memory-agent tool calls, executes them through the Python runtime, records observations, and feeds compact summaries back into later planner iterations. If the LLM makes an invalid call, the tool layer returns an instructional error with usage guidance and a repair instruction so the next iteration can recover.
 
 Failed tool-call guidance is preserved in memory-agent history and repeated in a dedicated repair-guidance section of the next planner prompt. The user-facing activity log also summarizes these failures in plain language so recovery is visible without reading the raw JSON trace.
 
-When the memory-agent stops, it may return a bounded `context_proposal` containing selected node IDs, rationale, and organization hints. Mnemosyne treats this as a retrieval-controller proposal, not unchecked authority. The Python runtime validates node IDs, enforces budgets, ignores invented IDs, and uses the proposal only to prioritize matching context records.
+When the memory-agent stops, it may return a bounded `context_proposal` containing selected node IDs, rationale, and organization hints. Tirzah treats this as a retrieval-controller proposal, not unchecked authority. The Python runtime validates node IDs, enforces budgets, ignores invented IDs, and uses the proposal only to prioritize matching context records.
 
 ### Query Assembly
 
@@ -530,7 +530,7 @@ This protects the durable repository from unstable, low-quality, or unreviewed w
 
 Current runtime shape:
 
-- Python package under `src/mnemosyne`;
+- Python package under `src/tirzah`;
 - local MongoDB persistence;
 - FastAPI backend;
 - static HTML/CSS/JS frontend;
@@ -566,7 +566,7 @@ Current answer flow:
 - Internet-assisted reasoning and candidate knowledge promotion are planned but not implemented.
 - Real server-pushed per-step streaming is not implemented; the UI shows immediate client-side milestones and then the returned trace.
 - Ingestion logs currently explain deterministic ingestion runs; they do not yet include LLM ingestion call traces because LLM-assisted ingestion is not implemented.
-- Product naming remains unresolved because `Mnemosyne` collides with existing AI memory projects.
+- Product naming remains unresolved because `Tirzah` collides with existing AI memory projects.
 
 ## Near-Term Priorities
 
@@ -586,6 +586,6 @@ Current answer flow:
 - `docs/requirements-design-addendum.md`: implementation decisions and inferred requirements accumulated during development.
 - `docs/agentic-retrieval-process.md`: detailed current Python/LLM sequence for agentic retrieval and final answer generation.
 - `docs/governance-schema-plan.md`: planned identity, governance, process, and trust schemas.
-- `docs/mnemosyne-cognitive-architecture-draft.md`: forward-looking governed cognitive architecture concept.
+- `docs/tirzah-cognitive-architecture-draft.md`: forward-looking governed cognitive architecture concept.
 - `docs/practical-applications.md`: possible application lanes and FOSS integration criteria.
 - `docs/development-plan.md`: active ingestion-first implementation sequence covering ingestion epochs, non-destructive rebuilds, chronology, ingestion logs, UI test-bench work, semantic substrate, LLM-assisted ingestion, and ranking/trust integration.

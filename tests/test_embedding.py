@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from urllib import error
 
-from mnemosyne.adapters.embedding import (
+from tirzah.adapters.embedding import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     LocalCommandEmbeddingAdapter,
     MockEmbeddingAdapter,
@@ -14,7 +14,7 @@ from mnemosyne.adapters.embedding import (
     ollama_embedding_vector,
     source_text_hash,
 )
-from mnemosyne.config import RuntimeConfig
+from tirzah.config import RuntimeConfig
 
 
 def test_mock_embedding_is_deterministic_for_same_text() -> None:
@@ -168,7 +168,7 @@ def test_ollama_http_embedding_adapter_posts_to_embed_endpoint(monkeypatch) -> N
         captured["timeout"] = timeout
         return FakeResponse()
 
-    monkeypatch.setattr("mnemosyne.adapters.embedding.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("tirzah.adapters.embedding.request.urlopen", fake_urlopen)
     config = RuntimeConfig(
         embedding_adapter="ollama_http",
         embedding_model="test-embed:latest",
@@ -202,7 +202,7 @@ def test_ollama_powershell_embedding_adapter_posts_payload_over_stdin(monkeypatc
         captured["timeout"] = timeout
         return type("Completed", (), {"returncode": 0, "stdout": '{"embeddings": [[3, 4]]}', "stderr": ""})()
 
-    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.run", fake_run)
+    monkeypatch.setattr("tirzah.adapters.embedding.subprocess.run", fake_run)
     config = RuntimeConfig(
         embedding_adapter="ollama_powershell",
         embedding_model="test-embed:latest",
@@ -237,7 +237,7 @@ def test_ollama_powershell_embedding_adapter_keeps_text_out_of_command(monkeypat
         captured["input"] = input
         return type("Completed", (), {"returncode": 0, "stdout": '{"embeddings": [[1, 0]]}', "stderr": ""})()
 
-    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.run", fake_run)
+    monkeypatch.setattr("tirzah.adapters.embedding.subprocess.run", fake_run)
     adapter = OllamaPowerShellEmbeddingAdapter(RuntimeConfig(embedding_adapter="ollama_powershell"))
 
     adapter.embed(tricky_text)
@@ -251,7 +251,7 @@ def test_ollama_http_embedding_adapter_reports_url_errors(monkeypatch) -> None:
         del timeout
         raise error.URLError("connection refused")
 
-    monkeypatch.setattr("mnemosyne.adapters.embedding.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("tirzah.adapters.embedding.request.urlopen", fake_urlopen)
     adapter = OllamaHttpEmbeddingAdapter(RuntimeConfig(embedding_adapter="ollama_http"))
 
     try:
@@ -271,7 +271,7 @@ def test_ollama_powershell_embedding_adapter_reports_process_errors(monkeypatch)
             {"returncode": 1, "stdout": "", "stderr": "connection failed"},
         )()
 
-    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.run", fake_run)
+    monkeypatch.setattr("tirzah.adapters.embedding.subprocess.run", fake_run)
     adapter = OllamaPowerShellEmbeddingAdapter(RuntimeConfig(embedding_adapter="ollama_powershell"))
 
     try:
@@ -296,7 +296,7 @@ def test_local_command_embedding_adapter_uses_stdin_json(monkeypatch) -> None:
         captured["timeout"] = timeout
         return type("Completed", (), {"returncode": 0, "stdout": '{"vector": [3, 4]}', "stderr": ""})()
 
-    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.run", fake_run)
+    monkeypatch.setattr("tirzah.adapters.embedding.subprocess.run", fake_run)
     config = RuntimeConfig(
         embedding_adapter="local_command",
         embedding_model="local-profile",
@@ -337,7 +337,7 @@ def test_local_command_embedding_adapter_reports_process_errors(monkeypatch) -> 
     def fake_run(*_args, **_kwargs):
         return type("Completed", (), {"returncode": 1, "stdout": "", "stderr": "tool failed"})()
 
-    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.run", fake_run)
+    monkeypatch.setattr("tirzah.adapters.embedding.subprocess.run", fake_run)
     adapter = LocalCommandEmbeddingAdapter(
         RuntimeConfig(embedding_adapter="local_command", profile_command=["profile-tool"])
     )
@@ -401,9 +401,9 @@ def test_local_command_embedding_adapter_worker_reuses_process(monkeypatch) -> N
         captured["bufsize"] = bufsize
         return FakeProcess()
 
-    monkeypatch.setattr("mnemosyne.adapters.embedding.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("tirzah.adapters.embedding.subprocess.Popen", fake_popen)
     monkeypatch.setattr(
-        "mnemosyne.adapters.embedding.select.select",
+        "tirzah.adapters.embedding.select.select",
         lambda readable, _writable, _errors, timeout: (readable, [], []),
     )
     config = RuntimeConfig(
@@ -458,11 +458,11 @@ def test_local_command_embedding_adapter_worker_reports_json_errors(monkeypatch)
             return None
 
     monkeypatch.setattr(
-        "mnemosyne.adapters.embedding.subprocess.Popen",
+        "tirzah.adapters.embedding.subprocess.Popen",
         lambda *_args, **_kwargs: FakeProcess(),
     )
     monkeypatch.setattr(
-        "mnemosyne.adapters.embedding.select.select",
+        "tirzah.adapters.embedding.select.select",
         lambda readable, _writable, _errors, timeout: (readable, [], []),
     )
     adapter = LocalCommandEmbeddingAdapter(

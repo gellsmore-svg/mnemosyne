@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from mnemosyne.ingestion.parser import read_text_source
+from tirzah.ingestion.parser import read_text_source
 
 
 def test_read_text_source_supports_markdown(tmp_path: Path) -> None:

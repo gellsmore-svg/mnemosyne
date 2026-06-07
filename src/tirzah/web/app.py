@@ -11,14 +11,14 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from mnemosyne.config import RuntimeConfig, load_config
-from mnemosyne.adapters.embedding import (
+from tirzah.config import RuntimeConfig, load_config
+from tirzah.adapters.embedding import (
     HTTP_BACKED_EMBEDDING_ADAPTERS,
     embedding_adapter,
     local_profile_command,
 )
-from mnemosyne.db.client import get_database
-from mnemosyne.db.governance import (
+from tirzah.db.client import get_database
+from tirzah.db.governance import (
     PROCESS_RUN_STATUSES,
     create_process_run,
     get_agent_identity,
@@ -33,8 +33,8 @@ from mnemosyne.db.governance import (
     list_trust_weighting_profiles,
     update_process_run,
 )
-from mnemosyne.db.indexes import ensure_indexes
-from mnemosyne.db.repositories import (
+from tirzah.db.indexes import ensure_indexes
+from tirzah.db.repositories import (
     backfill_node_embeddings,
     enqueue_semantic_edge_candidates,
     enqueue_vector_semantic_edge_candidate_batch,
@@ -42,31 +42,31 @@ from mnemosyne.db.repositories import (
     list_semantic_edge_candidates,
     review_semantic_edge_candidate,
 )
-from mnemosyne.db.queue import enqueue_source, queue_summary, recent_jobs
-from mnemosyne.ingestion.dates import analyze_source_dates
-from mnemosyne.ingestion.embedding_backfill import (
+from tirzah.db.queue import enqueue_source, queue_summary, recent_jobs
+from tirzah.ingestion.dates import analyze_source_dates
+from tirzah.ingestion.embedding_backfill import (
     create_embedding_backfill_job,
     list_embedding_backfill_jobs,
     process_embedding_backfill_batches,
     requeue_processing_embedding_backfill_job,
 )
-from mnemosyne.ingestion.files import move_request_file, sha256_file
-from mnemosyne.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
-from mnemosyne.ingestion.worker import discover_sources, process_next
-from mnemosyne.retrieval.queries import embedding_candidate_report, list_documents, search_nodes
-from mnemosyne.retrieval.trust import trust_temporal_diagnostic_for_node
-from mnemosyne.sessions.exchanges import recent_exchanges
-from mnemosyne.sessions.interaction import answer_query
-from mnemosyne.sessions.active_documents import list_active_documents
-from mnemosyne.sessions.endorsements import (
+from tirzah.ingestion.files import move_request_file, sha256_file
+from tirzah.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
+from tirzah.ingestion.worker import discover_sources, process_next
+from tirzah.retrieval.queries import embedding_candidate_report, list_documents, search_nodes
+from tirzah.retrieval.trust import trust_temporal_diagnostic_for_node
+from tirzah.sessions.exchanges import recent_exchanges
+from tirzah.sessions.interaction import answer_query
+from tirzah.sessions.active_documents import list_active_documents
+from tirzah.sessions.endorsements import (
     list_generated_output_nodes,
     update_node_endorsement,
 )
-from mnemosyne.sessions.output_ingestion import (
+from tirzah.sessions.output_ingestion import (
     list_output_ingestion_jobs,
     process_next_output_ingestion,
 )
-from mnemosyne.sessions.registry import create_session, list_sessions
+from tirzah.sessions.registry import create_session, list_sessions
 
 
 FALLBACK_KNOWN_MODELS = ["gemma4:latest", "gemma3:1b"]
@@ -167,7 +167,7 @@ def create_app() -> FastAPI:
     db = get_database(config.mongo)
     ensure_indexes(db)
 
-    app = FastAPI(title="Mnemosyne")
+    app = FastAPI(title="Tirzah")
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 

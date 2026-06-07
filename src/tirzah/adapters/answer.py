@@ -7,7 +7,7 @@ import subprocess
 from typing import Any
 from urllib import request
 
-from mnemosyne.config import RuntimeConfig
+from tirzah.config import RuntimeConfig
 
 
 class MockAnswerAdapter:

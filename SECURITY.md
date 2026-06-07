@@ -1,6 +1,6 @@
 # Security
 
-Mnemosyne is an early local-first research prototype. Treat it as unsuitable for untrusted network exposure until authentication, authorization, and data-handling boundaries are explicitly designed and tested.
+Tirzah is an early local-first research prototype. Treat it as unsuitable for untrusted network exposure until authentication, authorization, and data-handling boundaries are explicitly designed and tested.
 
 ## Reporting
 
