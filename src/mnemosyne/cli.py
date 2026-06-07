@@ -358,6 +358,61 @@ def render_semantic_edge_candidates_text(candidates: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def render_vector_semantic_batch_text(result: dict) -> str:
+    scope = result.get("scope") or {}
+    lines = [
+        f"Profile candidate batch: {'ready' if result.get('ok') else 'needs attention'}",
+        f"mode: {'dry run' if scope.get('dry_run') else 'queue pending review rows'}",
+        f"scope: label {scope.get('label') or 'any'}, document {scope.get('document_id') or 'any'}",
+        (
+            f"focus nodes: {scope.get('focus_node_count', 0)} of limit {scope.get('focus_limit')} | "
+            f"per focus: {scope.get('candidates_per_node')} | threshold {scope.get('min_similarity')}"
+        ),
+        (
+            f"candidates found: {result.get('candidate_count', 0)} | "
+            f"would queue: {result.get('would_enqueue_count', 0)} | "
+            f"queued: {result.get('enqueued_count', 0)} | "
+            f"existing: {result.get('skipped_existing_count', 0)} | "
+            f"invalid: {result.get('skipped_invalid_count', 0)}"
+        ),
+    ]
+    if result.get("reason"):
+        lines.append(f"reason: {result['reason']}")
+    focus_results = result.get("focus_results") or []
+    shown = 0
+    for focus in focus_results:
+        previews = focus.get("candidate_previews") or []
+        if not previews:
+            continue
+        lines.append("")
+        lines.append(
+            f"- {focus.get('title') or focus.get('node_id')} | "
+            f"would queue {focus.get('would_enqueue_count', 0)} | "
+            f"existing {focus.get('skipped_existing_count', 0)}"
+        )
+        for candidate in previews[:3]:
+            lines.append(
+                f"  -> {candidate.get('target_title') or candidate.get('target_node_id')} | "
+                f"profile similarity {candidate.get('embedding_similarity')} | "
+                f"{candidate.get('review_hint') or ''}".rstrip()
+            )
+            shared_wording = candidate.get("shared_wording") or {}
+            if shared_wording:
+                lines.append(
+                    "     shared wording: "
+                    f"source {percent(shared_wording.get('source_word_overlap'))}, "
+                    f"target {percent(shared_wording.get('target_word_overlap'))}"
+                )
+            if candidate.get("source_text_preview"):
+                lines.append(f"     source text: {candidate['source_text_preview']}")
+            if candidate.get("target_text_preview"):
+                lines.append(f"     target text: {candidate['target_text_preview']}")
+        shown += 1
+        if shown >= 8:
+            break
+    return "\n".join(lines)
+
+
 def percent(value: object) -> str:
     try:
         return f"{round(float(value) * 100)}%"
@@ -560,6 +615,7 @@ def main() -> None:
     enqueue_vector_semantic_batch.add_argument("--candidate-scan-limit", type=int, default=None)
     enqueue_vector_semantic_batch.add_argument("--exclude-node-key", action="append", default=[])
     enqueue_vector_semantic_batch.add_argument("--dry-run", action="store_true")
+    enqueue_vector_semantic_batch.add_argument("--format", choices=["json", "text"], default="json")
 
     semantic_queue = subcommands.add_parser("semantic-edge-candidates")
     semantic_queue.add_argument("--status", default="pending")
@@ -1317,25 +1373,24 @@ def main() -> None:
 
     if args.command == "enqueue-vector-semantic-batch":
         ensure_indexes(db)
-        print(
-            json.dumps(
-                enqueue_vector_semantic_edge_candidate_batch(
-                    db,
-                    label=args.label,
-                    document_id=args.document_id,
-                    focus_limit=args.focus_limit,
-                    candidates_per_node=args.candidates_per_node,
-                    include_same_document=args.include_same_document,
-                    relation_type=args.relation_type,
-                    created_by=args.created_by,
-                    min_similarity=args.min_similarity,
-                    candidate_scan_limit=args.candidate_scan_limit,
-                    exclude_node_keys=args.exclude_node_key,
-                    dry_run=args.dry_run,
-                ),
-                indent=2,
-            )
+        result = enqueue_vector_semantic_edge_candidate_batch(
+            db,
+            label=args.label,
+            document_id=args.document_id,
+            focus_limit=args.focus_limit,
+            candidates_per_node=args.candidates_per_node,
+            include_same_document=args.include_same_document,
+            relation_type=args.relation_type,
+            created_by=args.created_by,
+            min_similarity=args.min_similarity,
+            candidate_scan_limit=args.candidate_scan_limit,
+            exclude_node_keys=args.exclude_node_key,
+            dry_run=args.dry_run,
         )
+        if args.format == "text":
+            print(render_vector_semantic_batch_text(result))
+        else:
+            print(json.dumps(result, indent=2))
         return
 
     if args.command == "semantic-edge-candidates":

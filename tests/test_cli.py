@@ -854,6 +854,87 @@ def test_cli_enqueue_vector_semantic_batch_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_enqueue_vector_semantic_batch_text_format(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnemosyne",
+            "enqueue-vector-semantic-batch",
+            "--label",
+            "ams_domain",
+            "--focus-limit",
+            "5",
+            "--candidates-per-node",
+            "1",
+            "--dry-run",
+            "--format",
+            "text",
+        ],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.enqueue_vector_semantic_edge_candidate_batch",
+        lambda _db, **_kwargs: {
+            "ok": True,
+            "candidate_count": 1,
+            "would_enqueue_count": 1,
+            "enqueued_count": 0,
+            "skipped_existing_count": 0,
+            "skipped_invalid_count": 0,
+            "scope": {
+                "label": "ams_domain",
+                "document_id": None,
+                "focus_limit": 5,
+                "focus_node_count": 1,
+                "candidates_per_node": 1,
+                "min_similarity": 0.75,
+                "dry_run": True,
+            },
+            "focus_results": [
+                {
+                    "node_id": "source1",
+                    "title": "Source",
+                    "would_enqueue_count": 1,
+                    "skipped_existing_count": 0,
+                    "candidate_previews": [
+                        {
+                            "target_node_id": "target1",
+                            "target_title": "Target",
+                            "embedding_similarity": 0.91,
+                            "review_hint": "Review hint: likely conceptual candidate.",
+                            "shared_wording": {
+                                "source_word_overlap": 0.49,
+                                "target_word_overlap": 0.51,
+                            },
+                            "source_text_preview": "Source preview.",
+                            "target_text_preview": "Target preview.",
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    main()
+
+    output = capsys.readouterr().out
+    assert "Profile candidate batch: ready" in output
+    assert "mode: dry run" in output
+    assert "scope: label ams_domain, document any" in output
+    assert "candidates found: 1 | would queue: 1" in output
+    assert "- Source | would queue 1 | existing 0" in output
+    assert "-> Target | profile similarity 0.91 | Review hint: likely conceptual candidate." in output
+    assert "shared wording: source 49%, target 51%" in output
+    assert "source text: Source preview." in output
+    assert "target text: Target preview." in output
+
+
 def test_cli_semantic_edge_candidates_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
