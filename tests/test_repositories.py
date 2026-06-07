@@ -1248,6 +1248,8 @@ def test_review_semantic_edge_candidate_accepts_and_creates_edge() -> None:
                 "document_id": ObjectId(),
                 "tree_id": ObjectId(),
                 "node_key": "source",
+                "title": "Source",
+                "text": "Permission rules define who may alter repository records.",
                 "labels": ["memory_reference"],
             },
             {
@@ -1255,6 +1257,8 @@ def test_review_semantic_edge_candidate_accepts_and_creates_edge() -> None:
                 "document_id": ObjectId(),
                 "tree_id": ObjectId(),
                 "node_key": "target",
+                "title": "Target",
+                "text": "Access controls describe who may change stored knowledge.",
                 "labels": ["memory_reference"],
             },
         ]
@@ -1295,6 +1299,17 @@ def test_review_semantic_edge_candidate_accepts_and_creates_edge() -> None:
     assert result["candidate"]["reviewer"] == "cello"
     assert result["candidate"]["review_note"] == "Looks related."
     assert result["candidate"]["edge_id"] == result["edge"]["edge_id"]
+    assert result["candidate"]["source_title"] == "Source"
+    assert result["candidate"]["target_title"] == "Target"
+    assert result["candidate"]["source_text_preview"] == (
+        "Permission rules define who may alter repository records."
+    )
+    assert result["candidate"]["target_text_preview"] == (
+        "Access controls describe who may change stored knowledge."
+    )
+    assert result["candidate"]["review_hint"] == (
+        "Review hint: strong profile match with moderate wording overlap; likely conceptual candidate."
+    )
     assert result["edge"]["weight"] == 0.8
     assert result["edge"]["confidence"] == 0.9
     assert result["edge"]["provenance"]["candidate_source"] == "embedding_similarity"
@@ -1310,14 +1325,38 @@ def test_review_semantic_edge_candidate_accepts_and_creates_edge() -> None:
 
 
 def test_review_semantic_edge_candidate_rejects_pending_candidate() -> None:
+    source_id = ObjectId()
+    target_id = ObjectId()
     candidate_id = ObjectId()
     db = FakeDb()
+    db.nodes.rows.extend(
+        [
+            {
+                "_id": source_id,
+                "document_id": ObjectId(),
+                "tree_id": ObjectId(),
+                "node_key": "source",
+                "title": "Rejected Source",
+                "text": "Identical template wording can make weak candidates look important.",
+                "labels": ["memory_reference"],
+            },
+            {
+                "_id": target_id,
+                "document_id": ObjectId(),
+                "tree_id": ObjectId(),
+                "node_key": "target",
+                "title": "Rejected Target",
+                "text": "Identical template wording can make weak candidates look important.",
+                "labels": ["memory_reference"],
+            },
+        ]
+    )
     db.semantic_edge_candidates.rows.append(
         {
             "_id": candidate_id,
             "status": "pending",
-            "source_node_id": ObjectId(),
-            "target_node_id": ObjectId(),
+            "source_node_id": source_id,
+            "target_node_id": target_id,
             "relation_type": "related_to",
         }
     )
@@ -1334,6 +1373,17 @@ def test_review_semantic_edge_candidate_rejects_pending_candidate() -> None:
     assert result["candidate"]["status"] == "rejected"
     assert result["candidate"]["reviewer"] == "cello"
     assert result["candidate"]["review_note"] == "Too broad."
+    assert result["candidate"]["source_title"] == "Rejected Source"
+    assert result["candidate"]["target_title"] == "Rejected Target"
+    assert result["candidate"]["source_text_preview"] == (
+        "Identical template wording can make weak candidates look important."
+    )
+    assert result["candidate"]["target_text_preview"] == (
+        "Identical template wording can make weak candidates look important."
+    )
+    assert result["candidate"]["review_hint"] == (
+        "Review hint: high shared wording; check for copied or near-copied source text before accepting."
+    )
     assert db.graph_edges.rows == []
 
 

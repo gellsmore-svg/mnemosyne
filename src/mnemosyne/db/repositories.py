@@ -988,7 +988,7 @@ def list_semantic_edge_candidates(
     rows = db.semantic_edge_candidates.find(query).sort("created_at", -1).limit(
         bounded_candidate_limit(limit, maximum=100)
     )
-    return [serialize_semantic_edge_candidate(enrich_semantic_edge_candidate_nodes(db, row)) for row in rows]
+    return [serialize_enriched_semantic_edge_candidate(db, row) for row in rows]
 
 
 def review_semantic_edge_candidate(
@@ -1012,7 +1012,7 @@ def review_semantic_edge_candidate(
         return {
             "ok": False,
             "reason": "candidate_not_pending",
-            "candidate": serialize_semantic_edge_candidate(candidate),
+            "candidate": serialize_enriched_semantic_edge_candidate(db, candidate),
         }
 
     normalized_action = str(action or "").strip().lower()
@@ -1024,7 +1024,7 @@ def review_semantic_edge_candidate(
             reviewer=reviewer,
             note=note,
         )
-        return {"ok": True, "candidate": serialize_semantic_edge_candidate(updated)}
+        return {"ok": True, "candidate": serialize_enriched_semantic_edge_candidate(db, updated)}
     if normalized_action != "accept":
         return {"ok": False, "reason": "invalid_action", "action": action}
 
@@ -1050,7 +1050,7 @@ def review_semantic_edge_candidate(
             "ok": False,
             "reason": "edge_creation_failed",
             "edge_result": edge_result,
-            "candidate": serialize_semantic_edge_candidate(candidate),
+            "candidate": serialize_enriched_semantic_edge_candidate(db, candidate),
         }
     updated = update_semantic_edge_candidate_status(
         db,
@@ -1063,7 +1063,7 @@ def review_semantic_edge_candidate(
     return {
         "ok": True,
         "edge": edge_result.get("edge"),
-        "candidate": serialize_semantic_edge_candidate(updated),
+        "candidate": serialize_enriched_semantic_edge_candidate(db, updated),
     }
 
 
@@ -1132,6 +1132,10 @@ def serialize_semantic_edge_candidate(row: dict[str, Any]) -> dict[str, Any]:
         "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
         "reviewed_at": row.get("reviewed_at").isoformat() if row.get("reviewed_at") else None,
     }
+
+
+def serialize_enriched_semantic_edge_candidate(db: Database, row: dict[str, Any]) -> dict[str, Any]:
+    return serialize_semantic_edge_candidate(enrich_semantic_edge_candidate_nodes(db, row))
 
 
 def enrich_semantic_edge_candidate_nodes(db: Database, row: dict[str, Any]) -> dict[str, Any]:
