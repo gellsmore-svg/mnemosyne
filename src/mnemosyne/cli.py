@@ -412,6 +412,23 @@ def render_documents_text(documents: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def render_graph_status_text(status: dict) -> str:
+    lines = [f"Graph status: {status.get('edge_count', 0)} live edge(s)"]
+    relation_types = status.get("relation_types") or []
+    if relation_types:
+        lines.append("")
+        lines.append("Relation types:")
+        for item in relation_types:
+            lines.append(f"- {item.get('value') or '(none)'}: {item.get('count', 0)}")
+    provenance_sources = status.get("provenance_sources") or []
+    if provenance_sources:
+        lines.append("")
+        lines.append("Provenance sources:")
+        for item in provenance_sources:
+            lines.append(f"- {item.get('value') or '(none)'}: {item.get('count', 0)}")
+    return "\n".join(lines)
+
+
 def render_vector_semantic_candidates_text(report: dict) -> str:
     diagnostics = report.get("diagnostics") or {}
     focus = diagnostics.get("focus") or {}
@@ -535,6 +552,7 @@ def main() -> None:
     subcommands.add_parser("backfill-schema-metadata")
     graph_status = subcommands.add_parser("graph-status")
     graph_status.add_argument("--limit", type=int, default=10)
+    graph_status.add_argument("--format", choices=["json", "text"], default="json")
     structural_edges = subcommands.add_parser("backfill-structural-graph-edges")
     structural_edges.add_argument("--limit", type=int, default=None)
     embedding_backfill = subcommands.add_parser("backfill-embeddings")
@@ -930,7 +948,11 @@ def main() -> None:
 
     if args.command == "graph-status":
         ensure_indexes(db)
-        print(json.dumps({"ok": True, **graph_edge_status(db, limit=args.limit)}, indent=2))
+        status = {"ok": True, **graph_edge_status(db, limit=args.limit)}
+        if args.format == "text":
+            print(render_graph_status_text(status))
+            return
+        print(json.dumps(status, indent=2))
         return
 
     if args.command == "backfill-structural-graph-edges":

@@ -364,6 +364,45 @@ def test_cli_graph_status_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_graph_status_text_format(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mnemosyne", "graph-status", "--limit", "3", "--format", "text"],
+    )
+    monkeypatch.setattr(
+        "mnemosyne.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("mnemosyne.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("mnemosyne.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "mnemosyne.cli.graph_edge_status",
+        lambda _db, limit=10: {
+            "edge_count": 20,
+            "relation_types": [
+                {"value": "contains", "count": 16},
+                {"value": "related_to", "count": 4},
+            ],
+            "provenance_sources": [
+                {"value": "node_parent_link", "count": 16},
+                {"value": "semantic_candidate_review", "count": 4},
+            ],
+            "limit": limit,
+        },
+    )
+
+    main()
+
+    output = capsys.readouterr().out
+    assert "Graph status: 20 live edge(s)" in output
+    assert "Relation types:" in output
+    assert "- contains: 16" in output
+    assert "- related_to: 4" in output
+    assert "Provenance sources:" in output
+    assert "- semantic_candidate_review: 4" in output
+
+
 def test_cli_list_docs_command(monkeypatch, capsys) -> None:
     monkeypatch.setattr(sys, "argv", ["mnemosyne", "list-docs", "--limit", "2"])
     monkeypatch.setattr(
