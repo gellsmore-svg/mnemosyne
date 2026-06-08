@@ -7,6 +7,11 @@ from typing import Any
 from bson import ObjectId
 from pymongo.database import Database
 
+from tirzah.domains.registry import (
+    DEFAULT_PROJECT_DOMAIN_ID,
+    conversation_domain_id_for_session,
+    ensure_conversation_domain,
+)
 from tirzah.sessions.active_documents import record_active_documents
 from tirzah.sessions.output_ingestion import queue_exchange_output
 from tirzah.sessions.registry import touch_session
@@ -37,9 +42,19 @@ def save_exchange(
     focus_node_id: str | None,
     session_id: str = "default",
     process_trace: list[dict[str, Any]] | None = None,
+    project_domain_id: str | None = None,
+    conversation_domain_id: str | None = None,
 ) -> str:
     now = utc_now()
     touch_session(db, session_id)
+    project_domain_id = project_domain_id or DEFAULT_PROJECT_DOMAIN_ID
+    conversation_domain_id = conversation_domain_id or conversation_domain_id_for_session(session_id)
+    ensure_conversation_domain(
+        db,
+        domain_id=conversation_domain_id,
+        project_domain_id=project_domain_id,
+        session_id=session_id,
+    )
     used_node_ids = [str(node_id) for node_id in answer.get("used_node_ids", [])]
     if focus_node_id:
         used_node_ids.append(focus_node_id)
@@ -49,6 +64,8 @@ def save_exchange(
         {
             "schema_version": 1,
             "session_id": session_id,
+            "project_domain_id": project_domain_id,
+            "conversation_domain_id": conversation_domain_id,
             "focus_node_id": ObjectId(focus_node_id) if focus_node_id else None,
             "query": query,
             "answer": answer,
@@ -130,6 +147,8 @@ def serialize_exchange(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "exchange_id": str(row["_id"]),
         "session_id": row.get("session_id"),
+        "project_domain_id": row.get("project_domain_id"),
+        "conversation_domain_id": row.get("conversation_domain_id"),
         "focus_node_id": str(row["focus_node_id"]) if row.get("focus_node_id") else None,
         "query": row.get("query"),
         "answer": row.get("answer", {}).get("answer"),

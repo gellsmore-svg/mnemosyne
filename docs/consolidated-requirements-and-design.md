@@ -174,6 +174,22 @@ Required fields for future nodes/exchanges:
 - source conversation/session ID where applicable;
 - promotion status: conversation-only, project-candidate, project-accepted, rejected.
 
+Implementation status:
+
+- Project-domain and conversation-domain registries exist under `src/tirzah/domains`.
+- Domain collections are indexed.
+- Saved exchanges carry `project_domain_id` and `conversation_domain_id`.
+- `/api/ask` accepts optional project/conversation domain IDs.
+- The default project domain is `tirzah`.
+- The default conversation domain follows the session ID.
+
+Open implementation items:
+
+- domain selection/listing controls in the UI;
+- CLI/API commands for browsing domains;
+- domain fields on nodes and future continuity records;
+- promotion rules from conversation-domain memory into project-domain memory.
+
 ### Process Objects
 
 Processes must become first-class product elements.
@@ -217,6 +233,8 @@ Each prompt cycle should save a continuity record containing:
 - unresolved follow-up items.
 
 The UI should expose the last used chunks/context records in a simple continuity panel so a user can understand and continue the prior thread.
+
+Implementation status: open. Exchange records now carry domain IDs, but last prompt iteration records and the continuity panel still need to be built.
 
 ### Mahalath Integration
 

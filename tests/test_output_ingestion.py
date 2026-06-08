@@ -113,6 +113,11 @@ def test_save_exchange_links_output_ingestion_job() -> None:
     assert job["answer_text"] == "Remember this."
     assert job["used_node_ids"] == [node_id]
     assert exchange["scored_node_count"] == 1
+    assert exchange["project_domain_id"] == "tirzah"
+    assert exchange["conversation_domain_id"] == "session1"
+    assert db.project_domains.rows[0]["domain_id"] == "tirzah"
+    assert db.conversation_domains.rows[0]["domain_id"] == "session1"
+    assert db.conversation_domains.rows[0]["project_domain_id"] == "tirzah"
     assert db.nodes.rows[0]["usage_score"] == 5
 
 
@@ -373,6 +378,8 @@ class FakeDb:
         self.trees = FakeCollection()
         self.nodes = FakeCollection()
         self.active_documents = FakeCollection()
+        self.project_domains = FakeCollection()
+        self.conversation_domains = FakeCollection()
 
 
 def matches(row, query):

@@ -78,6 +78,8 @@ class AskRequest(BaseModel):
     query: str
     node_id: str | None = None
     session_id: str = "web"
+    project_domain_id: str | None = None
+    conversation_domain_id: str | None = None
     adapter: str | None = None
     model: str | None = None
     retrieval_mode: str | None = None
@@ -792,6 +794,8 @@ def create_app() -> FastAPI:
             query=request.query,
             focus_node_id=request.node_id,
             session_id=request.session_id,
+            project_domain_id=request.project_domain_id,
+            conversation_domain_id=request.conversation_domain_id,
             answer_adapter_name=request.adapter,
             ollama_model=request.model,
             retrieval_mode=request.retrieval_mode,

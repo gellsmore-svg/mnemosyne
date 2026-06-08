@@ -14,6 +14,11 @@ from tirzah.adapters.answer import answer_adapter
 from tirzah.config import AppConfig
 from tirzah.db.governance import create_process_run, list_agent_identities, update_process_run
 from tirzah.db.repositories import document_tree
+from tirzah.domains.registry import (
+    DEFAULT_PROJECT_DOMAIN_ID,
+    clean_domain_id,
+    conversation_domain_id_for_session,
+)
 from tirzah.retrieval.queries import (
     build_prompt_envelope,
     build_prompt_envelope_without_context,
@@ -127,6 +132,8 @@ def answer_query(
     answer_adapter_name: str | None = None,
     ollama_model: str | None = None,
     retrieval_mode: str | None = None,
+    project_domain_id: str | None = None,
+    conversation_domain_id: str | None = None,
 ) -> dict[str, Any]:
     process_trace: list[dict[str, Any]] = [
         {
@@ -170,6 +177,8 @@ def answer_query(
             session_id=session_id,
             process_trace=process_trace,
             process_run_id=process_run_id,
+            project_domain_id=project_domain_id,
+            conversation_domain_id=conversation_domain_id,
         )
 
     try:
@@ -290,6 +299,8 @@ def answer_query(
             focus_node_id=selected_node_id,
             session_id=session_id,
             process_trace=process_trace,
+            project_domain_id=project_domain_id,
+            conversation_domain_id=conversation_domain_id,
         )
     except Exception as error:
         finish_answer_process_run(
@@ -333,6 +344,11 @@ def answer_query(
         "ok": True,
         "exchange_id": exchange_id,
         "session_id": session_id,
+        "project_domain_id": clean_domain_id(project_domain_id),
+        "conversation_domain_id": clean_domain_id(
+            conversation_domain_id,
+            fallback=conversation_domain_id_for_session(session_id),
+        ),
         "focus_node_id": selected_node_id,
         "query": query,
         "answer": answer["answer"],
@@ -357,6 +373,8 @@ def answer_query_agentic(
     session_id: str,
     process_trace: list[dict[str, Any]],
     process_run_id: str | None = None,
+    project_domain_id: str | None = None,
+    conversation_domain_id: str | None = None,
 ) -> dict[str, Any]:
     try:
         tool_results = run_memory_agent_loop(
@@ -473,6 +491,8 @@ def answer_query_agentic(
             focus_node_id=selected_node_id,
             session_id=session_id,
             process_trace=process_trace,
+            project_domain_id=project_domain_id,
+            conversation_domain_id=conversation_domain_id,
         )
     except Exception as error:
         finish_answer_process_run(
@@ -516,6 +536,11 @@ def answer_query_agentic(
         "ok": True,
         "exchange_id": exchange_id,
         "session_id": session_id,
+        "project_domain_id": clean_domain_id(project_domain_id),
+        "conversation_domain_id": clean_domain_id(
+            conversation_domain_id,
+            fallback=conversation_domain_id_for_session(session_id),
+        ),
         "focus_node_id": selected_node_id,
         "query": query,
         "answer": answer["answer"],

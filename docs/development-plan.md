@@ -75,6 +75,8 @@ Human transparency remains visible in work mode. Raw diagnostics and operational
 
 ### Slice 0C: Domains And Continuity
 
+Implementation status: initial domain foundation is implemented. Project and conversation domain registries exist under `src/tirzah/domains`, domain collections are indexed, saved exchanges now carry `project_domain_id` and `conversation_domain_id`, and the default conversation domain follows the session ID. Last prompt iteration records remain open.
+
 Goal:
 
 - Add explicit project-domain and conversation-domain concepts.

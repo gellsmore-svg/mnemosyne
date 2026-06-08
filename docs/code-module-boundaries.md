@@ -43,6 +43,7 @@ Current home:
 
 - `src/tirzah/sessions`
 - `src/tirzah/adapters`
+- `src/tirzah/domains`
 - runtime-facing parts of `src/tirzah/retrieval`
 
 Owns:
@@ -52,6 +53,7 @@ Owns:
 - memory-agent tool interface;
 - context package construction;
 - activity reports;
+- project and conversation domain resolution;
 - last prompt iteration records;
 - process invocation once process objects are implemented.
 
@@ -137,7 +139,7 @@ Only split into separate repositories or packages when one of these becomes true
 ## Near-Term Refactor Order
 
 1. Complete the package rename and compatibility path.
-2. Add project-domain and conversation-domain data fields.
+2. Add project-domain and conversation-domain data fields. Initial exchange-level fields and domain registries are implemented.
 3. Add last prompt iteration records under `src/tirzah/sessions`.
 4. Add process objects under a new `src/tirzah/processes` module.
 5. Add linked-domain import support under `src/tirzah/integrations`.

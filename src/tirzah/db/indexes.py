@@ -179,6 +179,11 @@ def ensure_indexes(db: Database) -> None:
     db.sessions.create_index("updated_at")
     db.active_documents.create_index([("session_id", 1), ("last_referenced_at", -1)])
     db.active_documents.create_index([("session_id", 1), ("document_id", 1)], unique=True)
+    db.project_domains.create_index("domain_id", unique=True)
+    db.project_domains.create_index("updated_at")
+    db.conversation_domains.create_index("domain_id", unique=True)
+    db.conversation_domains.create_index([("project_domain_id", 1), ("updated_at", -1)])
+    db.conversation_domains.create_index([("session_id", 1), ("updated_at", -1)])
     db.label_definitions.create_index("key", unique=True)
     for definition in LABEL_DEFINITIONS:
         db.label_definitions.update_one(
