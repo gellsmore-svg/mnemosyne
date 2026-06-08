@@ -139,6 +139,29 @@ Developer mode should be available through a toggle. It may reveal:
 
 Human transparency is not developer-only. The readable activity log remains visible in normal work mode. Developer mode is for raw diagnostics and operational controls, not for basic understanding.
 
+### Prompt Processing Pipeline
+
+Tirzah should provide a structured prompt processing pipeline between the user interface and the target answer model.
+
+This is a core product distinction from generic wrapper tools such as Ollama's chat interface. The user prompt should not be passed straight to a model with only a thin adapter around it. Once submitted, the prompt should move through deliberate local stages before any answer model receives it.
+
+Required stages:
+
+- receive the submitted prompt and selected session/domain state;
+- classify prompt intent, including low-intent, normal conversation, repository question, active-document reference, process request, and ingestion/review operation;
+- select or propose a process when a process is relevant;
+- resolve project domain and conversation domain;
+- decide whether repository memory should be used;
+- ask the memory-agent/controller to gather or reject context when agentic retrieval is active;
+- validate tool calls, context use, budget, and provenance locally;
+- assemble the final answer context package;
+- produce a readable activity log while the pipeline is running;
+- persist the prompt cycle, selected context, answer, and unresolved continuation items.
+
+The answer model should receive a complete context package, not raw internal state. The package should make the controller decision, evidence, constraints, and expected answer behaviour clear.
+
+The target modular boundary is a dedicated prompt-pipeline module. The current implementation still spreads this across `sessions`, `retrieval`, and adapter calls. That is acceptable as a scaffold, but should be refactored so prompt intake, process selection, context strategy, package assembly, LLM handoff, and continuity persistence are testable as separate steps.
+
 ### Product Naming
 
 The previous repository/package name was Mnemosyne. The target product name is Tirzah.

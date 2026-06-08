@@ -57,6 +57,24 @@ Owns:
 - last prompt iteration records;
 - process invocation once process objects are implemented.
 
+Future split:
+
+- `src/tirzah/prompt_pipeline`
+
+The prompt pipeline should become the dedicated home for the local steps between user submission and answer-model handoff:
+
+- prompt intake;
+- intent classification;
+- process selection/proposal;
+- project/conversation domain resolution;
+- repository-memory use decision;
+- memory-agent/controller orchestration;
+- context package assembly;
+- answer-model handoff preparation;
+- last prompt iteration persistence.
+
+This boundary exists so Tirzah can behave as a deliberate LLM wrapper/client rather than passing prompts straight through to a target model.
+
 ### Tirzah Ingestion
 
 Current home:
@@ -140,7 +158,8 @@ Only split into separate repositories or packages when one of these becomes true
 
 1. Complete the package rename and compatibility path.
 2. Add project-domain and conversation-domain data fields. Initial exchange-level fields and domain registries are implemented.
-3. Add last prompt iteration records under `src/tirzah/sessions`.
-4. Add process objects under a new `src/tirzah/processes` module.
-5. Add linked-domain import support under `src/tirzah/integrations`.
+3. Add a `src/tirzah/prompt_pipeline` module and move prompt-processing orchestration toward it.
+4. Add last prompt iteration records, initially in the prompt pipeline/runtime boundary.
+5. Add process objects under a new `src/tirzah/processes` module.
+6. Add linked-domain import support under `src/tirzah/integrations`.
 6. Move ingestion write orchestration out of `db/repositories.py` only when LLM-assisted ingestion makes that boundary necessary.

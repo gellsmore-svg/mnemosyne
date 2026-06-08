@@ -19,8 +19,9 @@ The system should move in this order:
 1. Preserve the current working baseline and rename the product/repo/package from Mnemosyne to Tirzah in a dedicated slice.
 2. Keep the Ask UI usable as a normal LLM wrapper client, with developer/debug controls behind a toggle.
 3. Add project-domain and conversation-domain fields so memory has explicit working boundaries.
-4. Add last prompt iteration records so thread continuity is inspectable.
-5. Add process objects and one working answer/retrieval process before expanding process coverage.
+4. Add a prompt processing pipeline so prompt intake, context strategy, model handoff, and continuity persistence are deliberate local stages.
+5. Add last prompt iteration records so thread continuity is inspectable.
+6. Add process objects and one working answer/retrieval process before expanding process coverage.
 6. Ingestion epoch and non-destructive rebuild foundation.
 7. Chronological source-date extraction.
 8. Human-readable ingestion activity logs.
@@ -92,7 +93,39 @@ Required fields:
 - final context package;
 - unresolved follow-up items.
 
-### Slice 0D: Process Objects
+### Slice 0D: Prompt Processing Pipeline
+
+Goal:
+
+- Add a dedicated local prompt-processing boundary between the UI/CLI and the target answer model.
+
+Why:
+
+- Generic wrapper tools tend to pass a submitted prompt directly to a target model with limited structured handling.
+- Tirzah needs a deliberate stage where the prompt is interpreted, domains are resolved, processes are selected or rejected, repository memory use is decided, context is gathered, and the final answer package is assembled before the answer model sees anything.
+
+Required stages:
+
+- prompt intake;
+- intent classification;
+- project/conversation domain resolution;
+- process selection or rejection;
+- repository-memory use decision;
+- memory-agent/controller handoff where enabled;
+- context package assembly;
+- answer-model handoff preparation;
+- readable activity-log events;
+- prompt cycle persistence.
+
+Implementation direction:
+
+- Create `src/tirzah/prompt_pipeline`.
+- Move orchestration currently spread through `sessions.interaction` toward small pipeline steps.
+- Keep model adapters as execution endpoints, not owners of prompt strategy.
+- Keep Python responsible for validation, local tool execution, budgeting, provenance, persistence, and error recovery.
+- Let the memory-agent/controller make context strategy decisions through the local interface when agentic retrieval is active.
+
+### Slice 0E: Process Objects
 
 Goal:
 
@@ -108,7 +141,7 @@ Required behavior:
 - The LLM may request or operate process steps through local tools.
 - Activity logs explain process use in plain language.
 
-### Slice 0E: Mahalath Linked Domain
+### Slice 0F: Mahalath Linked Domain
 
 Goal:
 
