@@ -1,7 +1,8 @@
 # Install Tirzah
 
 Tirzah V1.1 packaging is Docker-first for WSL/Linux. Docker Compose runs both
-the web/CLI app and MongoDB with persistent volumes.
+the web/CLI app and MongoDB with persistent volumes. V1.1.1 also includes the
+optional Hoglah-backed answer adapter.
 
 ## Docker Quickstart
 
