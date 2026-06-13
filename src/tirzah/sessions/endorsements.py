@@ -7,6 +7,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo.database import Database
 
+from tirzah.db.memory_store import MemoryStore, as_memory_store
 from tirzah.retrieval.queries import serialize_node
 
 
@@ -23,21 +24,22 @@ def utc_now() -> datetime:
 
 
 def list_generated_output_nodes(
-    db: Database,
+    db: Database | MemoryStore,
     limit: int = 20,
     endorsement_label: str | None = None,
 ) -> list[dict[str, Any]]:
+    store = as_memory_store(db)
     query: dict[str, Any] = {"labels": "generated_output"}
     if endorsement_label:
         if not valid_endorsement_label(endorsement_label):
             raise ValueError(f"Unsupported endorsement label: {endorsement_label}")
         query["endorsement_label"] = endorsement_label
-    rows = db.nodes.find(query).sort("created_at", -1).limit(bounded_limit(limit))
+    rows = store.find_nodes(query, sort=("created_at", -1), limit=bounded_limit(limit))
     return [serialize_review_node(row) for row in rows]
 
 
 def update_node_endorsement(
-    db: Database,
+    db: Database | MemoryStore,
     node_id: str,
     endorsement_label: str,
     reviewer: str = "user",
@@ -54,7 +56,8 @@ def update_node_endorsement(
     if object_id is None:
         return {"ok": False, "reason": "invalid_node_id", "node_id": node_id}
 
-    node = db.nodes.find_one({"_id": object_id})
+    store = as_memory_store(db)
+    node = store.get_node(object_id)
     if not node:
         return {"ok": False, "reason": "node_not_found", "node_id": node_id}
     if "generated_output" not in (node.get("labels") or []):
@@ -71,8 +74,8 @@ def update_node_endorsement(
         "note": note,
         "reviewed_at": now,
     }
-    db.nodes.update_one(
-        {"_id": object_id},
+    store.update_node(
+        object_id,
         {
             "$set": {
                 "endorsement_label": endorsement_label,
@@ -83,7 +86,7 @@ def update_node_endorsement(
             "$push": {"metadata.review_history": review_entry},
         },
     )
-    updated = db.nodes.find_one({"_id": object_id})
+    updated = store.get_node(object_id)
     return {"ok": True, "node": serialize_review_node(updated)}
 
 

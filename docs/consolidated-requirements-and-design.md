@@ -1,6 +1,6 @@
 # Consolidated Requirements And Design
 
-Date: 2026-05-29
+Date: 2026-06-08
 
 Status: canonical working product/design document. This document consolidates the current Tirzah requirements, implemented design, inferred decisions, and open work into one review entry point. The older detailed documents remain useful supporting records, but this file should be the first place to look when deciding what to build next. The product was renamed from Mnemosyne to Tirzah because the previous name conflicted with another memory-oriented GitHub project and was harder to use consistently.
 
@@ -18,6 +18,18 @@ Tirzah should not become a closed chatbot. It should become a memory backend tha
 - future FOSS agent or knowledge-management clients.
 
 The durable memory system owns source preservation, provenance, graph storage, retrieval, context construction, review state, and endorsement. External tools may help capture, transcribe, browse, or execute actions, but they should not bypass memory governance.
+
+## Relationship To Mahalath
+
+Tirzah and Mahalath should be treated as related local projects that use LLMs as recursive semantic workers, not merely answer generators.
+
+Tirzah preserves what matters: source continuity, provenance, durable memory, retrieval state, reviewed relationships, and future context.
+
+Mahalath clarifies what it means: ontology, interpretive structure, semantic refinement, and conceptual precision.
+
+Together they form an external semantic-reasoning layer. The purpose is to reduce drift, raise precision, and translate human language into richer machine-native context without pretending the machine is conscious.
+
+This relationship does not imply immediate code integration. The current implementation direction remains to treat Mahalath as a linked local corpus/domain first, then evaluate which ontology, process, or semantic-clarification structures should enrich Tirzah.
 
 ## Core Principles
 

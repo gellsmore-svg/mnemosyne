@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from pymongo.database import Database
 
+from tirzah.db.memory_store import MemoryStore, as_memory_store
 from tirzah.sessions.active_documents import valid_object_ids
 
 
@@ -11,13 +12,14 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def record_node_usage(db: Database, node_ids: list[str]) -> int:
-    if not hasattr(db, "nodes") or not hasattr(db.nodes, "update_many"):
+def record_node_usage(db: Database | MemoryStore, node_ids: list[str]) -> int:
+    store = as_memory_store(db)
+    if not hasattr(store.db, "nodes"):
         return 0
     object_ids = valid_object_ids(node_ids)
     if not object_ids:
         return 0
-    result = db.nodes.update_many(
+    return store.update_nodes(
         {
             "_id": {"$in": object_ids},
             "endorsement_label": {"$ne": "rejected"},
@@ -27,4 +29,3 @@ def record_node_usage(db: Database, node_ids: list[str]) -> int:
             "$set": {"last_used_at": utc_now()},
         },
     )
-    return int(getattr(result, "modified_count", 0) or 0)

@@ -8,28 +8,26 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo.database import Database
 
+from tirzah.db.memory_store import MemoryStore, as_memory_store
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
 def record_active_documents(
-    db: Database,
+    db: Database | MemoryStore,
     session_id: str,
     node_ids: list[str],
 ) -> list[str]:
     object_ids = valid_object_ids(node_ids)
-    if not object_ids or not hasattr(db, "active_documents"):
+    store = as_memory_store(db)
+    if not object_ids or not hasattr(store.db, "active_documents"):
         return []
-    nodes = list(
-        db.nodes.find(
-            {"_id": {"$in": object_ids}},
-            {"document_id": 1, "title": 1, "labels": 1, "provenance": 1},
-        )
-    )
+    nodes = store.find_nodes({"_id": {"$in": object_ids}})
     if not nodes:
         return []
-    documents = documents_by_id(db, [node["document_id"] for node in nodes if node.get("document_id")])
+    documents = documents_by_id(store, [node["document_id"] for node in nodes if node.get("document_id")])
     by_document: dict[str, dict[str, Any]] = {}
     grouped_node_ids: dict[str, set[str]] = defaultdict(set)
     grouped_labels: dict[str, set[str]] = defaultdict(set)
@@ -47,7 +45,7 @@ def record_active_documents(
             "source": document.get("source") or {},
         }
     for document_id, metadata in by_document.items():
-        db.active_documents.update_one(
+        store.db.active_documents.update_one(
             {"session_id": session_id, "document_id": document_id},
             {
                 "$setOnInsert": {
@@ -88,19 +86,28 @@ def valid_object_ids(values: list[str]) -> list[ObjectId]:
     return object_ids
 
 
-def documents_by_id(db: Database, document_ids: list[ObjectId]) -> dict[str, dict[str, Any]]:
+def documents_by_id(
+    db: Database | MemoryStore,
+    document_ids: list[ObjectId],
+) -> dict[str, dict[str, Any]]:
     if not document_ids:
         return {}
+    store = as_memory_store(db)
     return {
         str(document["_id"]): document
-        for document in db.documents.find({"_id": {"$in": document_ids}}, {"title": 1, "source": 1})
+        for document in store.find_documents_by_ids(document_ids)
     }
 
 
-def list_active_documents(db: Database, session_id: str, limit: int = 20) -> list[dict[str, Any]]:
-    if not hasattr(db, "active_documents"):
+def list_active_documents(
+    db: Database | MemoryStore,
+    session_id: str,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    store = as_memory_store(db)
+    if not hasattr(store.db, "active_documents"):
         return []
-    rows = db.active_documents.find({"session_id": session_id}).sort("last_referenced_at", -1).limit(limit)
+    rows = store.db.active_documents.find({"session_id": session_id}).sort("last_referenced_at", -1).limit(limit)
     return [serialize_active_document(row) for row in rows]
 
 

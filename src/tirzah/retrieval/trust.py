@@ -8,6 +8,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo.database import Database
 
+from tirzah.db.memory_store import MemoryStore, as_memory_store
 from tirzah.db.governance import get_trust_weighting_profile
 from tirzah.retrieval.queries import parsed_usage_score, serialize_node
 
@@ -21,7 +22,7 @@ ENDORSEMENT_TRUST = {
 
 
 def trust_temporal_diagnostic_for_node(
-    db: Database,
+    db: Database | MemoryStore,
     node_id: str,
     *,
     weighting_profile_id: str | None = None,
@@ -31,11 +32,12 @@ def trust_temporal_diagnostic_for_node(
         object_id = ObjectId(node_id)
     except (InvalidId, TypeError):
         return None
-    node = db.nodes.find_one({"_id": object_id})
+    store = as_memory_store(db)
+    node = store.get_node(object_id)
     if not node:
         return None
     profile_id = weighting_profile_id or node.get("temporal_profile_id")
-    profile = get_trust_weighting_profile(db, profile_id) if profile_id else None
+    profile = get_trust_weighting_profile(store.db, profile_id) if profile_id else None
     diagnostic = trust_temporal_diagnostic(node, profile=profile, now=now)
     return {
         "node": serialize_node(node),
@@ -45,7 +47,7 @@ def trust_temporal_diagnostic_for_node(
 
 
 def trust_temporal_diagnostics_for_nodes(
-    db: Database,
+    db: Database | MemoryStore,
     node_ids: list[str],
     *,
     weighting_profile_id: str | None = None,
@@ -59,9 +61,14 @@ def trust_temporal_diagnostics_for_nodes(
             continue
     if not object_ids_by_text:
         return {}
-    nodes = list(db.nodes.find({"_id": {"$in": list(object_ids_by_text.values())}}))
+    store = as_memory_store(db)
+    nodes = store.find_nodes({"_id": {"$in": list(object_ids_by_text.values())}})
     nodes_by_id = {str(node["_id"]): node for node in nodes}
-    shared_profile = get_trust_weighting_profile(db, weighting_profile_id) if weighting_profile_id else None
+    shared_profile = (
+        get_trust_weighting_profile(store.db, weighting_profile_id)
+        if weighting_profile_id
+        else None
+    )
     profile_cache: dict[str, dict[str, Any] | None] = {}
     diagnostics: dict[str, dict[str, Any]] = {}
     for node_id in object_ids_by_text:
@@ -73,7 +80,7 @@ def trust_temporal_diagnostics_for_nodes(
             profile_id = node.get("temporal_profile_id")
             if profile_id:
                 if profile_id not in profile_cache:
-                    profile_cache[profile_id] = get_trust_weighting_profile(db, profile_id)
+                    profile_cache[profile_id] = get_trust_weighting_profile(store.db, profile_id)
                 profile = profile_cache[profile_id]
         diagnostics[node_id] = {
             "node": serialize_node(node),

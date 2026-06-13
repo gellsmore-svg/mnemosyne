@@ -9,6 +9,8 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo.database import Database
 
+from tirzah.db.memory_store import MemoryStore, as_memory_store
+
 
 SEARCH_STOPWORDS = {
     "what",
@@ -40,27 +42,24 @@ STRUCTURAL_LABELS = {
 }
 
 
-def list_documents(db: Database, limit: int = 20) -> list[dict[str, Any]]:
-    documents = db.documents.find({}).sort("created_at", -1).limit(limit)
-    return [serialize_document(document) for document in documents]
+def list_documents(db: Database | MemoryStore, limit: int = 20) -> list[dict[str, Any]]:
+    store = as_memory_store(db)
+    return [serialize_document(document) for document in store.list_documents(limit=limit)]
 
 
-def get_document(db: Database, document_id: str) -> dict[str, Any] | None:
-    document = db.documents.find_one({"_id": ObjectId(document_id)})
+def get_document(db: Database | MemoryStore, document_id: str) -> dict[str, Any] | None:
+    store = as_memory_store(db)
+    document = store.get_document(ObjectId(document_id))
     if not document:
         return None
     serialized = serialize_document(document)
-    serialized["tree_count"] = db.trees.count_documents(
-        {"document_id": document["_id"], "status": {"$ne": "superseded"}}
-    )
-    serialized["node_count"] = db.nodes.count_documents(
-        {"document_id": document["_id"], "status": {"$ne": "superseded"}}
-    )
+    serialized["tree_count"] = store.active_tree_count(document["_id"])
+    serialized["node_count"] = store.active_node_count(document["_id"])
     return serialized
 
 
 def search_nodes(
-    db: Database,
+    db: Database | MemoryStore,
     query: str | None = None,
     label: str | None = None,
     endorsement_label: str | None = None,
@@ -70,6 +69,7 @@ def search_nodes(
     limit: int = 20,
     identity: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    store = as_memory_store(db)
     filters: dict[str, Any] = active_node_filter()
     if query:
         filters["$or"] = text_query_filters(query)
@@ -90,7 +90,7 @@ def search_nodes(
     candidate_limit = max(limit * 5, 50) if query else limit
     if identity:
         candidate_limit = max(candidate_limit * 2, limit * 10, 50)
-    nodes = list(db.nodes.find(filters).sort("created_at", -1).limit(candidate_limit))
+    nodes = store.find_nodes(filters, sort=("created_at", -1), limit=candidate_limit)
     if identity:
         nodes = filter_nodes_for_identity(nodes, identity)
     if query:
@@ -222,17 +222,20 @@ def usage_score_bonus(value: Any) -> int:
     return min(parsed_usage_score(value), 10)
 
 
-def node_context(db: Database, node_id: str, child_limit: int = 20) -> dict[str, Any] | None:
-    node = db.nodes.find_one({"_id": ObjectId(node_id)})
+def node_context(
+    db: Database | MemoryStore,
+    node_id: str,
+    child_limit: int = 20,
+) -> dict[str, Any] | None:
+    store = as_memory_store(db)
+    node = store.get_node(ObjectId(node_id))
     if not node:
         return None
     parent = None
     if node.get("parent_id"):
-        parent = db.nodes.find_one({"_id": node["parent_id"]})
-    children = list(
-        db.nodes.find({"parent_id": node["_id"]}).sort("order", 1).limit(child_limit)
-    )
-    document = db.documents.find_one({"_id": node["document_id"]})
+        parent = store.get_node(node["parent_id"])
+    children = store.child_nodes(node["_id"], limit=child_limit)
+    document = store.get_document(node["document_id"])
     return {
         "document": serialize_document(document) if document else None,
         "node": serialize_node(node),
@@ -242,15 +245,16 @@ def node_context(db: Database, node_id: str, child_limit: int = 20) -> dict[str,
 
 
 def semantic_candidate_nodes(
-    db: Database,
+    db: Database | MemoryStore,
     node_id: str,
     limit: int = 10,
     include_same_document: bool = False,
 ) -> list[dict[str, Any]]:
+    store = as_memory_store(db)
     node_object_id = parse_object_id(node_id)
     if not node_object_id:
         return []
-    focus = db.nodes.find_one({"_id": node_object_id})
+    focus = store.get_node(node_object_id)
     if not focus:
         return []
     labels = semantic_labels(focus.get("labels") or [])
@@ -265,7 +269,7 @@ def semantic_candidate_nodes(
     candidate_limit = max(limit * 5, 50)
     candidates = [
         candidate
-        for candidate in db.nodes.find(filters).limit(candidate_limit)
+        for candidate in store.find_nodes(filters, limit=candidate_limit)
         if "source_root" not in (candidate.get("labels") or [])
         and not is_superseded_node(candidate)
     ]
@@ -281,7 +285,7 @@ def semantic_candidate_nodes(
 
 
 def embedding_candidate_nodes(
-    db: Database,
+    db: Database | MemoryStore,
     node_id: str,
     limit: int = 10,
     include_same_document: bool = False,
@@ -299,13 +303,14 @@ def embedding_candidate_nodes(
 
 
 def embedding_candidate_report(
-    db: Database,
+    db: Database | MemoryStore,
     node_id: str,
     limit: int = 10,
     include_same_document: bool = False,
     min_similarity: float = 0.75,
     candidate_scan_limit: int | None = None,
 ) -> dict[str, Any]:
+    store = as_memory_store(db)
     try:
         parsed_limit = int(limit)
     except (TypeError, ValueError):
@@ -343,7 +348,7 @@ def embedding_candidate_report(
             "nodes": [],
             "diagnostics": base_diagnostics,
         }
-    focus = db.nodes.find_one({"_id": node_object_id})
+    focus = store.get_node(node_object_id)
     if not focus:
         return {
             "ok": False,
@@ -392,7 +397,7 @@ def embedding_candidate_report(
     focus_text_tokens = candidate_text_tokens(focus_text_key)
     seen_candidate_text_hashes: set[str] = set()
     seen_candidate_text_keys: set[str] = set()
-    for index, candidate in enumerate(db.nodes.find(filters).limit(scan_limit + 1)):
+    for index, candidate in enumerate(store.find_nodes(filters, limit=scan_limit + 1)):
         if index >= scan_limit:
             diagnostics["scan_truncated"] = True
             break
@@ -655,26 +660,25 @@ def semantic_candidate_sort_tuple(
 
 
 def graph_edges_for_node(
-    db: Database,
+    db: Database | MemoryStore,
     node_id: str,
     direction: str = "both",
     relation_type: str | None = None,
     limit: int = 10,
 ) -> list[dict[str, Any]]:
-    if not hasattr(db, "graph_edges"):
-        return []
+    store = as_memory_store(db)
     node_object_id = parse_object_id(node_id)
     if not node_object_id:
         return []
     filters: dict[str, Any] = edge_direction_filter(node_object_id, direction)
     if relation_type:
         filters["relation_type"] = relation_type
-    edges = list(db.graph_edges.find(filters).sort("created_at", -1).limit(limit))
-    return [serialize_graph_edge(db, edge) for edge in edges]
+    edges = store.graph_edges(filters, limit=limit)
+    return [serialize_graph_edge(store, edge) for edge in edges]
 
 
 def expand_proximity(
-    db: Database,
+    db: Database | MemoryStore,
     node_id: str,
     direction: str = "both",
     relation_type: str | None = None,
@@ -715,7 +719,7 @@ def expand_proximity(
 
 
 def expand_graph_paths(
-    db: Database,
+    db: Database | MemoryStore,
     node_id: str,
     direction: str = "both",
     relation_type: str | None = None,
@@ -786,7 +790,7 @@ def expand_graph_paths(
 
 
 def sorted_path_edges(
-    db: Database,
+    db: Database | MemoryStore,
     node_id: str,
     direction: str,
     relation_type: str | None,
@@ -931,9 +935,10 @@ def edge_direction_filter(node_id: ObjectId, direction: str) -> dict[str, Any]:
     return {"$or": [{"source_node_id": node_id}, {"target_node_id": node_id}]}
 
 
-def serialize_graph_edge(db: Database, edge: dict[str, Any]) -> dict[str, Any]:
-    source_node = db.nodes.find_one({"_id": edge.get("source_node_id")})
-    target_node = db.nodes.find_one({"_id": edge.get("target_node_id")})
+def serialize_graph_edge(db: Database | MemoryStore, edge: dict[str, Any]) -> dict[str, Any]:
+    store = as_memory_store(db)
+    source_node = store.get_node(edge.get("source_node_id"))
+    target_node = store.get_node(edge.get("target_node_id"))
     return {
         "edge_id": str(edge["_id"]) if edge.get("_id") else None,
         "schema_version": edge.get("schema_version"),
@@ -963,17 +968,18 @@ def parse_object_id(value: Any) -> ObjectId | None:
 
 
 def compile_context(
-    db: Database,
+    db: Database | MemoryStore,
     node_id: str,
     ancestor_depth: int = 3,
     sibling_window: int = 1,
     child_depth: int = 1,
     child_limit: int = 20,
 ) -> dict[str, Any] | None:
-    node = db.nodes.find_one({"_id": ObjectId(node_id)})
+    store = as_memory_store(db)
+    node = store.get_node(ObjectId(node_id))
     if not node:
         return None
-    document = db.documents.find_one({"_id": node["document_id"]})
+    document = store.get_document(node["document_id"])
     records = [context_record("focus", node, distance=0)]
 
     current = node
@@ -981,19 +987,19 @@ def compile_context(
         parent_id = current.get("parent_id")
         if not parent_id:
             break
-        parent = db.nodes.find_one({"_id": parent_id})
+        parent = store.get_node(parent_id)
         if not parent:
             break
         records.append(context_record("ancestor", parent, distance=distance))
         current = parent
 
     if node.get("parent_id") and sibling_window > 0:
-        siblings = nearby_siblings(db, node, sibling_window)
+        siblings = nearby_siblings(store, node, sibling_window)
         records.extend(context_record("sibling", sibling, distance=1) for sibling in siblings)
 
     records.extend(
         context_record("descendant", child, distance=distance)
-        for child, distance in descendants(db, node, max_depth=child_depth, limit=child_limit)
+        for child, distance in descendants(store, node, max_depth=child_depth, limit=child_limit)
     )
 
     return {
@@ -1246,20 +1252,21 @@ def render_record(record: dict[str, Any]) -> str:
 
 
 def descendants(
-    db: Database,
+    db: Database | MemoryStore,
     node: dict[str, Any],
     max_depth: int,
     limit: int,
 ) -> list[tuple[dict[str, Any], int]]:
     if max_depth <= 0 or limit <= 0:
         return []
+    store = as_memory_store(db)
     results: list[tuple[dict[str, Any], int]] = []
     frontier: list[tuple[dict[str, Any], int]] = [(node, 0)]
     while frontier and len(results) < limit:
         current, depth = frontier.pop(0)
         if depth >= max_depth:
             continue
-        children = list(db.nodes.find({"parent_id": current["_id"]}).sort("order", 1))
+        children = store.child_nodes(current["_id"])
         for child in children:
             if len(results) >= limit:
                 break
@@ -1269,8 +1276,9 @@ def descendants(
     return results
 
 
-def nearby_siblings(db: Database, node: dict[str, Any], window: int) -> list[dict[str, Any]]:
-    siblings = list(db.nodes.find({"parent_id": node["parent_id"]}).sort("order", 1))
+def nearby_siblings(db: Database | MemoryStore, node: dict[str, Any], window: int) -> list[dict[str, Any]]:
+    store = as_memory_store(db)
+    siblings = store.child_nodes(node["parent_id"])
     focus_index = next(
         (index for index, sibling in enumerate(siblings) if sibling["_id"] == node["_id"]),
         None,
