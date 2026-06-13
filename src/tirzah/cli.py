@@ -4,11 +4,12 @@ import argparse
 import json
 from pathlib import Path
 
+import yaml
 from bson import ObjectId
 
 from tirzah.adapters.embedding import embedding_adapter
 from tirzah.adapters.mock import MockIngestionAdapter
-from tirzah.config import load_config
+from tirzah.config import AppConfig, load_config
 from tirzah.db.client import get_database
 from tirzah.db.governance import (
     PROCESS_RUN_STATUSES,
@@ -87,6 +88,13 @@ from tirzah.sessions.registry import create_session, list_sessions
 
 
 STRUCTURAL_NODE_LABELS = {"source_root", "source_section", "source_chunk"}
+
+INIT_RUNTIME_CHOICES = {
+    "1": "mock",
+    "2": "ollama_cli",
+    "3": "ollama_http",
+    "4": "local_command",
+}
 
 
 def discover_folder_sources(root: Path) -> list[Path]:
@@ -588,11 +596,120 @@ def add_enqueue_profile_batch_arguments(command: argparse.ArgumentParser) -> Non
     command.add_argument("--format", choices=["json", "text"], default="json")
 
 
+def init_config_payload(
+    *,
+    docker: bool = False,
+    runtime_choice: str = "mock",
+    database: str = "tirzah",
+) -> dict:
+    config = AppConfig()
+    config.mongo.database = database
+    if docker:
+        config.mongo.uri = "mongodb://mongo:27017"
+    if runtime_choice == "mock":
+        config.runtime.answer_adapter = "mock"
+        config.runtime.memory_agent_adapter = "mock"
+        config.runtime.embedding_adapter = "mock"
+    elif runtime_choice == "ollama_cli":
+        config.runtime.answer_adapter = "ollama_cli"
+        config.runtime.memory_agent_adapter = None
+        config.runtime.embedding_adapter = "mock"
+    elif runtime_choice == "ollama_http":
+        config.runtime.answer_adapter = "ollama_http"
+        config.runtime.memory_agent_adapter = "ollama_cli"
+        config.runtime.embedding_adapter = "mock"
+        config.runtime.ollama_base_url = "http://host.docker.internal:11434" if docker else "http://localhost:11434"
+    elif runtime_choice == "local_command":
+        config.runtime.answer_adapter = "mock"
+        config.runtime.memory_agent_adapter = "mock"
+        config.runtime.embedding_adapter = "local_command"
+        config.runtime.embedding_model = "BAAI/bge-small-en-v1.5"
+        config.runtime.embedding_dimensions = 384
+        config.runtime.profile_command = [
+            "tirzah-profile-helper",
+            "--worker",
+        ]
+        config.runtime.profile_command_mode = "worker"
+    else:
+        raise ValueError(f"Unknown runtime choice: {runtime_choice}")
+    return json.loads(config.model_dump_json())
+
+
+def interactive_runtime_choice(default: str = "mock") -> str:
+    print("Choose Tirzah runtime defaults:")
+    print("  1. mock - deterministic local diagnostics")
+    print("  2. ollama_cli - call a local Ollama executable")
+    print("  3. ollama_http - call an existing Ollama HTTP server")
+    print("  4. local_command - mock answers plus local profile helper")
+    answer = input(f"Runtime [1-4, default {runtime_choice_label(default)}]: ").strip()
+    if not answer:
+        return default
+    return INIT_RUNTIME_CHOICES.get(answer, default)
+
+
+def runtime_choice_label(choice: str) -> str:
+    for key, value in INIT_RUNTIME_CHOICES.items():
+        if value == choice:
+            return key
+    return "1"
+
+
+def write_initial_config(
+    config_path: Path,
+    *,
+    docker: bool = False,
+    force: bool = False,
+    non_interactive: bool = False,
+    runtime_choice: str | None = None,
+) -> dict:
+    if config_path.exists() and not force:
+        return {
+            "ok": False,
+            "reason": "config_exists",
+            "path": str(config_path),
+            "message": "Config already exists. Re-run with --force to replace it.",
+        }
+    selected_runtime = runtime_choice or ("mock" if non_interactive else interactive_runtime_choice())
+    payload = init_config_payload(docker=docker, runtime_choice=selected_runtime)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    data_paths = [Path(value) for value in payload["paths"].values()]
+    for path in data_paths:
+        path.mkdir(parents=True, exist_ok=True)
+    return {
+        "ok": True,
+        "path": str(config_path),
+        "docker": docker,
+        "runtime": selected_runtime,
+        "data_paths": [str(path) for path in data_paths],
+    }
+
+
+def serve_app(host: str, port: int, reload: bool = False) -> None:
+    import uvicorn
+
+    uvicorn.run("tirzah.web.app:app", host=host, port=port, reload=reload)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="tirzah")
     parser.add_argument("--config", default="config.yaml")
 
     subcommands = parser.add_subparsers(dest="command", required=True)
+    init = subcommands.add_parser("init")
+    init.add_argument("--docker", action="store_true")
+    init.add_argument("--force", action="store_true")
+    init.add_argument("--non-interactive", action="store_true")
+    init.add_argument(
+        "--runtime",
+        choices=["mock", "ollama_cli", "ollama_http", "local_command"],
+        default=None,
+        help="Runtime defaults to write. Interactive mode prompts when omitted.",
+    )
+    serve = subcommands.add_parser("serve")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument("--reload", action="store_true")
     subcommands.add_parser("db-ping")
     subcommands.add_parser("backfill-source-metadata")
     subcommands.add_parser("backfill-schema-metadata")
@@ -941,6 +1058,22 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    if args.command == "init":
+        result = write_initial_config(
+            Path(args.config),
+            docker=args.docker,
+            force=args.force,
+            non_interactive=args.non_interactive,
+            runtime_choice=args.runtime,
+        )
+        print(json.dumps(result, indent=2))
+        return
+
+    if args.command == "serve":
+        serve_app(host=args.host, port=args.port, reload=args.reload)
+        return
+
     config = load_config(args.config)
     db = get_database(config.mongo)
 
@@ -1955,3 +2088,7 @@ def main() -> None:
         return
 
     raise SystemExit(f"Unknown command: {args.command}")
+
+
+if __name__ == "__main__":
+    main()

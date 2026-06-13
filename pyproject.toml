@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tirzah"
-version = "0.1.0"
+version = "1.1.0"
 description = "Local graph-based memory and retrieval layer for LLM interactions."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -49,6 +49,7 @@ profiles = [
 [project.scripts]
 tirzah = "tirzah.cli:main"
 mnemosyne = "tirzah.cli:main"
+tirzah-profile-helper = "tirzah.profile_helper:main_cli"
 
 [project.urls]
 Homepage = "https://github.com/gellsmore-svg/tirzah"
@@ -57,6 +58,9 @@ Issues = "https://github.com/gellsmore-svg/tirzah/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"tirzah.web" = ["static/*.html", "static/*.js", "static/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

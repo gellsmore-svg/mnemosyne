@@ -8,6 +8,18 @@ Repository description:
 
 Suggested GitHub topics: `llm`, `memory`, `retrieval`, `knowledge-graph`, `mongodb`, `ollama`, `local-first`, `fastapi`, `python`.
 
+## Install
+
+The easiest supported path is Docker Compose on WSL/Linux:
+
+```bash
+docker compose build
+docker compose run --rm app tirzah init --docker
+docker compose up
+```
+
+Open `http://127.0.0.1:8765/`. See `docs/install.md` for Docker, Python developer installs, and runtime configuration choices.
+
 ## Source Documents
 
 - `LLM_Memory_Architecture_Requirements_v0.3.md`

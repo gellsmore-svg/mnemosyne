@@ -1,0 +1,15 @@
+.git
+.venv
+__pycache__
+.pytest_cache
+*.pyc
+*.egg-info
+build
+dist
+config.yaml
+data/archive/*
+data/dead_letter/*
+data/ingest/*
+data/online_sources/*
+data/staging/*
+tools/__pycache__

@@ -1,0 +1,26 @@
+services:
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "27017:27017"
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    ports:
+      - "8765:8765"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+      - tirzah-data:/app/data
+    command: ["tirzah", "serve", "--host", "0.0.0.0", "--port", "8765"]
+
+volumes:
+  mongo-data:
+  tirzah-data:

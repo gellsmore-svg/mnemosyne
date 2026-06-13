@@ -11,8 +11,11 @@ from tirzah.cli import (
     document_ids_for_label,
     destructive_rebuild_refusal,
     existing_document_extra_labels,
+    init_config_payload,
     main,
     rebuild_document_from_existing_source,
+    serve_app,
+    write_initial_config,
 )
 
 
@@ -117,6 +120,87 @@ def test_cli_process_output_ingestion_passes_target_filters(monkeypatch, capsys)
 
     output = json.loads(capsys.readouterr().out)
     assert output == {"ok": True, "session_id": "session1", "job_id": "job1"}
+
+
+def test_init_config_payload_uses_docker_mongo_and_mock_defaults() -> None:
+    payload = init_config_payload(docker=True, runtime_choice="mock")
+
+    assert payload["mongo"]["uri"] == "mongodb://mongo:27017"
+    assert payload["mongo"]["database"] == "tirzah"
+    assert payload["runtime"]["answer_adapter"] == "mock"
+    assert payload["runtime"]["memory_agent_adapter"] == "mock"
+    assert payload["runtime"]["embedding_adapter"] == "mock"
+
+
+def test_init_config_payload_local_command_uses_packaged_helper() -> None:
+    payload = init_config_payload(docker=False, runtime_choice="local_command")
+
+    assert payload["runtime"]["embedding_adapter"] == "local_command"
+    assert payload["runtime"]["profile_command"] == ["tirzah-profile-helper", "--worker"]
+    assert payload["runtime"]["profile_command_mode"] == "worker"
+
+
+def test_write_initial_config_creates_config_and_data_dirs(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / "config.yaml"
+
+    result = write_initial_config(config_path, docker=True, non_interactive=True)
+
+    assert result["ok"] is True
+    assert config_path.exists()
+    assert (tmp_path / "data" / "ingest").is_dir()
+    assert (tmp_path / "data" / "archive").is_dir()
+    assert "mongodb://mongo:27017" in config_path.read_text(encoding="utf-8")
+
+
+def test_write_initial_config_refuses_existing_config(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("existing: true\n", encoding="utf-8")
+
+    result = write_initial_config(config_path, non_interactive=True)
+
+    assert result["ok"] is False
+    assert result["reason"] == "config_exists"
+    assert config_path.read_text(encoding="utf-8") == "existing: true\n"
+
+
+def test_cli_init_does_not_connect_to_mongo(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["tirzah", "init", "--docker", "--non-interactive"],
+    )
+
+    def fail_get_database(_config):
+        raise AssertionError("init should not connect to Mongo")
+
+    monkeypatch.setattr("tirzah.cli.get_database", fail_get_database)
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["ok"] is True
+    assert (tmp_path / "config.yaml").exists()
+
+
+def test_serve_app_uses_uvicorn_target(monkeypatch) -> None:
+    called = {}
+
+    def fake_run(app, **kwargs):
+        called["app"] = app
+        called.update(kwargs)
+
+    monkeypatch.setattr("uvicorn.run", fake_run)
+
+    serve_app("0.0.0.0", 8765, reload=True)
+
+    assert called == {
+        "app": "tirzah.web.app:app",
+        "host": "0.0.0.0",
+        "port": 8765,
+        "reload": True,
+    }
 
 
 def test_document_ids_for_label_returns_sorted_strings() -> None:
