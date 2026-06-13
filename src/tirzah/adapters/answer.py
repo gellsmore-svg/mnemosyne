@@ -4,10 +4,10 @@ import json
 import os
 import re
 import subprocess
-from importlib import import_module
 from typing import Any
 from urllib import request
 
+from tirzah.adapters.hoglah_runtime import HoglahJobRunner
 from tirzah.config import RuntimeConfig
 
 
@@ -133,54 +133,52 @@ class OllamaHttpAnswerAdapter:
 
 
 class HoglahAnswerAdapter:
+    """Route answer generation through a Hoglah queue daemon (decoupled topology).
+
+    Tirzah submits a generate job into the shared queue and awaits the terminal
+    result by output-folder poll or HTTP callback; a SEPARATE `hoglah run --real`
+    daemon executes it. The Hoglah runner is built lazily so merely selecting
+    this adapter (e.g. in the factory) does not require the optional hoglah
+    package or open a callback port until an answer is actually requested.
+    """
+
     name = "hoglah"
 
     def __init__(self, config: RuntimeConfig) -> None:
         self.config = config
+        self._runner: HoglahJobRunner | None = None
+
+    def _get_runner(self) -> HoglahJobRunner:
+        if self._runner is None:
+            self._runner = HoglahJobRunner(self.config)
+        return self._runner
 
     def answer(self, prompt: dict[str, Any]) -> dict[str, Any]:
-        Hoglah = import_hoglah_client()
-        client_config = {
-            "db_path": self.config.hoglah_db_path,
-            "ollama_host": self.config.hoglah_ollama_host,
-        }
-        wait_timeout = (
-            self.config.hoglah_wait_timeout_seconds
-            if self.config.hoglah_wait_timeout_seconds is not None
-            else self.config.ollama_timeout_seconds
+        result = self._get_runner().run_generate(
+            prompt["prompt_text"],
+            model=self.config.ollama_model,
+            fmt=self.config.ollama_format,
+            tags=["tirzah"],
+            metadata={"source": "tirzah"},
         )
-        with Hoglah(config=client_config, use_real=self.config.hoglah_use_real) as client:
-            job_id = client.submit(
-                prompt=prompt["prompt_text"],
-                model=self.config.ollama_model,
-                format=self.config.ollama_format,
-                tags=["tirzah"],
-                metadata={"source": "tirzah"},
-            )
-            result = client.wait(job_id, timeout=wait_timeout)
-        status = getattr(result.status, "value", result.status)
+        status = result.get("status")
+        job_id = result.get("job_id")
         if status != "completed":
-            detail = result.error or f"Hoglah job {result.job_id} ended with status {status}."
-            raise RuntimeError(detail)
-        if not result.output:
-            raise RuntimeError(f"Hoglah job {result.job_id} completed without output.")
-        payload = answer_payload(self.name, self.config.ollama_model, prompt, result.output)
-        payload["hoglah_job_id"] = result.job_id
-        if result.truncated:
+            raise RuntimeError(result.get("error") or f"Hoglah job {job_id} ended with status {status}.")
+        output = result.get("output")
+        if not output:
+            raise RuntimeError(f"Hoglah job {job_id} completed without output.")
+        payload = answer_payload(self.name, self.config.ollama_model, prompt, output)
+        payload["hoglah_job_id"] = job_id
+        if result.get("truncated"):
             payload["truncated"] = True
-            payload["truncation_reason"] = result.truncation_reason
+            payload["truncation_reason"] = result.get("truncation_reason")
         return payload
 
-
-def import_hoglah_client():
-    try:
-        return import_module("hoglah").Hoglah
-    except ImportError as error:
-        raise RuntimeError(
-            "Hoglah answer adapter requires the optional Hoglah package. "
-            'Install with `pip install "tirzah[hoglah]"` or set '
-            "`runtime.answer_adapter` to another adapter."
-        ) from error
+    def close(self) -> None:
+        if self._runner is not None:
+            self._runner.close()
+            self._runner = None
 
 
 def answer_adapter(config: RuntimeConfig):

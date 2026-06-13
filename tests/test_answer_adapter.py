@@ -253,80 +253,64 @@ def test_ollama_http_adapter_sends_format_and_think(monkeypatch) -> None:
     assert answer["answer"] == "answer"
 
 
-def test_hoglah_answer_adapter_submits_prompt_and_waits(monkeypatch, tmp_path) -> None:
-    captured = {}
 
-    class FakeStatus:
-        value = "completed"
+hoglah = pytest.importorskip("hoglah")
 
-    class FakeResult:
-        job_id = "job-1"
-        status = FakeStatus()
-        output = "hoglah answer"
-        error = None
-        truncated = False
-        truncation_reason = None
 
-    class FakeHoglah:
-        def __init__(self, **kwargs):
-            captured["init"] = kwargs
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-        def submit(self, **kwargs):
-            captured["submit"] = kwargs
-            return "job-1"
-
-        def wait(self, job_id, timeout):
-            captured["wait"] = {"job_id": job_id, "timeout": timeout}
-            return FakeResult()
-
-    import tirzah.adapters.answer as answer_module
-
-    monkeypatch.setattr(answer_module, "import_hoglah_client", lambda: FakeHoglah)
-
-    answer = HoglahAnswerAdapter(
-        RuntimeConfig(
-            ollama_model="gemma3:1b",
-            hoglah_db_path=tmp_path / "hoglah.sqlite3",
-            hoglah_ollama_host="http://ollama.local:11434",
-            hoglah_wait_timeout_seconds=12,
-        )
-    ).answer(
-        {
-            "prompt_text": "prompt body",
-            "context_metadata": {"included": [{"node_id": "node1"}]},
-        }
+def _hoglah_answer_config(tmp_path, delivery="poll"):
+    return RuntimeConfig(
+        answer_adapter="hoglah",
+        ollama_model="stub-model:1b",
+        hoglah_db_path=tmp_path / "hoglah.sqlite3",
+        hoglah_output_dir=tmp_path / "outbox",
+        hoglah_delivery=delivery,
+        hoglah_callback_host="127.0.0.1",
+        hoglah_callback_port=0,
+        hoglah_wait_timeout_seconds=5,
     )
 
-    assert captured["init"] == {
-        "config": {
-            "db_path": tmp_path / "hoglah.sqlite3",
-            "ollama_host": "http://ollama.local:11434",
+
+def _stub_worker(tmp_path):
+    return hoglah.Hoglah(
+        config={
+            "db_path": str(tmp_path / "hoglah.sqlite3"),
+            "output_dir": str(tmp_path / "outbox"),
         },
-        "use_real": True,
-    }
-    assert captured["submit"]["prompt"] == "prompt body"
-    assert captured["submit"]["model"] == "gemma3:1b"
-    assert captured["submit"]["tags"] == ["tirzah"]
-    assert captured["wait"] == {"job_id": "job-1", "timeout": 12}
-    assert answer["adapter"] == "hoglah"
-    assert answer["answer"] == "hoglah answer"
-    assert answer["used_node_ids"] == ["node1"]
-    assert answer["hoglah_job_id"] == "job-1"
+        start_worker=True,
+    )
+
+
+@pytest.mark.parametrize("delivery", ["poll", "callback"])
+def test_hoglah_answer_adapter_via_stub_worker(tmp_path, delivery) -> None:
+    """Decoupled topology: submit to the shared queue, a separate worker (here a
+    Hoglah StubAdapter worker) executes it, and the result returns by poll or
+    callback. Proves submit -> daemon -> deliver without Ollama."""
+    worker = _stub_worker(tmp_path)
+    adapter = HoglahAnswerAdapter(_hoglah_answer_config(tmp_path, delivery))
+    try:
+        result = adapter.answer(
+            {
+                "prompt_text": "prompt body",
+                "context_metadata": {"included": [{"node_id": "node1"}]},
+            }
+        )
+    finally:
+        adapter.close()
+        worker.close()
+
+    assert result["adapter"] == "hoglah"
+    assert "[STUB]" in result["answer"]
+    assert result["used_node_ids"] == ["node1"]
+    assert result["hoglah_job_id"]
 
 
 def test_hoglah_answer_adapter_reports_missing_optional_dependency(monkeypatch) -> None:
-    import tirzah.adapters.answer as answer_module
+    import tirzah.adapters.hoglah_runtime as runtime_module
 
     def fake_import_module(_name):
         raise ImportError("missing")
 
-    monkeypatch.setattr(answer_module, "import_module", fake_import_module)
+    monkeypatch.setattr(runtime_module, "import_module", fake_import_module)
 
     with pytest.raises(RuntimeError, match="tirzah\\[hoglah\\]"):
         answer_adapter(RuntimeConfig(answer_adapter="hoglah")).answer(

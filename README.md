@@ -20,6 +20,24 @@ docker compose up
 
 Open `http://127.0.0.1:8765/`. See `docs/install.md` for Docker, Python developer installs, and runtime configuration choices.
 
+## Routing via Hoglah (queue daemon)
+
+Optionally route **answers and embeddings** through [Hoglah](https://github.com/gellsmore-svg/hoglah), a local-first job queue, so every model call is serialized through one durable queue and survives restarts:
+
+```bash
+pip install "tirzah[hoglah]"
+```
+
+Set `runtime.answer_adapter` and/or `runtime.embedding_adapter` to `hoglah`, then run a **separate** worker daemon pointed at the same queue + output folder:
+
+```bash
+HOGLAH_OUTPUT_DIR=data/hoglah/outbox \
+  hoglah run --real --db data/hoglah/jobs.sqlite3 \
+  --ollama-host http://<host>:11434 -c 1
+```
+
+Tirzah becomes a pure submitter (no in-process worker): it enqueues each call and gets the result by polling the output folder (`hoglah_delivery: poll`) or via an HTTP callback to a tiny receiver it runs (`hoglah_delivery: callback`, with poll as fallback). The `hoglah` embedding adapter is permitted for memory operations without `allow_http_ingestion_adapters` — Tirzah does only local IPC; the daemon makes the Ollama HTTP call.
+
 ## Source Documents
 
 - `LLM_Memory_Architecture_Requirements_v0.3.md`

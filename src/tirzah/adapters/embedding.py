@@ -318,9 +318,67 @@ class LocalCommandEmbeddingAdapter:
         self.close()
 
 
+class HoglahEmbeddingAdapter:
+    """Route embeddings through a Hoglah queue daemon (decoupled topology).
+
+    Operator-sanctioned HTTP-backed path: from Tirzah's process this is local
+    IPC (submit to a local SQLite queue, await a local result file / localhost
+    callback); the separate `hoglah run --real` daemon performs the Ollama HTTP
+    call. Returns the same shape as the sibling embedding adapters, L2-normalized
+    for ranking parity.
+    """
+
+    name = "hoglah"
+
+    def __init__(self, config: Any) -> None:
+        self.config = config
+        self.model = getattr(config, "embedding_model", None) or DEFAULT_OLLAMA_EMBEDDING_MODEL
+        self.dimensions: int | None = None
+        self._runner: Any | None = None
+
+    def _get_runner(self):
+        if self._runner is None:
+            from tirzah.adapters.hoglah_runtime import HoglahJobRunner
+
+            self._runner = HoglahJobRunner(self.config)
+        return self._runner
+
+    def embed(self, text: str) -> dict[str, Any]:
+        normalized = text or ""
+        result = self._get_runner().run_embedding(normalized, model=self.model)
+        status = result.get("status")
+        job_id = result.get("job_id")
+        if status != "completed":
+            raise RuntimeError(
+                result.get("error") or f"Hoglah embedding job {job_id} ended with status {status}."
+            )
+        vector = l2_normalize(parse_embedding_vector(result.get("embedding")))
+        if not vector:
+            raise RuntimeError(f"Hoglah embedding job {job_id} returned no usable vector.")
+        self.dimensions = len(vector)
+        return {
+            "adapter": self.name,
+            "model": result.get("model") or self.model,
+            "dimensions": len(vector),
+            "vector": vector,
+            "source_text_hash": source_text_hash(normalized),
+        }
+
+    def close(self) -> None:
+        if self._runner is not None:
+            self._runner.close()
+            self._runner = None
+
+
 def embedding_adapter(
     config: Any | None = None,
-) -> MockEmbeddingAdapter | OllamaHttpEmbeddingAdapter | OllamaPowerShellEmbeddingAdapter | LocalCommandEmbeddingAdapter:
+) -> (
+    MockEmbeddingAdapter
+    | OllamaHttpEmbeddingAdapter
+    | OllamaPowerShellEmbeddingAdapter
+    | LocalCommandEmbeddingAdapter
+    | HoglahEmbeddingAdapter
+):
     if config is None:
         return default_embedding_adapter()
     name = getattr(config, "embedding_adapter", "mock")
@@ -349,6 +407,11 @@ def embedding_adapter(
         return OllamaHttpEmbeddingAdapter(config)
     if name == "ollama_powershell":
         return OllamaPowerShellEmbeddingAdapter(config)
+    if name == "hoglah":
+        # Permitted for memory ops (operator-sanctioned): Tirzah only does local
+        # IPC; the Hoglah daemon performs the Ollama HTTP call. Hence "hoglah" is
+        # intentionally NOT in HTTP_BACKED_EMBEDDING_ADAPTERS.
+        return HoglahEmbeddingAdapter(config)
     raise ValueError(f"Unknown embedding adapter: {name}")
 
 

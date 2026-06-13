@@ -35,11 +35,25 @@ runtime:
   ollama_base_url: http://localhost:11434
   ollama_executable: /mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe
   ollama_timeout_seconds: 180
-  # Optional Hoglah answer queue integration. Install with `pip install "tirzah[hoglah]"`.
+  # Optional Hoglah queue integration for answers AND embeddings. Install with
+  # `pip install "tirzah[hoglah]"` and set answer_adapter / embedding_adapter to
+  # "hoglah". Decoupled topology: Tirzah is a pure submitter into the shared
+  # queue; run a SEPARATE worker daemon (pointed at the same db_path/output_dir),
+  # e.g.:
+  #   HOGLAH_OUTPUT_DIR=data/hoglah/outbox \
+  #     hoglah run --real --db data/hoglah/jobs.sqlite3 \
+  #     --ollama-host http://<host>:11434 -c 1
+  # The "hoglah" embedding adapter is permitted for memory ops without
+  # allow_http_ingestion_adapters (Tirzah does only local IPC; the daemon makes
+  # the Ollama HTTP call).
   hoglah_db_path: data/hoglah/jobs.sqlite3
   hoglah_ollama_host: http://localhost:11434
-  hoglah_use_real: true
+  hoglah_use_real: true          # back-compat; unused by the submitter (daemon owns real exec)
   hoglah_wait_timeout_seconds:
+  hoglah_output_dir: data/hoglah/outbox
+  hoglah_delivery: poll          # "poll" the output folder, or "callback"
+  hoglah_callback_host: 127.0.0.1
+  hoglah_callback_port: 0         # 0 = OS-assigned ephemeral port
 
 queue:
   max_attempts: 3

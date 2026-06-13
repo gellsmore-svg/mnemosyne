@@ -492,3 +492,46 @@ def test_local_command_profile_vector_accepts_vector_shape() -> None:
 
 def test_ollama_embedding_vector_rejects_malformed_values() -> None:
     assert ollama_embedding_vector({"embeddings": [["not-a-number"]]}) == []
+
+
+def test_hoglah_embedding_adapter_via_stub_worker(tmp_path) -> None:
+    """The hoglah embedding adapter submits an embedding job to the shared queue,
+    a separate worker (Hoglah StubAdapter) executes it, and the L2-normalized
+    vector returns in Tirzah's standard shape. Permitted for memory ops without
+    allow_http_ingestion_adapters (local IPC from Tirzah's side)."""
+    import pytest
+
+    hoglah = pytest.importorskip("hoglah")
+    from tirzah.adapters.embedding import HoglahEmbeddingAdapter
+    from tirzah.config import RuntimeConfig
+
+    worker = hoglah.Hoglah(
+        config={
+            "db_path": str(tmp_path / "hoglah.sqlite3"),
+            "output_dir": str(tmp_path / "outbox"),
+        },
+        start_worker=True,
+    )
+    config = RuntimeConfig(
+        embedding_adapter="hoglah",
+        embedding_model="stub-embed",
+        hoglah_db_path=tmp_path / "hoglah.sqlite3",
+        hoglah_output_dir=tmp_path / "outbox",
+        hoglah_delivery="callback",
+        hoglah_callback_port=0,
+        hoglah_wait_timeout_seconds=5,
+    )
+    # The factory must permit "hoglah" without allow_http_ingestion_adapters.
+    adapter = embedding_adapter(config)
+    assert isinstance(adapter, HoglahEmbeddingAdapter)
+    try:
+        result = adapter.embed("relational meaning")
+    finally:
+        adapter.close()
+        worker.close()
+
+    assert result["adapter"] == "hoglah"
+    assert result["dimensions"] == len(result["vector"]) > 0
+    assert result["source_text_hash"].startswith("sha256:")
+    # L2-normalized (unit norm), matching sibling adapters.
+    assert abs(math.sqrt(sum(v * v for v in result["vector"])) - 1.0) < 1e-3

@@ -42,8 +42,21 @@ class RuntimeConfig(BaseModel):
     ollama_timeout_seconds: int = 180
     hoglah_db_path: Path = Path("data/hoglah/jobs.sqlite3")
     hoglah_ollama_host: str = "http://localhost:11434"
+    # Decoupled topology: Tirzah is a pure submitter into the shared queue and a
+    # SEPARATE `hoglah run --real` daemon executes jobs. hoglah_use_real is kept
+    # for back-compat but is no longer used by the submitter (the daemon owns
+    # real execution and its --ollama-host).
     hoglah_use_real: bool = True
     hoglah_wait_timeout_seconds: int | None = None
+    # Where the daemon writes terminal results (must match the daemon's
+    # HOGLAH_OUTPUT_DIR); Tirzah polls here.
+    hoglah_output_dir: Path = Path("data/hoglah/outbox")
+    # Result delivery: "poll" the output folder, or "callback" (Tirzah runs a
+    # tiny HTTP receiver and hands Hoglah its own URL per job; falls back to the
+    # output folder if a push is missed).
+    hoglah_delivery: str = "poll"
+    hoglah_callback_host: str = "127.0.0.1"
+    hoglah_callback_port: int = 0
 
 
 class QueueConfig(BaseModel):
