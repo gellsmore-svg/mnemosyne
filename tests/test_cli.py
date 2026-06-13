@@ -13,7 +13,9 @@ from tirzah.cli import (
     existing_document_extra_labels,
     init_config_payload,
     main,
+    memory_health_payload,
     rebuild_document_from_existing_source,
+    render_memory_health_text,
     serve_app,
     write_initial_config,
 )
@@ -192,6 +194,114 @@ def test_cli_init_does_not_connect_to_mongo(tmp_path: Path, monkeypatch, capsys)
     output = json.loads(capsys.readouterr().out)
     assert output["ok"] is True
     assert (tmp_path / "config.yaml").exists()
+
+
+def test_memory_health_payload_counts_corpus_and_attention() -> None:
+    db = SimpleNamespace(
+        documents=HealthCollection([{"title": "Doc"}]),
+        trees=HealthCollection([{"label": "active"}]),
+        nodes=HealthCollection(
+            [
+                {
+                    "labels": ["source_chunk"],
+                    "embedding": {"vector": [1.0]},
+                    "endorsement_label": "explicit_endorsed",
+                },
+                {
+                    "labels": ["source_chunk"],
+                    "endorsement_label": "unreviewed",
+                },
+                {
+                    "labels": ["generated_output"],
+                    "embedding": {"vector": [0.5]},
+                    "endorsement_label": "unreviewed",
+                },
+            ]
+        ),
+        graph_edges=HealthCollection([{"relation_type": "related_to"}]),
+        semantic_edge_candidates=HealthCollection(
+            [{"status": "pending"}, {"status": "accepted"}]
+        ),
+        queue=HealthCollection([{"status": "failed"}, {"status": "pending"}]),
+        embedding_backfill_jobs=HealthCollection([{"status": "pending"}]),
+        output_ingestion_queue=HealthCollection(
+            [{"status": "failed"}, {"status": "completed"}, {"status": "pending"}]
+        ),
+    )
+
+    report = memory_health_payload(db)
+
+    assert report["totals"]["documents"] == 1
+    assert report["totals"]["nodes"] == 3
+    assert report["totals"]["source_chunks"] == 2
+    assert report["totals"]["generated_outputs"] == 1
+    assert report["profile_coverage"] == {
+        "profiled_source_chunks": 1,
+        "eligible_source_chunks": 2,
+        "percent": 50.0,
+    }
+    assert report["endorsements"] == {"explicit_endorsed": 1, "unreviewed": 2}
+    assert report["queues"]["semantic_edge_candidates"]["pending"] == 1
+    assert [item["kind"] for item in report["attention"]] == [
+        "profile_coverage",
+        "pending_profile_backfill",
+        "pending_semantic_review",
+        "pending_output_ingestion",
+        "failed_jobs",
+    ]
+
+
+def test_render_memory_health_text_summarizes_attention() -> None:
+    report = {
+        "totals": {
+            "documents": 1,
+            "nodes": 3,
+            "source_chunks": 2,
+            "graph_edges": 1,
+            "semantic_edge_candidates": 2,
+        },
+        "profile_coverage": {
+            "profiled_source_chunks": 1,
+            "eligible_source_chunks": 2,
+            "percent": 50.0,
+        },
+        "endorsements": {"unreviewed": 2},
+        "queues": {
+            "ingestion": {"failed": 1},
+            "profile_backfill": {"pending": 1},
+            "output_ingestion": {},
+            "semantic_edge_candidates": {"pending": 1},
+        },
+        "attention": [{"message": "Run a backfill."}],
+    }
+
+    text = render_memory_health_text(report)
+
+    assert "Memory health" in text
+    assert "Corpus: 1 document(s), 3 node(s), 2 source chunk(s)" in text
+    assert "Profiles: 1 / 2 source chunk(s) (50.0%)" in text
+    assert "- Run a backfill." in text
+
+
+def test_cli_memory_health_json_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["tirzah", "memory-health", "--format", "json"])
+    monkeypatch.setattr(
+        "tirzah.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "tirzah.cli.memory_health_payload",
+        lambda _db: {"ok": True, "totals": {"documents": 1}},
+    )
+
+    main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "totals": {"documents": 1},
+    }
 
 
 def test_serve_app_uses_uvicorn_target(monkeypatch) -> None:
@@ -1949,6 +2059,11 @@ class FakeCollection:
             if value not in values:
                 values.append(value)
         return values
+
+
+class HealthCollection:
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
 
 
 class FakeDb:

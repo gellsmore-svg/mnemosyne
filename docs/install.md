@@ -98,6 +98,7 @@ After install:
 
 ```bash
 tirzah db-ping
+tirzah memory-health
 tirzah ingest-one tests/fixtures/v1-smoke-source-template.md --label install_smoke
 tirzah list-docs --format text --limit 5
 ```
