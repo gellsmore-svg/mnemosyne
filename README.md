@@ -33,6 +33,7 @@ Open `http://127.0.0.1:8765/`. See `docs/install.md` for Docker, Python develope
 - `docs/architecture-decisions.md`
 - `docs/build-roadmap.md`
 - `docs/open-questions.md`
+- `docs/improvements-and-enhancements.md`
 - `docs/repo-plan.md`
 - `docs/agentic-retrieval-process.md`
 - `docs/requirements-design-addendum.md`

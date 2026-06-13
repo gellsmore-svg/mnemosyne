@@ -50,3 +50,7 @@ These are questions that affect implementation direction. Answered items are kep
 15. What should be the first evaluation corpus?
 16. What is the brute-force baseline model/context window for comparison?
 17. What metrics matter most for the first evaluation: token bloat ratio, answer quality, recall coverage, or continuity preservation?
+
+## Post-V1 Enhancements
+
+For a curated list of improvements that would strengthen the implemented V1 features (ingestion adapters, hybrid retrieval, actionable trust/temporal signals, memory-agent planner robustness, last-iteration continuity records, per-node diagnostics, context envelopes for agents, etc.), see `docs/improvements-and-enhancements.md`. New items should generally be added there rather than here unless they represent fundamental open questions of direction.

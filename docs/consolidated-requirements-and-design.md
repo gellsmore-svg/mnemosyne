@@ -293,6 +293,8 @@ Direct retrieval should be conservative. It should search repository memory only
 
 It currently supports:
 
+See `docs/improvements-and-enhancements.md` (Retrieval Precision & Context Construction and related sections) for concrete proposals to strengthen the current direct retrieval implementation.
+
 - exact focus-node use;
 - active-document scoping for references such as `this document`;
 - lexical and near-match search;
@@ -644,3 +646,4 @@ Current answer flow:
 - `docs/tirzah-cognitive-architecture-draft.md`: forward-looking governed cognitive architecture concept.
 - `docs/practical-applications.md`: possible application lanes and FOSS integration criteria.
 - `docs/development-plan.md`: active ingestion-first implementation sequence covering ingestion epochs, non-destructive rebuilds, chronology, ingestion logs, UI test-bench work, semantic substrate, LLM-assisted ingestion, and ranking/trust integration.
+- `docs/improvements-and-enhancements.md`: living post-V1 list of enhancements to strengthen current features (hybrid search, trust effects in ranking, agentic planner robustness, continuity records, context envelopes, per-node diagnostics, etc.).

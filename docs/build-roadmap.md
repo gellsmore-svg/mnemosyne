@@ -58,7 +58,9 @@ V1 is complete when all of these are true:
 
 ### Post-V1 / Explicitly Out Of Scope
 
-These remain important, but they must not block V1 or be implied complete by V1:
+These remain important, but they must not block V1 or be implied complete by V1.
+
+For detailed, actionable proposals to strengthen existing V1 features (ingestion quality, retrieval/context, semantic graph, agentic interaction, continuity, governance, transparency, UI/ops, integration, and evaluation), see `docs/improvements-and-enhancements.md`. Many items in that list directly address the gaps enumerated below.
 
 - Gemma-driven or LLM-driven ingestion chunking;
 - transactional MongoDB multi-collection ingestion commits;
