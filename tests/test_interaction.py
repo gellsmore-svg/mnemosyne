@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from bson import ObjectId
 
 from tirzah.config import AppConfig, RuntimeConfig
@@ -102,6 +104,120 @@ class FakeNodeDb:
         self.nodes = FakeNodeCollection(nodes)
 
 
+class EndToEndFakeInsertResult:
+    def __init__(self, inserted_id):
+        self.inserted_id = inserted_id
+
+
+class EndToEndFakeUpdateResult:
+    def __init__(self, modified_count):
+        self.modified_count = modified_count
+
+
+class EndToEndFakeCursor(list):
+    def sort(self, field, direction=None):
+        if isinstance(field, list):
+            sort_fields = field
+        else:
+            sort_fields = [(field, direction)]
+        rows = list(self)
+        for sort_field, sort_direction in reversed(sort_fields):
+            rows.sort(
+                key=lambda row: row.get(sort_field) or datetime.min.replace(tzinfo=timezone.utc),
+                reverse=sort_direction < 0,
+            )
+        return EndToEndFakeCursor(rows)
+
+    def limit(self, limit):
+        return EndToEndFakeCursor(self[:limit])
+
+
+class EndToEndFakeCollection:
+    def __init__(self, rows=None):
+        self.rows = list(rows or [])
+
+    def insert_one(self, row):
+        inserted = dict(row)
+        inserted["_id"] = inserted.get("_id") or ObjectId()
+        self.rows.append(inserted)
+        return EndToEndFakeInsertResult(inserted["_id"])
+
+    def find(self, query=None, projection=None):
+        rows = [row for row in self.rows if end_to_end_matches(row, query or {})]
+        return EndToEndFakeCursor([end_to_end_project(row, projection) for row in rows])
+
+    def find_one(self, query=None, projection=None, sort=None):
+        rows = self.find(query or {}, projection)
+        if sort:
+            rows = rows.sort(sort)
+        return rows[0] if rows else None
+
+    def distinct(self, key):
+        values = []
+        for row in self.rows:
+            value = row.get(key)
+            if isinstance(value, list):
+                values.extend(value)
+            elif value is not None:
+                values.append(value)
+        return values
+
+    def update_one(self, filter_query, update, upsert=False):
+        row = next((item for item in self.rows if end_to_end_matches(item, filter_query)), None)
+        if row is None:
+            if not upsert:
+                return EndToEndFakeUpdateResult(0)
+            row = dict(filter_query)
+            row.update(update.get("$setOnInsert", {}))
+            self.rows.append(row)
+        end_to_end_apply_update(row, update)
+        return EndToEndFakeUpdateResult(1)
+
+    def update_many(self, filter_query, update):
+        modified_count = 0
+        for row in self.rows:
+            if not end_to_end_matches(row, filter_query):
+                continue
+            end_to_end_apply_update(row, update)
+            modified_count += 1
+        return EndToEndFakeUpdateResult(modified_count)
+
+
+class EndToEndAnswerDb:
+    def __init__(self, *, document_id, node_id):
+        self.sessions = EndToEndFakeCollection()
+        self.exchanges = EndToEndFakeCollection()
+        self.output_ingestion_queue = EndToEndFakeCollection()
+        self.active_documents = EndToEndFakeCollection()
+        self.project_domains = EndToEndFakeCollection()
+        self.conversation_domains = EndToEndFakeCollection()
+        self.process_runs = EndToEndFakeCollection()
+        self.documents = EndToEndFakeCollection(
+            [
+                {
+                    "_id": document_id,
+                    "title": "Active Document",
+                    "source": {"path": "active.md"},
+                }
+            ]
+        )
+        self.nodes = EndToEndFakeCollection(
+            [
+                {
+                    "_id": node_id,
+                    "document_id": document_id,
+                    "tree_id": ObjectId(),
+                    "title": "Active Evidence",
+                    "text": "Active document evidence.",
+                    "labels": ["source_chunk", "active_test"],
+                    "endorsement_label": "unreviewed",
+                    "usage_score": 0,
+                    "created_at": datetime.now(timezone.utc),
+                }
+            ]
+        )
+
+
 def mongo_matches(row, query):
     for key, expected in query.items():
         actual = row.get(key)
@@ -111,6 +227,68 @@ def mongo_matches(row, query):
         elif actual != expected:
             return False
     return True
+
+
+def end_to_end_matches(row, query):
+    for key, expected in query.items():
+        actual = end_to_end_nested_get(row, key)
+        if isinstance(expected, dict):
+            if "$in" in expected and actual not in expected["$in"]:
+                return False
+            if "$ne" in expected and actual == expected["$ne"]:
+                return False
+            continue
+        if isinstance(actual, list):
+            if expected not in actual:
+                return False
+        elif actual != expected:
+            return False
+    return True
+
+
+def end_to_end_nested_get(row, dotted_key):
+    value = row
+    for part in dotted_key.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
+def end_to_end_project(row, projection):
+    if not projection:
+        return dict(row)
+    projected = {
+        key: end_to_end_nested_get(row, key)
+        for key in projection
+        if end_to_end_nested_get(row, key) is not None
+    }
+    if "_id" in row and projection.get("_id", 1):
+        projected["_id"] = row["_id"]
+    return projected
+
+
+def end_to_end_apply_update(row, update):
+    row.update(update.get("$setOnInsert", {}))
+    for field, value in update.get("$set", {}).items():
+        end_to_end_set_nested(row, field, value)
+    for field, value in update.get("$inc", {}).items():
+        row[field] = row.get(field, 0) + value
+    for field, value in update.get("$addToSet", {}).items():
+        row.setdefault(field, [])
+        for item in value.get("$each", []):
+            if item not in row[field]:
+                row[field].append(item)
+    for field, value in update.get("$push", {}).items():
+        row.setdefault(field, []).append(value)
+
+
+def end_to_end_set_nested(row, dotted_key, value):
+    target = row
+    parts = dotted_key.split(".")
+    for part in parts[:-1]:
+        target = target.setdefault(part, {})
+    target[parts[-1]] = value
 
 
 def test_select_focus_node_returns_none_without_matches(monkeypatch) -> None:
@@ -954,6 +1132,52 @@ def test_answer_query_uses_active_document_reference_before_corpus(monkeypatch) 
 
     assert result["focus_node_id"] == "active-node"
     assert result["process_trace"][1]["input"]["selected_node_source"] == "active_document"
+
+
+def test_answer_query_records_active_document_for_followup_reference(monkeypatch) -> None:
+    import tirzah.sessions.interaction as interaction
+
+    document_id = ObjectId()
+    node_id = ObjectId()
+    db = EndToEndAnswerDb(document_id=document_id, node_id=node_id)
+    prompts = []
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            prompts.append(prompt)
+            return {
+                "adapter": "fake",
+                "answer": "active answer",
+                "used_node_ids": [],
+            }
+
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+
+    first = answer_query(
+        db,
+        AppConfig(runtime=RuntimeConfig(answer_adapter="fake")),
+        "What does the active evidence say?",
+        focus_node_id=str(node_id),
+        session_id="v1-smoke",
+    )
+    followup = answer_query(
+        db,
+        AppConfig(runtime=RuntimeConfig(answer_adapter="fake")),
+        "What does this document say?",
+        session_id="v1-smoke",
+    )
+
+    assert first["ok"] is True
+    assert followup["ok"] is True
+    assert first["focus_node_id"] == str(node_id)
+    assert followup["focus_node_id"] == str(node_id)
+    assert followup["process_trace"][1]["input"]["selected_node_source"] == "active_document"
+    assert "Active document evidence." in prompts[1]["context_text"]
+    assert db.active_documents.rows[0]["session_id"] == "v1-smoke"
+    assert db.active_documents.rows[0]["document_id"] == str(document_id)
+    assert db.active_documents.rows[0]["node_ids"] == [str(node_id)]
+    assert db.exchanges.rows[0]["active_document_ids"] == [str(document_id)]
+    assert db.exchanges.rows[1]["active_document_ids"] == [str(document_id)]
 
 
 def test_parse_tool_calls_extracts_json() -> None:
