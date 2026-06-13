@@ -8,6 +8,8 @@ Product/design entry point: `docs/consolidated-requirements-and-design.md` is th
 
 V1 should be the first dependable local Tirzah release, not the full cognitive-memory design.
 
+Release readiness is tracked in `docs/v1-readiness-checklist.md`.
+
 The product promise for V1 is:
 
 > A local operator can ingest trusted text/Markdown sources, preserve provenance, search and retrieve memory, ask questions through a transparent prompt pipeline, review generated outputs and semantic links, and continue work through saved sessions without reading MongoDB records or raw JSON for normal operation.
@@ -234,7 +236,7 @@ Known gaps after reconciliation:
 
 - current ingestion chunking is deterministic scaffold, not Gemma-driven chunking;
 - graph edge writes, single-hop edge lookup, one-hop proximity expansion, bounded multi-hop path expansion, structural parent/child edge backfill, read-only semantic-candidate diagnostics, a pending semantic-edge candidate queue, candidate accept/reject review, and reviewed semantic-edge promotion are first scaffolds; automated relation extraction, richer path scoring, and semantic-map traversal are not implemented;
-- destructive rebuild commands are maintenance-only and require `--force-replace`; versioned replacement remains unimplemented;
+- maintenance rebuild commands now use ingestion epochs to insert a new active tree/node set and mark earlier rows as `superseded`; richer version comparison, rollback tooling, and garbage collection remain unimplemented;
 - the memory-agent loop is iterative but still limited to read-only scaffold tools;
 - the compiled context corpus has only a first structured scaffold and does not yet match the full technical design schema;
 - active document registry is only a first skeleton populated from used nodes, visible to the memory-agent, and used for direct source fallback after no-focus retrieval misses; it does not yet drive broad retrieval, endorsement, or restart state.

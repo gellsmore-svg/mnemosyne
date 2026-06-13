@@ -30,11 +30,13 @@ Suggested GitHub topics: `llm`, `memory`, `retrieval`, `knowledge-graph`, `mongo
 
 The domain is in early scaffold mode. The imported requirements and design documents have been reviewed into a compact repo of project information. MongoDB 8.0.23 is installed locally in WSL and verified running. The first CLI commands are available:
 
+V1 is scoped as the local memory workbench release in `docs/build-roadmap.md`. Release readiness is tracked in `docs/v1-readiness-checklist.md`.
+
 ```bash
 .venv/bin/tirzah db-ping
 .venv/bin/tirzah ingest-one LLM_Memory_Architecture_Requirements_v0.3.md
-.venv/bin/tirzah ingest-one data/ingest/source.txt --label external_corpus --label memory_reference
-.venv/bin/tirzah ingest-folder /home/cello/domains/AMS --label ams_domain --label imported_domain --label research_corpus
+.venv/bin/tirzah ingest-one docs/project-brief.md --label tirzah_domain
+.venv/bin/tirzah ingest-folder docs --label tirzah_domain --label project_docs
 .venv/bin/tirzah backfill-source-metadata
 .venv/bin/tirzah enqueue-inbox
 .venv/bin/tirzah process-next
@@ -49,11 +51,14 @@ The domain is in early scaffold mode. The imported requirements and design docum
 .venv/bin/tirzah show-tree <document_id>
 .venv/bin/tirzah list-docs --limit 5
 .venv/bin/tirzah show-doc <document_id>
-.venv/bin/tirzah rebuild-document <document_id> --force-replace
-.venv/bin/tirzah rebuild-by-label --label ams_domain --force-replace
+.venv/bin/tirzah rebuild-document <document_id>
+.venv/bin/tirzah rebuild-by-label --label tirzah_domain
 .venv/bin/tirzah search-nodes --query hierarchy --label source_chunk
 .venv/bin/tirzah search-nodes --document-id <document_id> --created-after 2026-05-17T14:50:00
 .venv/bin/tirzah node-context <node_id>
+.venv/bin/tirzah graph-edges <node_id>
+.venv/bin/tirzah expand-proximity <node_id> --format text
+.venv/bin/tirzah expand-graph-paths <node_id>
 .venv/bin/tirzah compile-context <node_id> --ancestor-depth 2 --sibling-window 1 --child-depth 1
 .venv/bin/tirzah render-context <node_id> --char-budget 4000
 .venv/bin/tirzah render-context <node_id> --char-budget 900 --json
@@ -67,6 +72,12 @@ The domain is in early scaffold mode. The imported requirements and design docum
 .venv/bin/tirzah chat --node-id <node_id> --adapter ollama_cli
 .venv/bin/tirzah chat --node-id <node_id> --adapter ollama_cli --model gemma3:1b
 .venv/bin/tirzah history --limit 5
+.venv/bin/tirzah profile-backfill-jobs --limit 5
+.venv/bin/tirzah queue-profile-backfill --label tirzah_domain --limit 100
+.venv/bin/tirzah process-profile-backfill --max-batches 1
+.venv/bin/tirzah semantic-edge-candidates --format text
+.venv/bin/tirzah review-semantic-edge-candidate <candidate_id> --action accept
+.venv/bin/tirzah process-runs --limit 5
 ```
 
 The preferred CLI is now `tirzah`. The old `mnemosyne` command remains as a compatibility entry point during the rename transition.
@@ -95,9 +106,9 @@ New node records also carry scaffold fields for `summary`, `relations`, `proximi
 
 The deterministic mock adapter now creates hierarchical trees: `source_root`, `source_section`, and `source_chunk`.
 
-Existing documents can be destructively replaced from their archived source with `rebuild-document <document_id> --force-replace`. This is a maintenance escape hatch for prototype repair work, not requirement-compliant versioned ingestion. Without `--force-replace`, the command refuses to run.
+Existing documents can be rebuilt from their archived source with `rebuild-document <document_id>`. The rebuild writes a new ingestion epoch and marks earlier trees/nodes as `superseded` rather than deleting them. The old `--force-replace` flag is still accepted as a deprecated compatibility option.
 
-Groups of existing documents can be destructively replaced by node label with `rebuild-by-label --label <label> --force-replace`. Rebuilds preserve non-structural labels such as `ams_domain`, `external_corpus`, and `memory_reference`, but still delete and recreate trees/nodes. The requirement-backed replacement path still needs versioned trees and supersession edges.
+Groups of existing documents can be rebuilt by node label with `rebuild-by-label --label <label>`. Rebuilds preserve non-structural labels such as `ams_domain`, `external_corpus`, and `memory_reference`. Richer version comparison, rollback tooling, and garbage collection remain future work.
 
 The first retrieval commands are available for listing documents, inspecting document metadata, showing tree nodes, and searching nodes by text, label, and endorsement label.
 
