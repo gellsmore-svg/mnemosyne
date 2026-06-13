@@ -1,3 +1,4 @@
+import importlib.util
 import subprocess
 
 import pytest
@@ -252,9 +253,10 @@ def test_ollama_http_adapter_sends_format_and_think(monkeypatch) -> None:
     assert captured["timeout"] == RuntimeConfig().ollama_timeout_seconds
     assert answer["answer"] == "answer"
 
-
-
-hoglah = pytest.importorskip("hoglah")
+requires_hoglah = pytest.mark.skipif(
+    importlib.util.find_spec("hoglah") is None,
+    reason="hoglah optional dependency is not installed",
+)
 
 
 def _hoglah_answer_config(tmp_path, delivery="poll"):
@@ -271,6 +273,8 @@ def _hoglah_answer_config(tmp_path, delivery="poll"):
 
 
 def _stub_worker(tmp_path):
+    import hoglah
+
     return hoglah.Hoglah(
         config={
             "db_path": str(tmp_path / "hoglah.sqlite3"),
@@ -280,6 +284,7 @@ def _stub_worker(tmp_path):
     )
 
 
+@requires_hoglah
 @pytest.mark.parametrize("delivery", ["poll", "callback"])
 def test_hoglah_answer_adapter_via_stub_worker(tmp_path, delivery) -> None:
     """Decoupled topology: submit to the shared queue, a separate worker (here a
