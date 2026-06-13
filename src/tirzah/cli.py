@@ -697,7 +697,9 @@ def main() -> None:
     output_jobs.add_argument("--session-id", default=None)
     output_jobs.add_argument("--status", default=None)
     output_jobs.add_argument("--limit", type=int, default=20)
-    subcommands.add_parser("process-output-ingestion")
+    process_output_jobs = subcommands.add_parser("process-output-ingestion")
+    process_output_jobs.add_argument("--session-id", default=None)
+    process_output_jobs.add_argument("--job-id", default=None)
 
     review_outputs = subcommands.add_parser("review-generated-output")
     review_outputs.add_argument("--endorsement", default=None, choices=sorted(ENDORSEMENT_LABELS))
@@ -1311,7 +1313,16 @@ def main() -> None:
 
     if args.command == "process-output-ingestion":
         ensure_indexes(db)
-        print(json.dumps(process_next_output_ingestion(db), indent=2))
+        print(
+            json.dumps(
+                process_next_output_ingestion(
+                    db,
+                    session_id=args.session_id,
+                    job_id=args.job_id,
+                ),
+                indent=2,
+            )
+        )
         return
 
     if args.command == "review-generated-output":

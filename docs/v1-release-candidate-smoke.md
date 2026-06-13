@@ -103,7 +103,7 @@ If the dry run identifies a useful candidate, queue and review it:
 
 ```bash
 .venv/bin/tirzah output-ingestion --session-id "${SMOKE_SESSION}" --limit 10
-.venv/bin/tirzah process-output-ingestion
+.venv/bin/tirzah process-output-ingestion --session-id "${SMOKE_SESSION}"
 .venv/bin/tirzah review-generated-output --limit 10
 .venv/bin/tirzah endorse-node "<generated_output_node_id>" --endorsement explicit_endorsed --reviewer v1-smoke --note "V1 smoke endorsement"
 ```

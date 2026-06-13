@@ -272,8 +272,84 @@ def test_process_next_output_ingestion_commits_graph_records() -> None:
     assert db.active_documents.rows[0]["session_id"] == "session1"
 
 
+def test_process_next_output_ingestion_can_target_session() -> None:
+    db = FakeDb()
+    older_exchange_id = ObjectId()
+    target_exchange_id = ObjectId()
+    db.exchanges.rows.append({"_id": older_exchange_id})
+    db.exchanges.rows.append({"_id": target_exchange_id})
+    queue_exchange_output(
+        db,
+        exchange_id=str(older_exchange_id),
+        session_id="older",
+        query="Older query?",
+        answer={"answer": "Older answer.", "adapter": "mock", "model": "test"},
+        used_node_ids=[],
+        active_document_ids=[],
+    )
+    queue_exchange_output(
+        db,
+        exchange_id=str(target_exchange_id),
+        session_id="target",
+        query="Target query?",
+        answer={"answer": "Target answer.", "adapter": "mock", "model": "test"},
+        used_node_ids=[],
+        active_document_ids=[],
+    )
+
+    result = process_next_output_ingestion(db, session_id="target")
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert db.output_ingestion_queue.rows[0]["status"] == "pending"
+    assert db.output_ingestion_queue.rows[1]["status"] == "completed"
+    assert db.active_documents.rows[0]["session_id"] == "target"
+
+
+def test_process_next_output_ingestion_can_target_job_id() -> None:
+    db = FakeDb()
+    older_exchange_id = ObjectId()
+    target_exchange_id = ObjectId()
+    db.exchanges.rows.append({"_id": older_exchange_id})
+    db.exchanges.rows.append({"_id": target_exchange_id})
+    queue_exchange_output(
+        db,
+        exchange_id=str(older_exchange_id),
+        session_id="older",
+        query="Older query?",
+        answer={"answer": "Older answer.", "adapter": "mock", "model": "test"},
+        used_node_ids=[],
+        active_document_ids=[],
+    )
+    target_job_id = queue_exchange_output(
+        db,
+        exchange_id=str(target_exchange_id),
+        session_id="target",
+        query="Target query?",
+        answer={"answer": "Target answer.", "adapter": "mock", "model": "test"},
+        used_node_ids=[],
+        active_document_ids=[],
+    )
+
+    result = process_next_output_ingestion(db, job_id=target_job_id)
+
+    assert result["ok"] is True
+    assert result["status"] == "completed"
+    assert result["job_id"] == target_job_id
+    assert db.output_ingestion_queue.rows[0]["status"] == "pending"
+    assert db.output_ingestion_queue.rows[1]["status"] == "completed"
+
+
 def test_process_next_output_ingestion_returns_idle_without_pending_jobs() -> None:
     assert process_next_output_ingestion(FakeDb()) == {"ok": True, "status": "idle"}
+
+
+def test_process_next_output_ingestion_idle_includes_target_filter() -> None:
+    assert process_next_output_ingestion(FakeDb(), session_id="missing") == {
+        "ok": True,
+        "status": "idle",
+        "session_id": "missing",
+    }
 
 
 class FakeInsertResult:

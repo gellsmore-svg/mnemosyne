@@ -88,6 +88,37 @@ def test_existing_document_extra_labels_excludes_structural_labels() -> None:
     ]
 
 
+def test_cli_process_output_ingestion_passes_target_filters(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tirzah",
+            "process-output-ingestion",
+            "--session-id",
+            "session1",
+            "--job-id",
+            "job1",
+        ],
+    )
+    monkeypatch.setattr(
+        "tirzah.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
+
+    def fake_process(_db, **kwargs):
+        return {"ok": True, **kwargs}
+
+    monkeypatch.setattr("tirzah.cli.process_next_output_ingestion", fake_process)
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {"ok": True, "session_id": "session1", "job_id": "job1"}
+
+
 def test_document_ids_for_label_returns_sorted_strings() -> None:
     first = ObjectId()
     second = ObjectId()

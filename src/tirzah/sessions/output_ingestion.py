@@ -4,6 +4,7 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
+from bson import ObjectId
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 from pymongo.database import Database
@@ -107,12 +108,21 @@ def list_output_ingestion_jobs(
     return [serialize_output_ingestion_job(row) for row in rows]
 
 
-def claim_next_output_job(db: Database) -> dict[str, Any] | None:
+def claim_next_output_job(
+    db: Database,
+    session_id: str | None = None,
+    job_id: str | None = None,
+) -> dict[str, Any] | None:
     if not hasattr(db, "output_ingestion_queue"):
         return None
     now = utc_now()
+    query: dict[str, Any] = {"status": "pending"}
+    if job_id:
+        query["_id"] = ObjectId(job_id)
+    elif session_id:
+        query["session_id"] = session_id
     return db.output_ingestion_queue.find_one_and_update(
-        {"status": "pending"},
+        query,
         {
             "$set": {"status": "processing", "updated_at": now},
             "$inc": {"attempts": 1},
@@ -122,10 +132,19 @@ def claim_next_output_job(db: Database) -> dict[str, Any] | None:
     )
 
 
-def process_next_output_ingestion(db: Database) -> dict[str, Any]:
-    job = claim_next_output_job(db)
+def process_next_output_ingestion(
+    db: Database,
+    session_id: str | None = None,
+    job_id: str | None = None,
+) -> dict[str, Any]:
+    job = claim_next_output_job(db, session_id=session_id, job_id=job_id)
     if not job:
-        return {"ok": True, "status": "idle"}
+        result = {"ok": True, "status": "idle"}
+        if session_id:
+            result["session_id"] = session_id
+        if job_id:
+            result["job_id"] = job_id
+        return result
 
     try:
         result = commit_output_job(db, job)
