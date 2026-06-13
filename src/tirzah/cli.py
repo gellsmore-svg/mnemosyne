@@ -94,6 +94,7 @@ INIT_RUNTIME_CHOICES = {
     "2": "ollama_cli",
     "3": "ollama_http",
     "4": "local_command",
+    "5": "hoglah",
 }
 
 
@@ -619,6 +620,11 @@ def init_config_payload(
         config.runtime.memory_agent_adapter = "ollama_cli"
         config.runtime.embedding_adapter = "mock"
         config.runtime.ollama_base_url = "http://host.docker.internal:11434" if docker else "http://localhost:11434"
+    elif runtime_choice == "hoglah":
+        config.runtime.answer_adapter = "hoglah"
+        config.runtime.memory_agent_adapter = None
+        config.runtime.embedding_adapter = "mock"
+        config.runtime.hoglah_ollama_host = "http://host.docker.internal:11434" if docker else "http://localhost:11434"
     elif runtime_choice == "local_command":
         config.runtime.answer_adapter = "mock"
         config.runtime.memory_agent_adapter = "mock"
@@ -641,7 +647,8 @@ def interactive_runtime_choice(default: str = "mock") -> str:
     print("  2. ollama_cli - call a local Ollama executable")
     print("  3. ollama_http - call an existing Ollama HTTP server")
     print("  4. local_command - mock answers plus local profile helper")
-    answer = input(f"Runtime [1-4, default {runtime_choice_label(default)}]: ").strip()
+    print("  5. hoglah - queue answers through the optional Hoglah package")
+    answer = input(f"Runtime [1-5, default {runtime_choice_label(default)}]: ").strip()
     if not answer:
         return default
     return INIT_RUNTIME_CHOICES.get(answer, default)
@@ -702,7 +709,7 @@ def main() -> None:
     init.add_argument("--non-interactive", action="store_true")
     init.add_argument(
         "--runtime",
-        choices=["mock", "ollama_cli", "ollama_http", "local_command"],
+        choices=["mock", "ollama_cli", "ollama_http", "local_command", "hoglah"],
         default=None,
         help="Runtime defaults to write. Interactive mode prompts when omitted.",
     )

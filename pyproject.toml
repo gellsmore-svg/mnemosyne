@@ -45,6 +45,9 @@ dev = [
 profiles = [
   "fastembed>=0.7",
 ]
+hoglah = [
+  "hoglah>=0.2.2",
+]
 
 [project.scripts]
 tirzah = "tirzah.cli:main"

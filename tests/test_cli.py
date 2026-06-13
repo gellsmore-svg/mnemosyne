@@ -140,6 +140,16 @@ def test_init_config_payload_local_command_uses_packaged_helper() -> None:
     assert payload["runtime"]["profile_command_mode"] == "worker"
 
 
+def test_init_config_payload_hoglah_uses_optional_answer_queue() -> None:
+    payload = init_config_payload(docker=True, runtime_choice="hoglah")
+
+    assert payload["runtime"]["answer_adapter"] == "hoglah"
+    assert payload["runtime"]["memory_agent_adapter"] is None
+    assert payload["runtime"]["embedding_adapter"] == "mock"
+    assert payload["runtime"]["hoglah_ollama_host"] == "http://host.docker.internal:11434"
+    assert payload["runtime"]["hoglah_db_path"] == "data/hoglah/jobs.sqlite3"
+
+
 def test_write_initial_config_creates_config_and_data_dirs(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     config_path = tmp_path / "config.yaml"

@@ -40,6 +40,10 @@ class RuntimeConfig(BaseModel):
     ollama_base_url: str = "http://localhost:11434"
     ollama_executable: Path = Path("/mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe")
     ollama_timeout_seconds: int = 180
+    hoglah_db_path: Path = Path("data/hoglah/jobs.sqlite3")
+    hoglah_ollama_host: str = "http://localhost:11434"
+    hoglah_use_real: bool = True
+    hoglah_wait_timeout_seconds: int | None = None
 
 
 class QueueConfig(BaseModel):

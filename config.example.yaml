@@ -35,6 +35,11 @@ runtime:
   ollama_base_url: http://localhost:11434
   ollama_executable: /mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe
   ollama_timeout_seconds: 180
+  # Optional Hoglah answer queue integration. Install with `pip install "tirzah[hoglah]"`.
+  hoglah_db_path: data/hoglah/jobs.sqlite3
+  hoglah_ollama_host: http://localhost:11434
+  hoglah_use_real: true
+  hoglah_wait_timeout_seconds:
 
 queue:
   max_attempts: 3

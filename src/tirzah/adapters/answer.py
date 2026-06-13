@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+from importlib import import_module
 from typing import Any
 from urllib import request
 
@@ -131,6 +132,57 @@ class OllamaHttpAnswerAdapter:
         return answer_payload(self.name, self.config.ollama_model, prompt, data.get("response", ""))
 
 
+class HoglahAnswerAdapter:
+    name = "hoglah"
+
+    def __init__(self, config: RuntimeConfig) -> None:
+        self.config = config
+
+    def answer(self, prompt: dict[str, Any]) -> dict[str, Any]:
+        Hoglah = import_hoglah_client()
+        client_config = {
+            "db_path": self.config.hoglah_db_path,
+            "ollama_host": self.config.hoglah_ollama_host,
+        }
+        wait_timeout = (
+            self.config.hoglah_wait_timeout_seconds
+            if self.config.hoglah_wait_timeout_seconds is not None
+            else self.config.ollama_timeout_seconds
+        )
+        with Hoglah(config=client_config, use_real=self.config.hoglah_use_real) as client:
+            job_id = client.submit(
+                prompt=prompt["prompt_text"],
+                model=self.config.ollama_model,
+                format=self.config.ollama_format,
+                tags=["tirzah"],
+                metadata={"source": "tirzah"},
+            )
+            result = client.wait(job_id, timeout=wait_timeout)
+        status = getattr(result.status, "value", result.status)
+        if status != "completed":
+            detail = result.error or f"Hoglah job {result.job_id} ended with status {status}."
+            raise RuntimeError(detail)
+        if not result.output:
+            raise RuntimeError(f"Hoglah job {result.job_id} completed without output.")
+        payload = answer_payload(self.name, self.config.ollama_model, prompt, result.output)
+        payload["hoglah_job_id"] = result.job_id
+        if result.truncated:
+            payload["truncated"] = True
+            payload["truncation_reason"] = result.truncation_reason
+        return payload
+
+
+def import_hoglah_client():
+    try:
+        return import_module("hoglah").Hoglah
+    except ImportError as error:
+        raise RuntimeError(
+            "Hoglah answer adapter requires the optional Hoglah package. "
+            'Install with `pip install "tirzah[hoglah]"` or set '
+            "`runtime.answer_adapter` to another adapter."
+        ) from error
+
+
 def answer_adapter(config: RuntimeConfig):
     if config.answer_adapter == "mock":
         return MockAnswerAdapter()
@@ -138,6 +190,8 @@ def answer_adapter(config: RuntimeConfig):
         return OllamaCliAnswerAdapter(config)
     if config.answer_adapter == "ollama_http":
         return OllamaHttpAnswerAdapter(config)
+    if config.answer_adapter == "hoglah":
+        return HoglahAnswerAdapter(config)
     raise ValueError(f"Unknown answer adapter: {config.answer_adapter}")
 
 
@@ -207,7 +261,7 @@ def answer_payload(adapter: str, model: str, prompt: dict[str, Any], answer_text
         "model": model,
         "answer": answer_text.strip(),
         "used_node_ids": [record["node_id"] for record in included],
-        "confidence": "model" if adapter.startswith("ollama") else "mock",
+        "confidence": "model" if adapter.startswith("ollama") or adapter == "hoglah" else "mock",
     }
 
 

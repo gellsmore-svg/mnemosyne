@@ -51,6 +51,9 @@ profiles:
   `http://host.docker.internal:11434`.
 - `local_command`: mock answers plus the packaged `tirzah-profile-helper`
   command for local text-similarity profiles.
+- `hoglah`: queue answer generation through the optional Hoglah package. This
+  keeps Tirzah's retrieval layer unchanged while letting Hoglah manage local
+  Ollama job execution.
 
 You can skip prompts with:
 
@@ -58,6 +61,18 @@ You can skip prompts with:
 tirzah init --non-interactive --runtime mock
 tirzah init --non-interactive --runtime ollama_http
 ```
+
+For Hoglah-backed answers, install the optional extra and initialize that
+runtime profile:
+
+```bash
+pip install "tirzah[hoglah]"
+tirzah init --non-interactive --runtime hoglah
+```
+
+In Docker mode, `tirzah init --docker --runtime hoglah` writes
+`runtime.hoglah_ollama_host: http://host.docker.internal:11434` so Hoglah can
+reach an Ollama daemon running on the host.
 
 ## Python Developer Install
 

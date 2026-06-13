@@ -3,9 +3,11 @@ import subprocess
 import pytest
 
 from tirzah.adapters.answer import (
+    HoglahAnswerAdapter,
     MockAnswerAdapter,
     OllamaCliAnswerAdapter,
     OllamaHttpAnswerAdapter,
+    answer_adapter,
     clean_ollama_output,
     repair_duplicate_wrap_fragments,
     summarize_context_text,
@@ -249,3 +251,87 @@ def test_ollama_http_adapter_sends_format_and_think(monkeypatch) -> None:
     assert b'"think": false' in captured["body"]
     assert captured["timeout"] == RuntimeConfig().ollama_timeout_seconds
     assert answer["answer"] == "answer"
+
+
+def test_hoglah_answer_adapter_submits_prompt_and_waits(monkeypatch, tmp_path) -> None:
+    captured = {}
+
+    class FakeStatus:
+        value = "completed"
+
+    class FakeResult:
+        job_id = "job-1"
+        status = FakeStatus()
+        output = "hoglah answer"
+        error = None
+        truncated = False
+        truncation_reason = None
+
+    class FakeHoglah:
+        def __init__(self, **kwargs):
+            captured["init"] = kwargs
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def submit(self, **kwargs):
+            captured["submit"] = kwargs
+            return "job-1"
+
+        def wait(self, job_id, timeout):
+            captured["wait"] = {"job_id": job_id, "timeout": timeout}
+            return FakeResult()
+
+    import tirzah.adapters.answer as answer_module
+
+    monkeypatch.setattr(answer_module, "import_hoglah_client", lambda: FakeHoglah)
+
+    answer = HoglahAnswerAdapter(
+        RuntimeConfig(
+            ollama_model="gemma3:1b",
+            hoglah_db_path=tmp_path / "hoglah.sqlite3",
+            hoglah_ollama_host="http://ollama.local:11434",
+            hoglah_wait_timeout_seconds=12,
+        )
+    ).answer(
+        {
+            "prompt_text": "prompt body",
+            "context_metadata": {"included": [{"node_id": "node1"}]},
+        }
+    )
+
+    assert captured["init"] == {
+        "config": {
+            "db_path": tmp_path / "hoglah.sqlite3",
+            "ollama_host": "http://ollama.local:11434",
+        },
+        "use_real": True,
+    }
+    assert captured["submit"]["prompt"] == "prompt body"
+    assert captured["submit"]["model"] == "gemma3:1b"
+    assert captured["submit"]["tags"] == ["tirzah"]
+    assert captured["wait"] == {"job_id": "job-1", "timeout": 12}
+    assert answer["adapter"] == "hoglah"
+    assert answer["answer"] == "hoglah answer"
+    assert answer["used_node_ids"] == ["node1"]
+    assert answer["hoglah_job_id"] == "job-1"
+
+
+def test_hoglah_answer_adapter_reports_missing_optional_dependency(monkeypatch) -> None:
+    import tirzah.adapters.answer as answer_module
+
+    def fake_import_module(_name):
+        raise ImportError("missing")
+
+    monkeypatch.setattr(answer_module, "import_module", fake_import_module)
+
+    with pytest.raises(RuntimeError, match="tirzah\\[hoglah\\]"):
+        answer_adapter(RuntimeConfig(answer_adapter="hoglah")).answer(
+            {
+                "prompt_text": "prompt body",
+                "context_metadata": {"included": []},
+            }
+        )
