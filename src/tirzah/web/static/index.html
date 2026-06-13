@@ -179,6 +179,32 @@
         </section>
 
         <section>
+          <h2>Active Documents</h2>
+          <div class="filter-grid">
+            <input id="activeDocumentSession" placeholder="Session ID" />
+            <input id="activeDocumentLimit" type="number" min="1" max="100" value="6" />
+            <button id="loadActiveDocuments">Load</button>
+          </div>
+          <div id="activeDocuments" class="list"></div>
+        </section>
+
+        <section>
+          <h2>Graph Inspection</h2>
+          <div class="filter-grid">
+            <input id="graphNodeId" placeholder="Node ID" />
+            <select id="graphDirection">
+              <option value="both">both</option>
+              <option value="outgoing">outgoing</option>
+              <option value="incoming">incoming</option>
+            </select>
+            <input id="graphRelationType" placeholder="Relation type" />
+            <input id="graphLimit" type="number" min="1" max="50" value="6" />
+            <button id="loadGraph">Load</button>
+          </div>
+          <div id="graphInspection" class="list"></div>
+        </section>
+
+        <section>
           <h2>Recent Documents</h2>
           <div id="documents" class="list"></div>
         </section>
@@ -199,6 +225,25 @@
             <button id="loadHistory">Load</button>
           </div>
           <div id="history" class="list"></div>
+        </section>
+
+        <section>
+          <h2>Process Runs</h2>
+          <div class="filter-grid">
+            <input id="processRunSession" placeholder="Session filter" />
+            <select id="processRunStatus">
+              <option value="">any status</option>
+              <option value="pending">pending</option>
+              <option value="active">active</option>
+              <option value="completed">completed</option>
+              <option value="blocked">blocked</option>
+              <option value="exception_requested">exception requested</option>
+              <option value="abandoned">abandoned</option>
+            </select>
+            <input id="processRunLimit" type="number" min="1" max="100" value="6" />
+            <button id="loadProcessRuns">Load</button>
+          </div>
+          <div id="processRuns" class="list"></div>
         </section>
 
       </aside>

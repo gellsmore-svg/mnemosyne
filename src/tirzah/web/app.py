@@ -53,7 +53,14 @@ from tirzah.ingestion.embedding_backfill import (
 from tirzah.ingestion.files import move_request_file, sha256_file
 from tirzah.ingestion.parser import SUPPORTED_SUFFIXES, read_text_source
 from tirzah.ingestion.worker import discover_sources, process_next
-from tirzah.retrieval.queries import embedding_candidate_report, list_documents, search_nodes
+from tirzah.retrieval.queries import (
+    embedding_candidate_report,
+    expand_graph_paths,
+    expand_proximity,
+    graph_edges_for_node,
+    list_documents,
+    search_nodes,
+)
 from tirzah.retrieval.trust import trust_temporal_diagnostic_for_node
 from tirzah.sessions.exchanges import recent_exchanges
 from tirzah.sessions.interaction import answer_query
@@ -485,6 +492,67 @@ def create_app() -> FastAPI:
         return {
             "ok": True,
             "nodes": search_nodes(db, query=query or None, label=label, limit=limit),
+        }
+
+    @app.get("/api/graph/edges/{node_id}")
+    def graph_edges(
+        node_id: str,
+        direction: str = "both",
+        relation_type: str | None = None,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "node_id": node_id,
+            "edges": graph_edges_for_node(
+                db,
+                node_id=node_id,
+                direction=direction,
+                relation_type=relation_type,
+                limit=limit,
+            ),
+        }
+
+    @app.get("/api/graph/proximity/{node_id}")
+    def graph_proximity(
+        node_id: str,
+        direction: str = "both",
+        relation_type: str | None = None,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "node_id": node_id,
+            "nodes": expand_proximity(
+                db,
+                node_id=node_id,
+                direction=direction,
+                relation_type=relation_type,
+                limit=limit,
+            ),
+        }
+
+    @app.get("/api/graph/paths/{node_id}")
+    def graph_paths(
+        node_id: str,
+        direction: str = "both",
+        relation_type: str | None = None,
+        max_depth: int = 2,
+        limit: int = 10,
+        branch_limit: int = 5,
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "node_id": node_id,
+            "paths": expand_graph_paths(
+                db,
+                node_id=node_id,
+                direction=direction,
+                relation_type=relation_type,
+                max_depth=max_depth,
+                limit=limit,
+                branch_limit=branch_limit,
+            ),
         }
 
     @app.get("/api/queue")

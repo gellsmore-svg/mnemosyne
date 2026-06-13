@@ -1562,6 +1562,88 @@ def test_vector_semantic_candidates_preview_endpoint(monkeypatch) -> None:
     }
 
 
+def test_graph_edges_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "tirzah.web.app.graph_edges_for_node",
+        lambda _db, **kwargs: [{"edge_id": "edge1", **kwargs}],
+    )
+
+    response = client.get(
+        "/api/graph/edges/node1",
+        params={"direction": "outgoing", "relation_type": "supports", "limit": 3},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "node_id": "node1",
+        "edges": [
+            {
+                "edge_id": "edge1",
+                "node_id": "node1",
+                "direction": "outgoing",
+                "relation_type": "supports",
+                "limit": 3,
+            }
+        ],
+    }
+
+
+def test_graph_proximity_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "tirzah.web.app.expand_proximity",
+        lambda _db, **kwargs: [{"node_id": "near1", **kwargs}],
+    )
+
+    response = client.get(
+        "/api/graph/proximity/node1",
+        params={"direction": "incoming", "relation_type": "related_to", "limit": 4},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["nodes"][0] == {
+        "node_id": "node1",
+        "direction": "incoming",
+        "relation_type": "related_to",
+        "limit": 4,
+    }
+
+
+def test_graph_paths_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "tirzah.web.app.expand_graph_paths",
+        lambda _db, **kwargs: [{"target": "path1", **kwargs}],
+    )
+
+    response = client.get(
+        "/api/graph/paths/node1",
+        params={
+            "direction": "both",
+            "relation_type": "supports",
+            "max_depth": 3,
+            "limit": 5,
+            "branch_limit": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["paths"][0] == {
+        "target": "path1",
+        "node_id": "node1",
+        "direction": "both",
+        "relation_type": "supports",
+        "max_depth": 3,
+        "limit": 5,
+        "branch_limit": 2,
+    }
+
+
 def test_enqueue_vector_semantic_batch_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 

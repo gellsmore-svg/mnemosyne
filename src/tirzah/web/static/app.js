@@ -406,6 +406,45 @@ async function loadHistory() {
   );
 }
 
+async function loadActiveDocuments() {
+  const params = new URLSearchParams();
+  params.set("session_id", $("activeDocumentSession").value || $("sessionId").value || "web");
+  params.set("limit", $("activeDocumentLimit").value || "6");
+  const data = await api(`/api/active-documents?${params.toString()}`);
+  const documents = Array.isArray(data.documents) ? data.documents : [];
+  $("activeDocuments").replaceChildren(
+    ...(documents.length
+      ? documents.map((doc) =>
+          item(
+            `<strong>${html(doc.title || doc.document_id)}</strong>` +
+              `<div class="muted">${html(doc.document_id)} | refs ${html(String(doc.reference_count || 0))}</div>` +
+              `<div class="muted">nodes: ${html((doc.node_ids || []).slice(0, 4).join(", "))}</div>`
+          )
+        )
+      : [item(`<strong>No active documents</strong><div class="muted">${html(data.session_id || "")}</div>`)])
+  );
+}
+
+async function loadProcessRuns() {
+  const params = new URLSearchParams();
+  params.set("limit", $("processRunLimit").value || "6");
+  if ($("processRunSession").value) params.set("session_id", $("processRunSession").value);
+  if ($("processRunStatus").value) params.set("status", $("processRunStatus").value);
+  const data = await api(`/api/governance/process-runs?${params.toString()}`);
+  const runs = Array.isArray(data.runs) ? data.runs : [];
+  $("processRuns").replaceChildren(
+    ...(runs.length
+      ? runs.map((run) =>
+          item(
+            `<strong>${html(run.status)} · ${html(run.process_id)}</strong>` +
+              `<div class="muted">${html(run.run_id)} | ${html(run.session_id)} | ${html(run.current_step_id || "no step")}</div>` +
+              `<div class="muted">completed ${html(String((run.completed_steps || []).length))} | exceptions ${html(String((run.exceptions || []).length))}</div>`
+          )
+        )
+      : [item(`<strong>No process runs</strong><div class="muted">No rows matched the current filters.</div>`)])
+  );
+}
+
 async function loadQueue() {
   const data = await api("/api/queue");
   const statuses = Object.entries(data.statuses)
@@ -779,10 +818,55 @@ async function searchNodes() {
       button.textContent = "Focus";
       button.addEventListener("click", () => {
         $("nodeId").value = node.node_id;
+        $("graphNodeId").value = node.node_id;
       });
       el.appendChild(button);
+      const graphButton = document.createElement("button");
+      graphButton.className = "secondary";
+      graphButton.textContent = "Graph";
+      graphButton.addEventListener("click", () => {
+        $("graphNodeId").value = node.node_id;
+        loadGraphInspection();
+      });
+      el.appendChild(graphButton);
       return el;
     })
+  );
+}
+
+async function loadGraphInspection() {
+  const nodeId = $("graphNodeId").value.trim();
+  if (!nodeId) {
+    $("graphInspection").replaceChildren(
+      item(`<strong>No node selected</strong><div class="muted">Search for a node, then choose Graph.</div>`)
+    );
+    return;
+  }
+  const params = new URLSearchParams();
+  params.set("direction", $("graphDirection").value || "both");
+  params.set("limit", $("graphLimit").value || "6");
+  if ($("graphRelationType").value) params.set("relation_type", $("graphRelationType").value);
+  const [edges, proximity, paths] = await Promise.all([
+    api(`/api/graph/edges/${encodeURIComponent(nodeId)}?${params.toString()}`),
+    api(`/api/graph/proximity/${encodeURIComponent(nodeId)}?${params.toString()}`),
+    api(`/api/graph/paths/${encodeURIComponent(nodeId)}?${params.toString()}`),
+  ]);
+  const edgeItems = (edges.edges || []).slice(0, 6).map((edge) =>
+    `<div class="muted">${html(edge.relation_type || "edge")} ${html(edge.source_node_id || "")} -> ${html(edge.target_node_id || "")} · weight ${html(String(edge.weight ?? ""))}</div>`
+  );
+  const proximityItems = (proximity.nodes || []).slice(0, 6).map((node) =>
+    `<div class="muted">${html(node.title || node.node_id)} · score ${html(String(node.proximity_score ?? ""))} · ${html(node.edge?.relation_type || "")}</div>`
+  );
+  const pathItems = (paths.paths || []).slice(0, 6).map((path) =>
+    `<div class="muted">${html(path.title || path.node_id)} · depth ${html(String(path.path_depth ?? ""))} · score ${html(String(path.path_score ?? ""))}</div>`
+  );
+  $("graphInspection").replaceChildren(
+    item(
+      `<strong>Graph context for ${html(nodeId)}</strong>` +
+        `<h4>Edges</h4>${edgeItems.join("") || `<div class="muted">No edges.</div>`}` +
+        `<h4>Proximity</h4>${proximityItems.join("") || `<div class="muted">No adjacent nodes.</div>`}` +
+        `<h4>Paths</h4>${pathItems.join("") || `<div class="muted">No paths.</div>`}`
+    )
   );
 }
 
@@ -835,7 +919,7 @@ async function ask() {
     $("answerMeta").innerHTML = `<div class="muted">exchange ${html(data.exchange_id)} | ${html(data.adapter)} ${html(data.model)}</div>`;
     renderActivityReport(data.activity_report, data.activity_log, data.process_trace);
     renderConsole(data.process_trace);
-    await Promise.all([loadSessions(), loadHistory()]);
+    await Promise.all([loadSessions(), loadHistory(), loadActiveDocuments()]);
   } catch (error) {
     $("answerText").textContent = error.message;
     renderActivityReport(null, "", [
@@ -1178,12 +1262,17 @@ async function loadDeveloperWorkspace() {
     loadEmbeddingBackfillJobs(),
     loadSemanticCandidates(),
     searchNodes(),
+    loadActiveDocuments(),
+    loadProcessRuns(),
   ]);
 }
 
 $("ask").addEventListener("click", ask);
 $("createSession").addEventListener("click", createSession);
 $("search").addEventListener("click", searchNodes);
+$("loadActiveDocuments").addEventListener("click", loadActiveDocuments);
+$("loadGraph").addEventListener("click", loadGraphInspection);
+$("loadProcessRuns").addEventListener("click", loadProcessRuns);
 $("refresh").addEventListener("click", refresh);
 $("developerMode").addEventListener("click", toggleDeveloperMode);
 $("displayMode").addEventListener("click", toggleDisplayMode);
