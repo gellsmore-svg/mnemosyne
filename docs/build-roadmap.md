@@ -1,8 +1,75 @@
 # Build Roadmap
 
-Last updated: 2026-05-29
+Last updated: 2026-06-13
 
 Product/design entry point: `docs/consolidated-requirements-and-design.md` is the canonical working requirements and design document for the current product. `docs/lifecycle-next-phase-requirements.md` remains the detailed Lifecycle direction for repository refresh, higher-quality ingestion, LLM transparency, internet-assisted reasoning, chronological corpus processing, multi-corpus interrogation, and product self-awareness. The implementation below remains scaffolded toward those requirements.
+
+## Version 1 Scope — Local Memory Workbench
+
+V1 should be the first dependable local Tirzah release, not the full cognitive-memory design.
+
+The product promise for V1 is:
+
+> A local operator can ingest trusted text/Markdown sources, preserve provenance, search and retrieve memory, ask questions through a transparent prompt pipeline, review generated outputs and semantic links, and continue work through saved sessions without reading MongoDB records or raw JSON for normal operation.
+
+### V1 Must Include
+
+- local-first operation with no required hosted services;
+- preferred `tirzah` CLI and package path, with `mnemosyne` compatibility retained;
+- real MongoDB persistence behind a documented memory-store boundary;
+- text/Markdown source ingestion through CLI and web staging/inbox flows;
+- source checksuming, archive copy, duplicate rejection, bounded retries, and dead-letter handling;
+- document, tree, node, exchange, session, active-document, graph-edge, semantic-edge-candidate, process-run, and profile-backfill persistence;
+- deterministic source hierarchy parsing as the V1 ingestion baseline;
+- local text similarity profile generation through the non-HTTP `local_command` worker path;
+- profile coverage status and resumable profile-backfill jobs;
+- search, document inspection, node context, compiled context, rendered context, and prompt-envelope construction;
+- direct retrieval mode with readable diagnostics and source/provenance-aware ranking hints;
+- agentic retrieval mode as an optional read-only controller loop;
+- reviewed semantic-edge candidate queue, accept/reject workflow, and reviewed graph-edge promotion;
+- one-hop proximity and bounded graph-path inspection;
+- saved ask/chat exchanges, history, session selection, and active document references;
+- node usage updates for non-rejected used nodes;
+- generated-output ingestion as unreviewed memory, with explicit review controls for endorsement/rejection;
+- trust/temporal diagnostics as explanatory signals, not ranking authority;
+- FastAPI web UI with normal work mode and developer mode;
+- Ask, Browse, and Ingestion workspaces;
+- readable activity logs for ask and ingestion flows, with raw JSON kept as developer detail;
+- local test suite passing from a clean checkout with documented setup.
+
+### V1 Completion Gates
+
+V1 is complete when all of these are true:
+
+- `tirzah db-ping` verifies local MongoDB connectivity;
+- a fresh text/Markdown source can be staged, processed, archived, and inspected through CLI and web paths;
+- duplicate and failed ingestion paths move files to the expected dead-letter locations;
+- profile-backfill status reports whether local text similarity profiles are absent, partial, blocked, or ready;
+- a profiled source can produce semantic-edge candidates, and a candidate can be accepted or rejected from CLI and web UI;
+- a user can ask a question in direct retrieval mode and receive a saved answer with readable activity log and source/context diagnostics;
+- a user can ask a question in agentic retrieval mode and inspect the planner/tool trace;
+- generated output can be processed into unreviewed memory and then explicitly endorsed or rejected;
+- active document references can support follow-up prompts such as "this document" in the same session;
+- CLI and web UI expose enough inspection to review documents, nodes, sessions, exchanges, active documents, semantic candidates, graph edges, profile jobs, and process runs;
+- the default web UI does not require reading raw JSON for normal use;
+- full automated tests pass.
+
+### Post-V1 / Explicitly Out Of Scope
+
+These remain important, but they must not block V1 or be implied complete by V1:
+
+- Gemma-driven or LLM-driven ingestion chunking;
+- transactional MongoDB multi-collection ingestion commits;
+- versioned source replacement beyond guarded maintenance rebuilds;
+- automatic semantic relation extraction without human review;
+- semantic-map sense clusters and REM consolidation;
+- graph-backed restart state nodes;
+- natural-language endorsement detection;
+- automatic trust/temporal ranking effects;
+- full traversal feedback, including path scoring and unused-path decay;
+- broad web search or internet-assisted ingestion;
+- multi-user permissions, hosted deployment, or cloud-first operation;
+- production packaging beyond local developer/operator setup.
 
 ## Stage 0 — Project Scaffold
 

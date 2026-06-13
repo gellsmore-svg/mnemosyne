@@ -4,6 +4,8 @@ Date: 2026-06-08
 
 Status: canonical working product/design document. This document consolidates the current Tirzah requirements, implemented design, inferred decisions, and open work into one review entry point. The older detailed documents remain useful supporting records, but this file should be the first place to look when deciding what to build next. The product was renamed from Mnemosyne to Tirzah because the previous name conflicted with another memory-oriented GitHub project and was harder to use consistently.
 
+Version boundary: V1 is defined in `docs/build-roadmap.md` as the local memory workbench release. V1 is intentionally narrower than the full cognitive-memory design: it prioritizes dependable local ingestion, provenance, retrieval, transparent answer flow, review controls, and session continuity, while leaving LLM-driven ingestion, REM consolidation, semantic-map sense clusters, automatic endorsement, and full traversal feedback for later releases.
+
 ## Product Intent
 
 Tirzah is a local-first memory engine for long-running LLM work. It preserves source material, builds document and semantic graph structures, retrieves evidence for questions, records continuity, and explains its own behavior in language a human can inspect.
