@@ -117,6 +117,20 @@ def test_health_endpoint() -> None:
     assert response.json()["ok"] is True
 
 
+def test_memory_health_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "tirzah.web.app.memory_health_payload",
+        lambda _db: {"ok": True, "totals": {"documents": 2}},
+    )
+
+    response = client.get("/api/memory-health")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "totals": {"documents": 2}}
+
+
 def test_homepage_defaults_to_work_mode_with_developer_toggle() -> None:
     client = TestClient(app)
 

@@ -33,6 +33,7 @@ from tirzah.db.governance import (
     list_trust_weighting_profiles,
     update_process_run,
 )
+from tirzah.db.health import memory_health_payload
 from tirzah.db.indexes import ensure_indexes
 from tirzah.db.repositories import (
     backfill_node_embeddings,
@@ -187,6 +188,10 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health() -> dict[str, Any]:
         return {"ok": True, "database": config.mongo.database}
+
+    @app.get("/api/memory-health")
+    def memory_health() -> dict[str, Any]:
+        return memory_health_payload(db)
 
     @app.get("/api/runtime")
     def runtime() -> dict[str, Any]:

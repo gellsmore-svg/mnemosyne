@@ -13,12 +13,11 @@ from tirzah.cli import (
     existing_document_extra_labels,
     init_config_payload,
     main,
-    memory_health_payload,
     rebuild_document_from_existing_source,
-    render_memory_health_text,
     serve_app,
     write_initial_config,
 )
+from tirzah.db.health import memory_health_payload, render_memory_health_text
 
 
 def test_discover_folder_sources_finds_markdown_and_text(tmp_path: Path) -> None:
