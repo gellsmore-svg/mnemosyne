@@ -494,6 +494,18 @@ def test_rebuild_document_inserts_versioned_tree_and_supersedes_previous_records
     assert new_tree["status"] == "active"
     assert new_node["ingestion_epoch"] == "2026-05-30-rebuild-001"
     assert new_node["status"] == "active"
+    assert db.trees.update_many_calls == [
+        (
+            {"document_id": document_id},
+            {"$set": {"status": "superseded", "superseded_by_epoch": "2026-05-30-rebuild-001"}},
+        )
+    ]
+    assert db.nodes.update_many_calls == [
+        (
+            {"document_id": document_id},
+            {"$set": {"status": "superseded", "superseded_by_epoch": "2026-05-30-rebuild-001"}},
+        )
+    ]
 
 
 def test_document_tree_returns_only_active_nodes() -> None:
@@ -1571,6 +1583,7 @@ class FakeCollection:
         self.rows = []
         self.fail_insert = fail_insert
         self.fail_insert_many = fail_insert_many
+        self.update_many_calls = []
 
     def find_one(self, query):
         row = next((row for row in self.rows if matches(row, query)), None)
@@ -1628,6 +1641,13 @@ class FakeCollection:
             row.update(update.get("$set", {}))
         return None
 
+    def update_many(self, query, update):
+        self.update_many_calls.append((dict(query), scrub_bulk_update(update)))
+        for row in self.rows:
+            if matches(row, query):
+                row.update(update.get("$set", {}))
+        return None
+
     def delete_many(self, query):
         self.rows = [row for row in self.rows if not matches(row, query)]
         return None
@@ -1667,6 +1687,12 @@ def matches(row, query):
         if actual != expected:
             return False
     return True
+
+
+def scrub_bulk_update(update):
+    scrubbed = {"$set": dict(update.get("$set", {}))}
+    scrubbed["$set"].pop("updated_at", None)
+    return scrubbed
 
 
 def nested_get(row, dotted_key):

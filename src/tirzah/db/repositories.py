@@ -147,8 +147,7 @@ def mark_document_tree_nodes_status(
     if superseded_by_epoch:
         set_fields["superseded_by_epoch"] = superseded_by_epoch
     for collection in (db.trees, db.nodes):
-        for row in collection.find({"document_id": document_id}):
-            collection.update_one({"_id": row["_id"]}, {"$set": set_fields})
+        collection.update_many({"document_id": document_id}, {"$set": set_fields})
 
 
 def restore_collection_rows(
