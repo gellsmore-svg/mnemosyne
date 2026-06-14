@@ -1,8 +1,8 @@
 # Install Tirzah
 
-Tirzah V1.1 packaging is Docker-first for WSL/Linux. Docker Compose runs both
-the web/CLI app and MongoDB with persistent volumes. V1.1.1 also includes the
-optional Hoglah-backed answer adapter.
+Tirzah V1.2 packaging is Docker-first for WSL/Linux. Docker Compose runs both
+the web/CLI app and MongoDB with persistent volumes. V1.2 also includes optional
+Hoglah-backed answer and embedding adapters.
 
 ## Docker Quickstart
 
@@ -52,9 +52,9 @@ profiles:
   `http://host.docker.internal:11434`.
 - `local_command`: mock answers plus the packaged `tirzah-profile-helper`
   command for local text-similarity profiles.
-- `hoglah`: queue answer generation through the optional Hoglah package. This
-  keeps Tirzah's retrieval layer unchanged while letting Hoglah manage local
-  Ollama job execution.
+- `hoglah`: queue answer generation through the optional Hoglah package. Tirzah
+  is a pure submitter into a local SQLite queue; a separate Hoglah daemon
+  executes jobs against Ollama and writes results back for Tirzah to consume.
 
 You can skip prompts with:
 
@@ -71,9 +71,26 @@ pip install "tirzah[hoglah]"
 tirzah init --non-interactive --runtime hoglah
 ```
 
-In Docker mode, `tirzah init --docker --runtime hoglah` writes
-`runtime.hoglah_ollama_host: http://host.docker.internal:11434` so Hoglah can
-reach an Ollama daemon running on the host.
+Then run a separate Hoglah worker against the same queue and output directory:
+
+```bash
+HOGLAH_OUTPUT_DIR=data/hoglah/outbox \
+  hoglah run --real --db data/hoglah/jobs.sqlite3 \
+  --ollama-host http://localhost:11434 -c 1
+```
+
+Set `runtime.answer_adapter: hoglah` and/or `runtime.embedding_adapter: hoglah`.
+Tirzah submits jobs and waits for terminal results by polling
+`runtime.hoglah_output_dir` (`runtime.hoglah_delivery: poll`) or by running a
+tiny local callback receiver (`runtime.hoglah_delivery: callback`, with file
+poll fallback). The `hoglah` embedding adapter is allowed for memory operations
+without `allow_http_ingestion_adapters` because Tirzah itself only performs
+local IPC; the Hoglah daemon owns the Ollama HTTP call.
+
+In Docker mode, the Hoglah daemon must be able to see the same queue/output
+storage as Tirzah. If the daemon runs on the host while Tirzah runs in Compose,
+mount or share `data/hoglah/` consistently and use the host-visible Ollama URL,
+for example `http://host.docker.internal:11434`.
 
 ## Python Developer Install
 
