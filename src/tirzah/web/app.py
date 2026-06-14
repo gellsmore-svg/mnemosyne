@@ -775,20 +775,10 @@ def create_app() -> FastAPI:
         q: str | None = None,
         reason: str | None = None,
     ) -> dict[str, Any]:
-        rows = []
-        for job in recent_jobs(db, limit=limit, status=status, query_text=q, reason=reason):
-            job["_id"] = str(job["_id"])
-            if job.get("existing_document_id"):
-                job["existing_document_id"] = str(job["existing_document_id"])
-            if job.get("existing_queue_id"):
-                job["existing_queue_id"] = str(job["existing_queue_id"])
-            result = job.get("result") or {}
-            if result.get("document_id"):
-                result["document_id"] = str(result["document_id"])
-            for field in ("created_at", "updated_at"):
-                if job.get(field):
-                    job[field] = job[field].isoformat()
-            rows.append(job)
+        rows = [
+            serialize_queue_job(job)
+            for job in recent_jobs(db, limit=limit, status=status, query_text=q, reason=reason)
+        ]
         return {"ok": True, "jobs": rows}
 
     @app.get("/api/ingest-folder")
@@ -1075,6 +1065,24 @@ def ingest_folder_file_rows(ingest_dir: Path) -> list[dict[str, Any]]:
 
 def ingest_folder_sort_key(row: dict[str, Any]) -> tuple[str, str]:
     return (row.get("origin_date") or "9999-12-31", row.get("path") or "")
+
+
+def serialize_queue_job(job: dict[str, Any]) -> dict[str, Any]:
+    serialized = dict(job)
+    serialized["_id"] = str(serialized["_id"])
+    if serialized.get("existing_document_id"):
+        serialized["existing_document_id"] = str(serialized["existing_document_id"])
+    if serialized.get("existing_queue_id"):
+        serialized["existing_queue_id"] = str(serialized["existing_queue_id"])
+    if serialized.get("result"):
+        result = dict(serialized["result"])
+        if result.get("document_id"):
+            result["document_id"] = str(result["document_id"])
+        serialized["result"] = result
+    for field in ("created_at", "updated_at"):
+        if serialized.get(field):
+            serialized[field] = serialized[field].isoformat()
+    return serialized
 
 
 def list_ingestion_epochs(db: Any, limit: int = 8) -> list[dict[str, Any]]:

@@ -20,6 +20,7 @@ from tirzah.web.app import (
     profile_adapter_status,
     process_inbox_activity_log,
     recommended_embedding_backfill_job,
+    serialize_queue_job,
 )
 
 
@@ -1856,6 +1857,59 @@ def test_jobs_endpoint_filters_seeded_rows() -> None:
     data = response.json()
     assert data["ok"] is True
     assert [row["reason"] for row in data["jobs"]] == ["source_missing"]
+
+
+def test_serialize_queue_job_does_not_mutate_source_row() -> None:
+    job_id = ObjectId()
+    document_id = ObjectId()
+    existing_queue_id = ObjectId()
+    timestamp = datetime(2026, 6, 14, tzinfo=timezone.utc)
+    source = {
+        "_id": job_id,
+        "path": "data/ingest/source.md",
+        "existing_queue_id": existing_queue_id,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "result": {"document_id": document_id, "node_ids": ["n1"]},
+    }
+
+    serialized = serialize_queue_job(source)
+
+    assert serialized["_id"] == str(job_id)
+    assert serialized["existing_queue_id"] == str(existing_queue_id)
+    assert serialized["created_at"] == "2026-06-14T00:00:00+00:00"
+    assert serialized["updated_at"] == "2026-06-14T00:00:00+00:00"
+    assert serialized["result"]["document_id"] == str(document_id)
+    assert source["_id"] == job_id
+    assert source["existing_queue_id"] == existing_queue_id
+    assert source["created_at"] == timestamp
+    assert source["result"]["document_id"] == document_id
+
+
+def test_jobs_endpoint_serializes_without_mutating_recent_jobs(monkeypatch) -> None:
+    job_id = ObjectId()
+    document_id = ObjectId()
+    timestamp = datetime(2026, 6, 14, tzinfo=timezone.utc)
+    jobs = [
+        {
+            "_id": job_id,
+            "path": "data/ingest/source.md",
+            "status": "completed",
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "result": {"document_id": document_id},
+        }
+    ]
+
+    monkeypatch.setattr("tirzah.web.app.recent_jobs", lambda *_args, **_kwargs: jobs)
+
+    response = TestClient(app).get("/api/jobs")
+
+    assert response.status_code == 200
+    assert response.json()["jobs"][0]["_id"] == str(job_id)
+    assert response.json()["jobs"][0]["result"]["document_id"] == str(document_id)
+    assert jobs[0]["_id"] == job_id
+    assert jobs[0]["result"]["document_id"] == document_id
 
 
 def test_upload_source_stages_supported_file() -> None:
