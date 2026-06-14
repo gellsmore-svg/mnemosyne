@@ -10,6 +10,13 @@ python -m venv .venv
 .venv/bin/python -m pytest
 ```
 
+Some tests exercise real MongoDB collections. With MongoDB available at the
+configured URI, run that profile directly:
+
+```bash
+.venv/bin/python -m pytest -m real_mongo
+```
+
 Use `config.example.yaml` as the checked-in template and keep machine-local settings in ignored `config.yaml`.
 
 ## Pull Requests

@@ -68,3 +68,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+  "real_mongo: tests that require a reachable MongoDB service and exercise real collections/indexes",
+]

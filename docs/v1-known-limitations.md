@@ -35,4 +35,4 @@ Tirzah V1 is complete as a local memory workbench: ingestion, inspection, retrie
 
 - The preferred package and CLI name is `tirzah`; the `mnemosyne` command and some historical defaults remain for compatibility during the rename transition.
 - The CLI and web API expose broad operator surfaces, but some modules are intentionally monolithic at V1 and need post-V1 refactoring.
-- Most automated tests are fast unit tests with fakes. Real-Mongo smoke coverage exists, but a broader real-Mongo integration profile is still desirable.
+- Most automated tests are fast unit tests with fakes. A `real_mongo` pytest marker now identifies tests that exercise real MongoDB collections, but a broader real-Mongo integration profile is still desirable.

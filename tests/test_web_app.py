@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
 
@@ -1030,6 +1031,7 @@ def test_session_endpoints() -> None:
     )
 
 
+@pytest.mark.real_mongo
 def test_active_documents_endpoint_filters_by_session() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)
@@ -1323,6 +1325,7 @@ def test_governance_update_process_run_endpoint(monkeypatch) -> None:
     assert response.json()["run"]["status"] == "completed"
 
 
+@pytest.mark.real_mongo
 def test_output_ingestion_endpoint_filters_by_session() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)
@@ -1748,6 +1751,7 @@ def test_review_semantic_edge_candidate_endpoint(monkeypatch) -> None:
     }
 
 
+@pytest.mark.real_mongo
 def test_history_endpoint_filters_seeded_rows() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)
@@ -1805,6 +1809,7 @@ def test_history_endpoint_filters_seeded_rows() -> None:
     assert [row["query"] for row in data["exchanges"]] == ["Tirzah design purpose"]
 
 
+@pytest.mark.real_mongo
 def test_jobs_endpoint_filters_seeded_rows() -> None:
     client = TestClient(app)
     db = get_database(load_config().mongo)
