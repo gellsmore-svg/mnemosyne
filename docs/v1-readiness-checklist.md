@@ -24,13 +24,13 @@ Use this file to track whether the implementation can be called V1-ready. A chec
 | Active document references support follow-up prompts such as "this document" in the same session. | Done | Active document persistence, vocabulary, fallback, focused answer-flow coverage, and the 2026-06-13 CLI smoke are complete. | None. |
 | CLI and web UI expose inspection for documents, nodes, sessions, exchanges, active documents, semantic candidates, graph edges, profile jobs, and process runs. | Done | README command list covers the V1 CLI inspection surface; developer-mode web UI exposes Browse/Ingestion inspection panels, active documents, graph inspection, process runs, profile jobs, and semantic review; 2026-06-13 CLI/web smoke passes are complete. | None. |
 | Default web UI does not require reading raw JSON for normal use. | Done | Work mode, developer toggle, readable logs, and the 2026-06-13 web smoke pass are complete. | None. |
-| Full automated tests pass. | Done | Latest run: `502 passed` on 2026-06-14. | None. |
+| Full automated tests pass. | Done | Latest run: `504 passed` on 2026-06-14. | None. |
 
 ## V1 Punch List
 
 1. Create a small release-candidate smoke corpus and document the exact smoke sequence. Done: `tests/fixtures/v1-smoke-source-template.md` and `docs/v1-release-candidate-smoke.md`.
 2. Run the release-candidate smoke sequence through CLI and web. Done on 2026-06-13.
-3. Re-run the full test suite. Latest run complete: `502 passed` on 2026-06-14.
+3. Re-run the full test suite. Latest run complete: `504 passed` on 2026-06-14.
 4. Tag V1 only after the checklist is complete and the working tree is clean. Done as `v1.0.0`.
 
 ## Release-Candidate Smoke Sequence

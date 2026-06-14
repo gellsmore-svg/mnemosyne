@@ -21,6 +21,7 @@ from tirzah.web.app import (
     process_inbox_activity_log,
     recommended_embedding_backfill_job,
     serialize_queue_job,
+    serialize_queue_summary,
 )
 
 
@@ -931,6 +932,54 @@ def test_queue_endpoint() -> None:
 
     assert response.status_code == 200
     assert response.json()["ok"] is True
+
+
+def test_serialize_queue_summary_does_not_mutate_source_row() -> None:
+    job_id = ObjectId()
+    timestamp = datetime(2026, 6, 14, tzinfo=timezone.utc)
+    oldest_pending = {
+        "_id": job_id,
+        "path": "data/ingest/source.md",
+        "created_at": timestamp,
+        "attempts": 0,
+    }
+    summary = {
+        "total": 1,
+        "statuses": {"pending": 1},
+        "oldest_pending": oldest_pending,
+    }
+
+    serialized = serialize_queue_summary(summary)
+
+    assert serialized["oldest_pending"]["_id"] == str(job_id)
+    assert serialized["oldest_pending"]["created_at"] == "2026-06-14T00:00:00+00:00"
+    assert summary["oldest_pending"]["_id"] == job_id
+    assert summary["oldest_pending"]["created_at"] == timestamp
+
+
+def test_queue_endpoint_serializes_without_mutating_summary(monkeypatch) -> None:
+    job_id = ObjectId()
+    timestamp = datetime(2026, 6, 14, tzinfo=timezone.utc)
+    summary = {
+        "total": 1,
+        "statuses": {"pending": 1},
+        "oldest_pending": {
+            "_id": job_id,
+            "path": "data/ingest/source.md",
+            "created_at": timestamp,
+            "attempts": 0,
+        },
+    }
+
+    monkeypatch.setattr("tirzah.web.app.queue_summary", lambda _db: summary)
+
+    response = TestClient(app).get("/api/queue")
+
+    assert response.status_code == 200
+    assert response.json()["oldest_pending"]["_id"] == str(job_id)
+    assert response.json()["oldest_pending"]["created_at"] == "2026-06-14T00:00:00+00:00"
+    assert summary["oldest_pending"]["_id"] == job_id
+    assert summary["oldest_pending"]["created_at"] == timestamp
 
 
 def test_runtime_endpoint_lists_llm_controls() -> None:

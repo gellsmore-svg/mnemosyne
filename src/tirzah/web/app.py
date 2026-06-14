@@ -562,13 +562,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/queue")
     def queue() -> dict[str, Any]:
-        summary = queue_summary(db)
-        if summary["oldest_pending"]:
-            summary["oldest_pending"]["_id"] = str(summary["oldest_pending"]["_id"])
-            summary["oldest_pending"]["created_at"] = summary["oldest_pending"][
-                "created_at"
-            ].isoformat()
-        return {"ok": True, **summary}
+        return {"ok": True, **serialize_queue_summary(queue_summary(db))}
 
     @app.get("/api/ingestion/status")
     def ingestion_status(limit: int = 8, label: str | None = None) -> dict[str, Any]:
@@ -1082,6 +1076,17 @@ def serialize_queue_job(job: dict[str, Any]) -> dict[str, Any]:
     for field in ("created_at", "updated_at"):
         if serialized.get(field):
             serialized[field] = serialized[field].isoformat()
+    return serialized
+
+
+def serialize_queue_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    serialized = dict(summary)
+    if serialized.get("oldest_pending"):
+        oldest_pending = dict(serialized["oldest_pending"])
+        oldest_pending["_id"] = str(oldest_pending["_id"])
+        if oldest_pending.get("created_at"):
+            oldest_pending["created_at"] = oldest_pending["created_at"].isoformat()
+        serialized["oldest_pending"] = oldest_pending
     return serialized
 
 
