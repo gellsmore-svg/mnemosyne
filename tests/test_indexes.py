@@ -1,6 +1,6 @@
 from pymongo.errors import CollectionInvalid
 
-from tirzah.db.indexes import REQUIRED_COLLECTIONS, ensure_required_collections
+from tirzah.db.schema import REQUIRED_COLLECTIONS, collection_available, ensure_required_collections
 
 
 def test_required_collection_inventory_includes_runtime_surfaces() -> None:
@@ -30,6 +30,14 @@ def test_ensure_required_collections_tolerates_creation_race() -> None:
 
     assert "queue" in db.create_attempts
     assert "documents" in db.created
+
+
+def test_collection_available_keeps_fake_db_guard_semantics() -> None:
+    db = FakeDb(existing=set())
+    db.documents = object()
+
+    assert collection_available(db, "documents") is True
+    assert collection_available(db, "graph_edges") is False
 
 
 class FakeDb:

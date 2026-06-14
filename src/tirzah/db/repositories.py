@@ -6,6 +6,7 @@ from typing import Any
 from bson import ObjectId
 from pymongo.database import Database
 
+from tirzah.db.schema import collection_available
 from tirzah.adapters.embedding import default_embedding_adapter
 from tirzah.models.ingestion import (
     DEFAULT_ENDORSEMENT_LABEL,
@@ -113,7 +114,7 @@ def rebuild_document(
         restore_collection_rows(db.trees, object_id, previous_trees)
         restore_collection_rows(db.nodes, object_id, previous_nodes)
         delete_graph_edges_for_document(db, object_id)
-        if previous_edges and hasattr(db, "graph_edges"):
+        if previous_edges and collection_available(db, "graph_edges"):
             db.graph_edges.insert_many(previous_edges)
         raise
     return {
@@ -249,7 +250,7 @@ def insert_relation_edges(
     result: IngestionResult,
     key_to_id: dict[str, object],
 ) -> dict[str, int]:
-    if not hasattr(db, "graph_edges"):
+    if not collection_available(db, "graph_edges"):
         return {"edge_count": 0, "skipped_edge_count": 0}
     edge_docs = []
     seen_edges = set()
@@ -349,18 +350,18 @@ def relation_weight(relation: dict[str, Any]) -> float:
 
 
 def delete_graph_edges_for_document(db: Database, document_id: object) -> None:
-    if hasattr(db, "graph_edges"):
+    if collection_available(db, "graph_edges"):
         db.graph_edges.delete_many({"document_id": document_id})
 
 
 def list_graph_edges_for_document(db: Database, document_id: object) -> list[dict[str, Any]]:
-    if not hasattr(db, "graph_edges"):
+    if not collection_available(db, "graph_edges"):
         return []
     return list(db.graph_edges.find({"document_id": document_id}))
 
 
 def graph_edge_status(db: Database, limit: int = 10) -> dict[str, Any]:
-    if not hasattr(db, "graph_edges"):
+    if not collection_available(db, "graph_edges"):
         return {
             "edge_count": 0,
             "relation_types": [],
@@ -400,7 +401,7 @@ def bounded_graph_group_limit(value: Any, default: int = 10) -> int:
 
 
 def backfill_structural_graph_edges(db: Database, limit: int | None = None) -> dict[str, int]:
-    if not hasattr(db, "graph_edges"):
+    if not collection_available(db, "graph_edges"):
         return {
             "scanned_node_count": 0,
             "edge_count": 0,
@@ -480,7 +481,7 @@ def create_reviewed_semantic_edge(
     note: str | None = None,
     candidate_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if not hasattr(db, "graph_edges"):
+    if not collection_available(db, "graph_edges"):
         return {"ok": False, "reason": "graph_edges_unavailable"}
     source_id = parse_object_id(source_node_id)
     target_id = parse_object_id(target_node_id)
@@ -578,7 +579,7 @@ def enqueue_semantic_edge_candidates(
     relation_type: str = "related_to",
     created_by: str = "user",
 ) -> dict[str, Any]:
-    if not hasattr(db, "semantic_edge_candidates"):
+    if not collection_available(db, "semantic_edge_candidates"):
         return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
     source_id = parse_object_id(node_id)
     if source_id is None:
@@ -654,7 +655,7 @@ def enqueue_vector_semantic_edge_candidates(
     min_similarity: float = 0.75,
     candidate_scan_limit: int | None = None,
 ) -> dict[str, Any]:
-    if not hasattr(db, "semantic_edge_candidates"):
+    if not collection_available(db, "semantic_edge_candidates"):
         return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
     source_id = parse_object_id(node_id)
     if source_id is None:
@@ -755,7 +756,7 @@ def enqueue_vector_semantic_edge_candidate_batch(
     exclude_node_keys: list[str] | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    if not hasattr(db, "semantic_edge_candidates"):
+    if not collection_available(db, "semantic_edge_candidates"):
         return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
     relation = normalized_relation_type(relation_type)
     if not relation:
@@ -986,7 +987,7 @@ def list_semantic_edge_candidates(
     status: str | None = "pending",
     limit: int = 20,
 ) -> list[dict[str, Any]]:
-    if not hasattr(db, "semantic_edge_candidates"):
+    if not collection_available(db, "semantic_edge_candidates"):
         return []
     query = {}
     if status:
@@ -1006,7 +1007,7 @@ def review_semantic_edge_candidate(
     weight: Any = 0.7,
     confidence: Any = 0.6,
 ) -> dict[str, Any]:
-    if not hasattr(db, "semantic_edge_candidates"):
+    if not collection_available(db, "semantic_edge_candidates"):
         return {"ok": False, "reason": "semantic_edge_candidates_unavailable"}
     object_id = parse_object_id(candidate_id)
     if object_id is None:

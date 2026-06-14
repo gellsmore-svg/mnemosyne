@@ -9,6 +9,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 from pymongo.database import Database
 
+from tirzah.db.schema import collection_available
 from tirzah.db.repositories import DuplicateSourceError, commit_ingestion, summarize_node_text
 from tirzah.models.ingestion import (
     DEFAULT_ENDORSEMENT_LABEL,
@@ -47,7 +48,7 @@ def queue_exchange_output(
     answer_text = answer_output_text(answer)
     if not answer_text:
         return None
-    if not hasattr(db, "output_ingestion_queue"):
+    if not collection_available(db, "output_ingestion_queue"):
         return None
 
     now = utc_now()
@@ -96,7 +97,7 @@ def list_output_ingestion_jobs(
     status: str | None = None,
     session_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    if not hasattr(db, "output_ingestion_queue"):
+    if not collection_available(db, "output_ingestion_queue"):
         return []
     rows = (
         db.output_ingestion_queue.find(
@@ -113,7 +114,7 @@ def claim_next_output_job(
     session_id: str | None = None,
     job_id: str | None = None,
 ) -> dict[str, Any] | None:
-    if not hasattr(db, "output_ingestion_queue"):
+    if not collection_available(db, "output_ingestion_queue"):
         return None
     now = utc_now()
     query: dict[str, Any] = {"status": "pending"}

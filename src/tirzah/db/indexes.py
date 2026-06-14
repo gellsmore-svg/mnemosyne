@@ -2,32 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from pymongo.errors import CollectionInvalid
 from pymongo.database import Database
 
-
-REQUIRED_COLLECTIONS = (
-    "active_documents",
-    "agent_identities",
-    "conversation_domains",
-    "documents",
-    "embedding_backfill_jobs",
-    "exchanges",
-    "governance_policies",
-    "graph_edges",
-    "label_definitions",
-    "nodes",
-    "output_ingestion_queue",
-    "process_objects",
-    "process_runs",
-    "project_domains",
-    "queue",
-    "retrieval_traces",
-    "semantic_edge_candidates",
-    "sessions",
-    "trees",
-    "trust_weighting_profiles",
-)
+from tirzah.db.schema import ensure_required_collections
 
 
 LABEL_DEFINITIONS = [
@@ -221,17 +198,6 @@ def ensure_indexes(db: Database) -> None:
             upsert=True,
         )
     seed_governance_defaults(db)
-
-
-def ensure_required_collections(db: Database) -> None:
-    existing = set(db.list_collection_names())
-    for name in REQUIRED_COLLECTIONS:
-        if name in existing:
-            continue
-        try:
-            db.create_collection(name)
-        except CollectionInvalid:
-            pass
 
 
 def seed_governance_defaults(db: Database) -> None:

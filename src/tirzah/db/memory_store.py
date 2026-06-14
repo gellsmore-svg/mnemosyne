@@ -5,6 +5,8 @@ from typing import Any
 
 from pymongo.database import Database
 
+from tirzah.db.schema import collection_available
+
 
 class MemoryStore:
     """Mongo-backed persistence facade for Tirzah memory operations."""
@@ -73,7 +75,7 @@ class MemoryStore:
         limit: int = 10,
         newest_first: bool = True,
     ) -> list[dict[str, Any]]:
-        if not hasattr(self.db, "graph_edges"):
+        if not collection_available(self.db, "graph_edges"):
             return []
         sort_order = -1 if newest_first else 1
         return list(self.db.graph_edges.find(filters).sort("created_at", sort_order).limit(limit))
