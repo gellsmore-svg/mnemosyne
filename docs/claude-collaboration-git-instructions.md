@@ -5,14 +5,14 @@ Status: operator handoff note for Claude-assisted development.
 ## Local Repository
 
 - Work as the `cello` user environment, not root.
-- Repo path: `/home/cello/domains/Mnemosyne`
+- Repo path: `/home/cello/domains/Tirzah`
 - Primary branch: `main`
-- GitHub remote: `https://github.com/gellsmore-svg/mnemosyne.git`
+- GitHub remote: `https://github.com/gellsmore-svg/tirzah.git`
 
 Start every coding or review session with:
 
 ```bash
-cd /home/cello/domains/Mnemosyne
+cd /home/cello/domains/Tirzah
 git status --short
 git branch --show-current
 git remote -v
@@ -61,7 +61,7 @@ git diff --stat
 Run the smallest relevant tests first, then the full suite when the change affects shared behavior:
 
 ```bash
-.venv/bin/pytest -q
+.venv/bin/python -m pytest
 ```
 
 Commit only files relevant to the task:

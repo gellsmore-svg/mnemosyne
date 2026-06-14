@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class MongoConfig(BaseModel):
     uri: str = "mongodb://localhost:27017"
+    # Kept during the rename transition so existing local corpora remain visible.
     database: str = "mnemosyne_dev"
 
 
