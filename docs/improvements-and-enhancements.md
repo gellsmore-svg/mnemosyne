@@ -452,14 +452,16 @@ This document complements (and does not duplicate) the staged roadmap in `docs/b
 ## 12. Documentation & Project Hygiene
 
 ### 12.1 Living "Memory Health" Report Command
-**Description:** Add `tirzah memory-health` (and web equivalent) that produces a concise report on corpus size, profile/embedding coverage percentages, endorsement distribution, semantic edge count vs. candidate backlog, recent failure rates, and any documents with unusually high superseded tree counts.
+**Status:** Partially implemented in V1.2. `tirzah memory-health` and `GET /api/memory-health` now report corpus totals, profile and embedding coverage, endorsement distribution, queue counts, and attention items.
+
+**Description:** Extend the implemented memory-health report with a first-class web panel, recent failure-rate checks, semantic edge count vs. candidate backlog, and documents with unusually high superseded tree counts.
 
 **Rationale:** Operators working with large imported corpora (AMS, external) need an at-a-glance view of the state of the memory layer without writing custom queries.
 
 **Approach notes:**
-- Make it fast and safe to run frequently.
-- Output both human text and machine JSON.
-- Surface actionable follow-ups ("Run `queue-profile-backfill --label ams_domain`").
+- Keep it fast and safe to run frequently.
+- Preserve both human text and machine JSON outputs.
+- Surface deeper actionable follow-ups ("Run `queue-profile-backfill --label ams_domain`", "Inspect unusually large superseded trees").
 
 **Priority:** Medium (high operational value)
 **Related:** existing status/inspection commands, governance listings, profile backfill job queries.

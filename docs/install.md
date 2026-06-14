@@ -87,6 +87,11 @@ poll fallback). The `hoglah` embedding adapter is allowed for memory operations
 without `allow_http_ingestion_adapters` because Tirzah itself only performs
 local IPC; the Hoglah daemon owns the Ollama HTTP call.
 
+For callback delivery, `runtime.hoglah_callback_port: 0` lets Tirzah choose an
+ephemeral local port and pass that callback URL with each job. Use polling when
+the Hoglah daemon cannot reach Tirzah's callback host and port, such as across
+some container or WSL network boundaries.
+
 In Docker mode, the Hoglah daemon must be able to see the same queue/output
 storage as Tirzah. If the daemon runs on the host while Tirzah runs in Compose,
 mount or share `data/hoglah/` consistently and use the host-visible Ollama URL,
