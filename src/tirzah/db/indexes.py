@@ -2,7 +2,32 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from pymongo.errors import CollectionInvalid
 from pymongo.database import Database
+
+
+REQUIRED_COLLECTIONS = (
+    "active_documents",
+    "agent_identities",
+    "conversation_domains",
+    "documents",
+    "embedding_backfill_jobs",
+    "exchanges",
+    "governance_policies",
+    "graph_edges",
+    "label_definitions",
+    "nodes",
+    "output_ingestion_queue",
+    "process_objects",
+    "process_runs",
+    "project_domains",
+    "queue",
+    "retrieval_traces",
+    "semantic_edge_candidates",
+    "sessions",
+    "trees",
+    "trust_weighting_profiles",
+)
 
 
 LABEL_DEFINITIONS = [
@@ -118,6 +143,7 @@ DEFAULT_TRUST_WEIGHTING_PROFILES = [
 
 
 def ensure_indexes(db: Database) -> None:
+    ensure_required_collections(db)
     for index in db.documents.list_indexes():
         if index.get("key") == {"source.path": 1} and index.get("unique"):
             db.documents.drop_index(index["name"])
@@ -173,6 +199,9 @@ def ensure_indexes(db: Database) -> None:
     db.output_ingestion_queue.create_index([("session_id", 1), ("created_at", -1)])
     db.output_ingestion_queue.create_index("exchange_id", unique=True)
     db.output_ingestion_queue.create_index("content_hash_sha256")
+    db.retrieval_traces.create_index("created_at")
+    db.retrieval_traces.create_index("session_id")
+    db.retrieval_traces.create_index("exchange_id")
     db.embedding_backfill_jobs.create_index([("status", 1), ("created_at", 1)])
     db.embedding_backfill_jobs.create_index([("updated_at", -1)])
     db.sessions.create_index("session_id", unique=True)
@@ -192,6 +221,17 @@ def ensure_indexes(db: Database) -> None:
             upsert=True,
         )
     seed_governance_defaults(db)
+
+
+def ensure_required_collections(db: Database) -> None:
+    existing = set(db.list_collection_names())
+    for name in REQUIRED_COLLECTIONS:
+        if name in existing:
+            continue
+        try:
+            db.create_collection(name)
+        except CollectionInvalid:
+            pass
 
 
 def seed_governance_defaults(db: Database) -> None:
