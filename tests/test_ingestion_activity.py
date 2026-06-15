@@ -103,13 +103,24 @@ def test_attach_ingestion_activity_mutates_and_returns_result() -> None:
 
 def test_activity_field_composition_matches_attach_result() -> None:
     base = {"ok": True, "document_id": "doc1"}
-    report = ingestion_activity_report(
-        path="source.md",
-        status="completed",
-        checksum_sha256="abc123",
-    )
+    reports = [
+        ingestion_activity_report(
+            path="source.md",
+            status="completed",
+            checksum_sha256="abc123",
+        ),
+        ingestion_activity_report(
+            path="source.md",
+            status="rejected",
+            checksum_sha256="abc123",
+            reason="duplicate_checksum",
+            message="File rejected because identical content has already been ingested.",
+            details={"existing_document_id": "doc1"},
+        ),
+    ]
 
-    attached = attach_ingestion_activity(dict(base), report)
-    composed = {**base, **ingestion_activity_fields(report)}
+    for report in reports:
+        attached = attach_ingestion_activity(dict(base), report)
+        composed = {**base, **ingestion_activity_fields(report)}
 
-    assert composed == attached
+        assert composed == attached

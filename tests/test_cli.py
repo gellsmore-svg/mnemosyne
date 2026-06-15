@@ -766,9 +766,12 @@ def test_ingest_source_path_duplicate_precheck_returns_activity_fields(
     assert result["checksum_sha256"] == "checksum"
     assert result["existing_document_id"] == str(existing_document_id)
     assert result["activity_report"]["status"] == "rejected"
+    assert result["activity_report"]["outcome"]["reason"] == "duplicate_checksum"
     assert result["activity_report"]["outcome"]["details"] == {
         "existing_document_id": str(existing_document_id)
     }
+    assert "Status: rejected." in result["activity_log"]
+    assert "Outcome reason: duplicate_checksum." in result["activity_log"]
     assert "Existing document:" in result["activity_log"]
 
 
