@@ -4,7 +4,8 @@ from bson import ObjectId
 
 from tirzah.config import AppConfig
 from tirzah.db.repositories import DuplicateSourceError
-from tirzah.ingestion.worker import discover_sources, process_next
+from tirzah.ingestion.activity import ingestion_activity_fields, ingestion_activity_report
+from tirzah.ingestion.worker import activity_for_worker_failure, discover_sources, process_next
 
 from test_repositories import FakeDb as RepoFakeDb
 
@@ -22,6 +23,34 @@ def test_discover_sources_only_returns_supported_files(tmp_path: Path) -> None:
 
 def test_discover_sources_handles_missing_folder(tmp_path: Path) -> None:
     assert discover_sources(tmp_path / "missing") == []
+
+
+def test_activity_for_worker_failure_matches_activity_fields(tmp_path: Path) -> None:
+    source = tmp_path / "source.md"
+    details = {"path": str(source)}
+    report = ingestion_activity_report(
+        path=source,
+        status="failed",
+        checksum_sha256="abc123",
+        job_id="job1",
+        process_run_id="run1",
+        reason="source_missing",
+        message="Restore source file and retry.",
+        details=details,
+    )
+
+    fields = activity_for_worker_failure(
+        path=source,
+        status="failed",
+        checksum_sha256="abc123",
+        job_id="job1",
+        process_run_id="run1",
+        reason="source_missing",
+        message="Restore source file and retry.",
+        details=details,
+    )
+
+    assert fields == ingestion_activity_fields(report)
 
 
 def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path) -> None:
@@ -119,7 +148,12 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
     assert result["ok"] is False
     assert result["status"] == "failed"
     assert result["process_run_id"] == "run1"
+    assert result["activity_report"]["kind"] == "ingestion_activity_report"
+    assert result["activity_report"]["status"] == "failed"
     assert result["activity_report"]["outcome"]["reason"] == "source_missing"
+    assert result["activity_report"]["outcome"]["details"] == {"path": str(missing)}
+    assert result["activity_log"].startswith("Ingestion Activity Log")
+    assert "Outcome reason: source_missing." in result["activity_log"]
     assert "Restore source file and retry." in result["activity_log"]
     assert updates[0]["status"] == "blocked"
     assert updates[0]["current_step_id"] == "source_missing"
@@ -145,7 +179,7 @@ def test_process_next_rejects_duplicate_with_activity_fields(monkeypatch, tmp_pa
             "_id": ObjectId(),
             "path": str(source),
             "checksum_sha256": "abc123",
-            "attempts": 0,
+            "attempts": 1,
         },
     )
     monkeypatch.setattr(worker, "archive_source", lambda path, archive_dir, checksum: tmp_path / "archive.md")
@@ -224,7 +258,7 @@ def test_process_next_retries_transient_error_with_activity_fields(
             "_id": ObjectId(),
             "path": str(source),
             "checksum_sha256": "abc123",
-            "attempts": 0,
+            "attempts": 1,
         },
     )
     monkeypatch.setattr(worker, "read_text_source", raise_runtime)
@@ -250,7 +284,7 @@ def test_process_next_retries_transient_error_with_activity_fields(
 
     assert result["ok"] is False
     assert result["status"] == "retrying"
-    assert result["attempts"] == 0
+    assert result["attempts"] == 1
     assert result["max_attempts"] == 3
     assert result["activity_report"]["status"] == "retrying"
     assert result["activity_report"]["outcome"]["reason"] == "RuntimeError"
