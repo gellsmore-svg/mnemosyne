@@ -59,6 +59,7 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
 
     updates = []
     completed_jobs = []
+    job_id = ObjectId()
     source = tmp_path / "source.md"
     source.write_text("# Source\n\nText.", encoding="utf-8")
 
@@ -66,7 +67,7 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
         worker,
         "claim_next_pending",
         lambda _db: {
-            "_id": ObjectId(),
+            "_id": job_id,
             "path": str(source),
             "checksum_sha256": "abc123",
             "attempts": 1,
@@ -82,7 +83,9 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
     monkeypatch.setattr(
         worker,
         "complete_job",
-        lambda _db, _job_id, inserted: completed_jobs.append(inserted),
+        lambda _db, _job_id, inserted: completed_jobs.append(
+            {"job_id": _job_id, "inserted": inserted}
+        ),
     )
     monkeypatch.setattr(
         worker,
@@ -98,13 +101,15 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
     result = process_next(FakeDb(), AppConfig())
 
     assert result["ok"] is True
+    assert result["job_id"] == str(job_id)
     assert result["process_run_id"] == "run1"
     assert result["activity_report"]["kind"] == "ingestion_activity_report"
     assert result["activity_report"]["semantic_processing"]["adapter"] == "mock"
     assert "Ingestion Activity Log" in result["activity_log"]
     assert "Repository write: document doc1" in result["activity_log"]
-    assert completed_jobs[0]["activity_log"] == result["activity_log"]
-    assert completed_jobs[0]["activity_report"]["kind"] == "ingestion_activity_report"
+    assert completed_jobs[0]["job_id"] == job_id
+    assert completed_jobs[0]["inserted"]["activity_log"] == result["activity_log"]
+    assert completed_jobs[0]["inserted"]["activity_report"]["kind"] == "ingestion_activity_report"
     assert updates == [
         {
             "run_id": "run1",
@@ -156,6 +161,7 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
 
     assert result["ok"] is False
     assert result["status"] == "failed"
+    assert result["job_id"] == str(job_id)
     assert result["process_run_id"] == "run1"
     assert result["activity_report"]["kind"] == "ingestion_activity_report"
     assert result["activity_report"]["status"] == "failed"
@@ -229,6 +235,7 @@ def test_process_next_rejects_duplicate_with_activity_fields(monkeypatch, tmp_pa
 
     assert result["ok"] is False
     assert result["status"] == "rejected"
+    assert result["job_id"] == str(job_id)
     assert result["process_run_id"] == "run1"
     assert result["checksum_sha256"] == "commit-checksum"
     assert result["existing_document_id"] == str(existing_document_id)
@@ -313,6 +320,7 @@ def test_process_next_retries_transient_error_with_activity_fields(
 
     assert result["ok"] is False
     assert result["status"] == "retrying"
+    assert result["job_id"] == str(job_id)
     assert result["attempts"] == attempts
     assert result["max_attempts"] == 3
     assert result["activity_report"]["status"] == "retrying"
@@ -339,6 +347,7 @@ def test_process_next_fails_terminal_error_with_activity_fields(
 
     updates = []
     failed_jobs = []
+    retried_jobs = []
     job_id = ObjectId()
     source = tmp_path / "source.md"
     source.write_text("# Source\n\nText.", encoding="utf-8")
@@ -357,6 +366,13 @@ def test_process_next_fails_terminal_error_with_activity_fields(
         },
     )
     monkeypatch.setattr(worker, "read_text_source", raise_value_error)
+    monkeypatch.setattr(
+        worker,
+        "retry_job",
+        lambda _db, _job_id, reason, details: retried_jobs.append(
+            {"job_id": _job_id, "reason": reason, "details": details}
+        ),
+    )
     monkeypatch.setattr(
         worker,
         "move_request_file",
@@ -384,6 +400,7 @@ def test_process_next_fails_terminal_error_with_activity_fields(
 
     assert result["ok"] is False
     assert result["status"] == "failed"
+    assert result["job_id"] == str(job_id)
     assert result["dead_letter_path"] == str(tmp_path / "failed.md")
     assert result["activity_report"]["status"] == "failed"
     assert result["activity_report"]["outcome"]["reason"] == "ValueError"
@@ -399,6 +416,7 @@ def test_process_next_fails_terminal_error_with_activity_fields(
             },
         }
     ]
+    assert retried_jobs == []
     assert updates[0]["status"] == "blocked"
     assert updates[0]["current_step_id"] == "failed"
     assert updates[0]["exception"]["reason"] == "ValueError"
