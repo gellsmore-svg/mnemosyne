@@ -6,8 +6,8 @@ Status: pre-repair report. No repair implementation is authorised by this report
 
 Reviewer inputs:
 
-- Local re-read by Codex of the requirements, design notes, project docs, and implementation.
-- Independent Claude Code review run as `cello` via `sudo -i -u cello` against `/home/cello/domains/Mnemosyne`.
+- A re-read of the requirements, design notes, project docs, and implementation.
+- An independent code review against the implementation.
 
 ## 1. Intended Architecture
 

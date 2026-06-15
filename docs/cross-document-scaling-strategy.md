@@ -463,8 +463,7 @@ The work this strategy enables fits into the existing slice plan
 without inventing a new slice:
 
 1. **Slice 6 Phase A finish.** Live task. Choose and configure the local
-   profile adapter (see `.session-log.md` 2026-06-03 [claude] entry).
-   This strategy assumes profiles exist per chunk.
+   profile adapter. This strategy assumes profiles exist per chunk.
 2. **Slice 6 Phase B finish.** Cluster-internal candidate/review at small
    scale. The existing review queue mechanism applies; what is new is
    that cluster membership becomes a `candidate_source` distinguished
