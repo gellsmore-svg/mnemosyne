@@ -104,6 +104,7 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
     assert result["job_id"] == str(job_id)
     assert result["process_run_id"] == "run1"
     assert result["activity_report"]["kind"] == "ingestion_activity_report"
+    assert result["activity_report"]["queue"]["job_id"] == str(job_id)
     assert result["activity_report"]["semantic_processing"]["adapter"] == "mock"
     assert "Ingestion Activity Log" in result["activity_log"]
     assert "Repository write: document doc1" in result["activity_log"]
@@ -165,6 +166,7 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
     assert result["process_run_id"] == "run1"
     assert result["activity_report"]["kind"] == "ingestion_activity_report"
     assert result["activity_report"]["status"] == "failed"
+    assert result["activity_report"]["queue"]["job_id"] == str(job_id)
     assert result["activity_report"]["outcome"]["reason"] == "source_missing"
     assert result["activity_report"]["outcome"]["details"] == {"path": str(missing)}
     assert result["activity_log"].startswith("Ingestion Activity Log")
@@ -240,6 +242,7 @@ def test_process_next_rejects_duplicate_with_activity_fields(monkeypatch, tmp_pa
     assert result["checksum_sha256"] == "commit-checksum"
     assert result["existing_document_id"] == str(existing_document_id)
     assert result["activity_report"]["status"] == "rejected"
+    assert result["activity_report"]["queue"]["job_id"] == str(job_id)
     assert result["activity_report"]["outcome"]["reason"] == "duplicate_checksum"
     assert result["activity_report"]["outcome"]["details"]["dead_letter_path"].endswith(
         "duplicate.md"
@@ -324,6 +327,7 @@ def test_process_next_retries_transient_error_with_activity_fields(
     assert result["attempts"] == attempts
     assert result["max_attempts"] == 3
     assert result["activity_report"]["status"] == "retrying"
+    assert result["activity_report"]["queue"]["job_id"] == str(job_id)
     assert result["activity_report"]["outcome"]["reason"] == "RuntimeError"
     assert "Retry ingestion after transient failure." in result["activity_log"]
     assert retried_jobs == [
@@ -403,6 +407,7 @@ def test_process_next_fails_terminal_error_with_activity_fields(
     assert result["job_id"] == str(job_id)
     assert result["dead_letter_path"] == str(tmp_path / "failed.md")
     assert result["activity_report"]["status"] == "failed"
+    assert result["activity_report"]["queue"]["job_id"] == str(job_id)
     assert result["activity_report"]["outcome"]["reason"] == "ValueError"
     assert "Inspect failed source and retry if appropriate." in result["activity_log"]
     assert failed_jobs == [
@@ -428,12 +433,13 @@ def test_process_next_persists_embeddings_through_worker_ingestion(monkeypatch, 
     source = tmp_path / "source.md"
     source.write_text("# Source\n\nFirst paragraph.\n\nSecond paragraph.", encoding="utf-8")
     db = RepoFakeDb()
+    job_id = ObjectId()
 
     monkeypatch.setattr(
         worker,
         "claim_next_pending",
         lambda _db: {
-            "_id": ObjectId(),
+            "_id": job_id,
             "path": str(source),
             "checksum_sha256": "worker-checksum",
             "attempts": 1,
@@ -449,6 +455,8 @@ def test_process_next_persists_embeddings_through_worker_ingestion(monkeypatch, 
 
     assert result["ok"] is True
     assert result["status"] == "completed"
+    assert result["job_id"] == str(job_id)
+    assert result["activity_report"]["queue"]["job_id"] == str(job_id)
     assert result["embedded_node_count"] == len(db.nodes.rows)
     assert db.nodes.rows, "expected the worker path to insert nodes"
     for row in db.nodes.rows:
