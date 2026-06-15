@@ -212,4 +212,16 @@ If no additional Mongo node is retrieved and no focus node is selected, Tirzah s
 
 ## Restart
 
-Use `.restart.md` for resumable project state.
+Resumable session state is tracked in the database, not a file: each exchange
+records a `session_continuity` snapshot — the latest query, focus/used nodes,
+active documents, controller decision, evidence summary, and an answer preview,
+with older iterations superseded but retained.
+
+Inspect it from the CLI:
+
+```bash
+tirzah session-continuity --session-id default --limit 5
+```
+
+or over HTTP at `GET /api/session-continuity` (with a matching panel in the web
+UI's developer mode).

@@ -7,7 +7,6 @@ Last updated: 2026-05-17
 ```text
 Mnemosyne/
   README.md
-  .restart.md
   pyproject.toml
   config.example.yaml
   docs/
