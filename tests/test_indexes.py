@@ -32,8 +32,15 @@ def test_ensure_required_collections_tolerates_creation_race() -> None:
     assert "documents" in db.created
 
 
-def test_collection_available_keeps_fake_db_guard_semantics() -> None:
-    db = FakeDb(existing=set())
+def test_collection_available_uses_collection_inventory_when_available() -> None:
+    db = FakeDb(existing={"documents"})
+
+    assert collection_available(db, "documents") is True
+    assert collection_available(db, "graph_edges") is False
+
+
+def test_collection_available_falls_back_to_attribute_guard_without_inventory() -> None:
+    db = AttributeOnlyDb()
     db.documents = object()
 
     assert collection_available(db, "documents") is True
@@ -56,3 +63,7 @@ class FakeDb:
             raise CollectionInvalid(name)
         self.existing.add(name)
         self.created.append(name)
+
+
+class AttributeOnlyDb:
+    pass

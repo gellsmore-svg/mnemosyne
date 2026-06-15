@@ -41,4 +41,10 @@ def ensure_required_collections(db: Any) -> None:
 
 
 def collection_available(db: Any, name: str) -> bool:
+    list_collection_names = getattr(db, "list_collection_names", None)
+    if callable(list_collection_names):
+        try:
+            return name in set(list_collection_names())
+        except Exception:
+            pass
     return hasattr(db, name)
