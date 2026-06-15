@@ -197,8 +197,10 @@ def test_process_next_continues_when_process_run_creation_fails(
     assert result["ok"] is True
     assert result["job_id"] == str(job_id)
     assert result["process_run_id"] is None
-    assert result["activity_report"]["queue"]["job_id"] == str(job_id)
-    assert result["activity_report"]["queue"]["process_run_id"] is None
+    assert result["activity_report"]["queue"] == {
+        "job_id": str(job_id),
+        "process_run_id": None,
+    }
     assert f"Queue job: {job_id}." in result["activity_log"]
     assert "Process run:" not in result["activity_log"]
     assert completed_jobs[0]["job_id"] == job_id
@@ -391,9 +393,20 @@ def test_process_next_failure_paths_continue_when_process_run_creation_fails(
         }
     assert f"Queue job: {job_id}." in result["activity_log"]
     assert "Process run:" not in result["activity_log"]
-    assert actions[0]["job_id"] == job_id
-    assert actions[0]["reason"] == expected_reason
-    assert actions[0]["details"] == result["activity_report"]["outcome"]["details"]
+    if scenario == "duplicate":
+        assert "Semantic processing: mock generated" in result["activity_log"]
+        assert "Existing document:" in result["activity_log"]
+    elif scenario == "retrying":
+        assert "Retry ingestion after transient failure." in result["activity_log"]
+    else:
+        assert "Inspect failed source and retry if appropriate." in result["activity_log"]
+    assert actions == [
+        {
+            "job_id": job_id,
+            "reason": expected_reason,
+            "details": result["activity_report"]["outcome"]["details"],
+        }
+    ]
 
 
 def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch, tmp_path: Path) -> None:
