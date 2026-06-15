@@ -28,7 +28,8 @@ Tirzah V1 is complete as a local memory workbench: ingestion, inspection, retrie
 
 ## Ingestion Intelligence
 
-- The V1 ingestion baseline is deterministic heading/paragraph parsing through the mock ingestion adapter.
+- The V1 ingestion baseline is deterministic heading/paragraph parsing through the mock ingestion adapter, selected by `runtime.ingestion_adapter: mock`.
+- CLI, rebuild, worker, and web processing now share an ingestion adapter boundary, but no review-gated LLM-assisted ingestion implementation ships in V1.
 - Review-gated LLM-assisted chunking, relation extraction, and richer metadata generation remain post-V1 work.
 
 ## Operations And Naming

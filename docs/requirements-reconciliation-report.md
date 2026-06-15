@@ -75,7 +75,7 @@ The current implementation is a useful prototype scaffold, but it is not yet the
 Current ingestion:
 
 - Reads markdown/plain text directly.
-- Uses deterministic `MockIngestionAdapter` heading/paragraph parsing.
+- Uses `runtime.ingestion_adapter` through the ingestion adapter factory, with deterministic `MockIngestionAdapter` heading/paragraph parsing as the shipped V1 default.
 - Writes documents, one tree, and source-derived nodes to MongoDB.
 - Copies accepted sources to archive.
 - Rejects duplicate source files by SHA-256 checksum.

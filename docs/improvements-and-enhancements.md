@@ -23,12 +23,13 @@ This document complements (and does not duplicate) the staged roadmap in `docs/b
 ## 1. Ingestion Quality & Source Fidelity
 
 ### 1.1 Optional LLM-Assisted Chunking Adapter (Review-Gated)
-**Description:** Add a real ingestion adapter path (behind the existing adapter boundary) that proposes hierarchical structure and summaries using a local model, while always writing the full original source text and requiring explicit or implicit endorsement before the new tree becomes preferred for retrieval.
+**Description:** Add a real ingestion adapter implementation behind the existing runtime adapter boundary that proposes hierarchical structure and summaries using a local model, while always writing the full original source text and requiring explicit or implicit endorsement before the new tree becomes preferred for retrieval.
 
-**Rationale:** Current ingestion is strictly deterministic (`MockIngestionAdapter` + heading-based parser in `src/tirzah/ingestion/parser.py` and `src/tirzah/adapters/mock.py`). The roadmap and development plan explicitly call for LLM-assisted ingestion as a post-V1 step. Poor chunk boundaries are a primary source of retrieval quality problems.
+**Rationale:** Current ingestion is still deterministic by default (`runtime.ingestion_adapter: mock`, `MockIngestionAdapter`, and heading-based parsing in `src/tirzah/adapters/mock.py`). A runtime factory now exists (`src/tirzah/adapters/ingestion.py`) so CLI, rebuild, worker, and web processing can share a future implementation without changing entry points. The roadmap and development plan explicitly call for LLM-assisted ingestion as a post-V1 step. Poor chunk boundaries are a primary source of retrieval quality problems.
 
 **Approach notes:**
 - Keep `MockIngestionAdapter` as the default for reproducibility and tests.
+- Add new implementations through `ingestion_adapter()` and require explicit config selection.
 - New adapter produces candidate `IngestedNode` trees with proposed `summary`, `relations`, and `proximity` scaffolds already present in the schema.
 - On commit, mark the tree with `ingestion_kind: "llm_proposed"` and require an operator review step (or batch) before promoting it to active status for a document.
 - Always preserve the exact source text in `source_chunk` nodes.
