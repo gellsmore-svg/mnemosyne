@@ -121,13 +121,14 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
 
     updates = []
     failed_jobs = []
+    job_id = ObjectId()
     missing = tmp_path / "missing.md"
 
     monkeypatch.setattr(
         worker,
         "claim_next_pending",
         lambda _db: {
-            "_id": ObjectId(),
+            "_id": job_id,
             "path": str(missing),
             "checksum_sha256": "abc123",
             "attempts": 1,
@@ -137,7 +138,7 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
         worker,
         "fail_job",
         lambda _db, _job_id, reason, details: failed_jobs.append(
-            {"reason": reason, "details": details}
+            {"job_id": _job_id, "reason": reason, "details": details}
         ),
     )
     monkeypatch.setattr(
@@ -164,7 +165,11 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
     assert "Outcome reason: source_missing." in result["activity_log"]
     assert "Restore source file and retry." in result["activity_log"]
     assert failed_jobs == [
-        {"reason": "source_missing", "details": {"path": str(missing)}}
+        {
+            "job_id": job_id,
+            "reason": "source_missing",
+            "details": {"path": str(missing)},
+        }
     ]
     assert updates[0]["status"] == "blocked"
     assert updates[0]["current_step_id"] == "source_missing"
@@ -176,6 +181,7 @@ def test_process_next_rejects_duplicate_with_activity_fields(monkeypatch, tmp_pa
 
     updates = []
     rejected_jobs = []
+    job_id = ObjectId()
     source = tmp_path / "source.md"
     source.write_text("# Source\n\nText.", encoding="utf-8")
     existing_document_id = ObjectId()
@@ -187,7 +193,7 @@ def test_process_next_rejects_duplicate_with_activity_fields(monkeypatch, tmp_pa
         worker,
         "claim_next_pending",
         lambda _db: {
-            "_id": ObjectId(),
+            "_id": job_id,
             "path": str(source),
             "checksum_sha256": "abc123",
             "attempts": 1,
@@ -205,7 +211,7 @@ def test_process_next_rejects_duplicate_with_activity_fields(monkeypatch, tmp_pa
         worker,
         "reject_job",
         lambda _db, _job_id, reason, details: rejected_jobs.append(
-            {"reason": reason, "details": details}
+            {"job_id": _job_id, "reason": reason, "details": details}
         ),
     )
     monkeypatch.setattr(
@@ -235,6 +241,7 @@ def test_process_next_rejects_duplicate_with_activity_fields(monkeypatch, tmp_pa
     assert "Existing document:" in result["activity_log"]
     assert rejected_jobs == [
         {
+            "job_id": job_id,
             "reason": "duplicate_checksum",
             "details": {
                 "checksum_sha256": "commit-checksum",
@@ -257,7 +264,9 @@ def test_process_next_retries_transient_error_with_activity_fields(
     import tirzah.ingestion.worker as worker
 
     updates = []
+    failed_jobs = []
     retried_jobs = []
+    job_id = ObjectId()
     source = tmp_path / "source.md"
     source.write_text("# Source\n\nText.", encoding="utf-8")
 
@@ -268,7 +277,7 @@ def test_process_next_retries_transient_error_with_activity_fields(
         worker,
         "claim_next_pending",
         lambda _db: {
-            "_id": ObjectId(),
+            "_id": job_id,
             "path": str(source),
             "checksum_sha256": "abc123",
             "attempts": attempts,
@@ -279,7 +288,14 @@ def test_process_next_retries_transient_error_with_activity_fields(
         worker,
         "retry_job",
         lambda _db, _job_id, reason, details: retried_jobs.append(
-            {"reason": reason, "details": details}
+            {"job_id": _job_id, "reason": reason, "details": details}
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "fail_job",
+        lambda _db, _job_id, reason, details: failed_jobs.append(
+            {"job_id": _job_id, "reason": reason, "details": details}
         ),
     )
     monkeypatch.setattr(
@@ -304,10 +320,12 @@ def test_process_next_retries_transient_error_with_activity_fields(
     assert "Retry ingestion after transient failure." in result["activity_log"]
     assert retried_jobs == [
         {
+            "job_id": job_id,
             "reason": "RuntimeError",
             "details": {"path": str(source), "error": "adapter unavailable"},
         }
     ]
+    assert failed_jobs == []
     assert updates[0]["status"] == "active"
     assert updates[0]["current_step_id"] == "retrying"
     assert updates[0]["exception"]["reason"] == "RuntimeError"
@@ -321,6 +339,7 @@ def test_process_next_fails_terminal_error_with_activity_fields(
 
     updates = []
     failed_jobs = []
+    job_id = ObjectId()
     source = tmp_path / "source.md"
     source.write_text("# Source\n\nText.", encoding="utf-8")
 
@@ -331,7 +350,7 @@ def test_process_next_fails_terminal_error_with_activity_fields(
         worker,
         "claim_next_pending",
         lambda _db: {
-            "_id": ObjectId(),
+            "_id": job_id,
             "path": str(source),
             "checksum_sha256": "abc123",
             "attempts": 3,
@@ -347,7 +366,7 @@ def test_process_next_fails_terminal_error_with_activity_fields(
         worker,
         "fail_job",
         lambda _db, _job_id, reason, details: failed_jobs.append(
-            {"reason": reason, "details": details}
+            {"job_id": _job_id, "reason": reason, "details": details}
         ),
     )
     monkeypatch.setattr(
@@ -371,6 +390,7 @@ def test_process_next_fails_terminal_error_with_activity_fields(
     assert "Inspect failed source and retry if appropriate." in result["activity_log"]
     assert failed_jobs == [
         {
+            "job_id": job_id,
             "reason": "ValueError",
             "details": {
                 "path": str(source),
