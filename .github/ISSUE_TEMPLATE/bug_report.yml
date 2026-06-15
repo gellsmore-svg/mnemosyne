@@ -1,0 +1,84 @@
+name: Bug report
+description: Report something in Tirzah that isn't working as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. A small, self-contained reproduction plus the
+        details below is the fastest path to a fix.
+
+        **Please don't paste secrets.** Scrub any MongoDB connection string
+        (`mongodb://user:pass@…`) or other credentials from logs and config
+        before posting.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal CLI commands or steps that trigger the bug.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >-
+        Output of `tirzah db-ping` and `tirzah memory-health` (these don't print
+        connection strings). Add any retrieval trace if relevant.
+      render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed via
+      options:
+        - Docker Compose
+        - Python source / editable install
+        - Other (describe above)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tirzah version / commit
+      description: Release tag, or `git rev-parse --short HEAD` for a source checkout.
+    validations:
+      required: true
+  - type: input
+    id: mongo
+    attributes:
+      label: MongoDB version
+      description: e.g. "MongoDB 8.0" (or "Docker Compose default").
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Answer adapter / model / retrieval mode
+      description: e.g. "ollama_cli, gemma3:1b, agentic" (or "mock").
+    validations:
+      required: false
+  - type: input
+    id: env
+    attributes:
+      label: Python & OS
+      description: e.g. "Python 3.11 on Ubuntu 22.04 (WSL2)".
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / traceback
+      description: Any error output. Scrub credentials first.
+      render: shell
+    validations:
+      required: false
