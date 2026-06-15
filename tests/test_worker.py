@@ -202,7 +202,10 @@ def test_process_next_continues_when_process_run_creation_fails(
     assert f"Queue job: {job_id}." in result["activity_log"]
     assert "Process run:" not in result["activity_log"]
     assert completed_jobs[0]["job_id"] == job_id
-    assert completed_jobs[0]["inserted"]["activity_report"]["queue"]["process_run_id"] is None
+    assert completed_jobs[0]["inserted"]["activity_report"]["queue"] == {
+        "job_id": str(job_id),
+        "process_run_id": None,
+    }
     assert "Process run:" not in completed_jobs[0]["inserted"]["activity_log"]
 
 
@@ -245,10 +248,13 @@ def test_process_next_source_missing_continues_when_process_run_creation_fails(
     result = process_next(FakeDb(), AppConfig())
 
     assert result["ok"] is False
+    assert result["status"] == "failed"
     assert result["job_id"] == str(job_id)
     assert result["process_run_id"] is None
     assert result["activity_report"]["queue"]["job_id"] == str(job_id)
     assert result["activity_report"]["queue"]["process_run_id"] is None
+    assert result["activity_report"]["outcome"]["reason"] == "source_missing"
+    assert result["activity_report"]["outcome"]["details"] == {"path": str(missing)}
     assert f"Queue job: {job_id}." in result["activity_log"]
     assert "Process run:" not in result["activity_log"]
     assert failed_jobs == [
@@ -258,6 +264,114 @@ def test_process_next_source_missing_continues_when_process_run_creation_fails(
             "details": {"path": str(missing)},
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["duplicate", "retrying", "failed"],
+)
+def test_process_next_failure_paths_continue_when_process_run_creation_fails(
+    monkeypatch,
+    tmp_path: Path,
+    scenario: str,
+) -> None:
+    import tirzah.ingestion.worker as worker
+
+    actions = []
+    job_id = ObjectId()
+    existing_document_id = ObjectId()
+    source = tmp_path / "source.md"
+    source.write_text("# Source\n\nText.", encoding="utf-8")
+    attempts = 3 if scenario == "failed" else 1
+
+    def raise_process_error(_db, **kwargs):
+        raise RuntimeError("governance unavailable")
+
+    def fail_update_process_run(_db, run_id, **kwargs):
+        raise AssertionError("no process run should be updated")
+
+    def raise_runtime(_path):
+        raise RuntimeError("adapter unavailable")
+
+    def raise_value_error(_path):
+        raise ValueError("bad source")
+
+    def raise_duplicate(_db, _result, embedder=None):
+        raise DuplicateSourceError("commit-checksum", existing_document_id)
+
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending",
+        lambda _db: {
+            "_id": job_id,
+            "path": str(source),
+            "checksum_sha256": "abc123",
+            "attempts": attempts,
+        },
+    )
+    monkeypatch.setattr(worker, "create_process_run", raise_process_error)
+    monkeypatch.setattr(worker, "update_process_run", fail_update_process_run)
+    monkeypatch.setattr(
+        worker,
+        "move_request_file",
+        lambda path, destination, checksum: tmp_path / f"{scenario}.md",
+    )
+
+    if scenario == "duplicate":
+        monkeypatch.setattr(
+            worker,
+            "archive_source",
+            lambda path, archive_dir, checksum: tmp_path / "archive.md",
+        )
+        monkeypatch.setattr(worker, "embedding_adapter", lambda _runtime: "embedder")
+        monkeypatch.setattr(worker, "commit_ingestion", raise_duplicate)
+        monkeypatch.setattr(
+            worker,
+            "reject_job",
+            lambda _db, _job_id, reason, details: actions.append(
+                {"job_id": _job_id, "reason": reason, "details": details}
+            ),
+        )
+        expected_status = "rejected"
+        expected_reason = "duplicate_checksum"
+    elif scenario == "retrying":
+        monkeypatch.setattr(worker, "read_text_source", raise_runtime)
+        monkeypatch.setattr(
+            worker,
+            "retry_job",
+            lambda _db, _job_id, reason, details: actions.append(
+                {"job_id": _job_id, "reason": reason, "details": details}
+            ),
+        )
+        expected_status = "retrying"
+        expected_reason = "RuntimeError"
+    else:
+        monkeypatch.setattr(worker, "read_text_source", raise_value_error)
+        monkeypatch.setattr(
+            worker,
+            "fail_job",
+            lambda _db, _job_id, reason, details: actions.append(
+                {"job_id": _job_id, "reason": reason, "details": details}
+            ),
+        )
+        expected_status = "failed"
+        expected_reason = "ValueError"
+
+    result = process_next(FakeDb(), AppConfig())
+
+    assert result["ok"] is False
+    assert result["status"] == expected_status
+    assert result["job_id"] == str(job_id)
+    assert result["process_run_id"] is None
+    assert result["activity_report"]["queue"] == {
+        "job_id": str(job_id),
+        "process_run_id": None,
+    }
+    assert result["activity_report"]["outcome"]["reason"] == expected_reason
+    assert f"Queue job: {job_id}." in result["activity_log"]
+    assert "Process run:" not in result["activity_log"]
+    assert actions[0]["job_id"] == job_id
+    assert actions[0]["reason"] == expected_reason
 
 
 def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch, tmp_path: Path) -> None:
