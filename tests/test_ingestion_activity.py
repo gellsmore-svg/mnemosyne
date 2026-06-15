@@ -74,6 +74,21 @@ def test_ingestion_activity_log_summarizes_duplicate() -> None:
     assert "Existing document: doc1." in log
 
 
+def test_ingestion_activity_log_summarizes_queue_metadata() -> None:
+    report = ingestion_activity_report(
+        path="source.md",
+        status="retrying",
+        checksum_sha256="abc123",
+        job_id="job1",
+        process_run_id="run1",
+    )
+
+    log = ingestion_activity_log(report)
+
+    assert "Queue job: job1." in log
+    assert "Process run: run1." in log
+
+
 def test_ingestion_activity_fields_returns_report_and_log() -> None:
     report = ingestion_activity_report(
         path="source.md",

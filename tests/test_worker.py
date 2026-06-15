@@ -105,8 +105,11 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
     assert result["process_run_id"] == "run1"
     assert result["activity_report"]["kind"] == "ingestion_activity_report"
     assert result["activity_report"]["queue"]["job_id"] == str(job_id)
+    assert result["activity_report"]["queue"]["process_run_id"] == "run1"
     assert result["activity_report"]["semantic_processing"]["adapter"] == "mock"
     assert "Ingestion Activity Log" in result["activity_log"]
+    assert f"Queue job: {job_id}." in result["activity_log"]
+    assert "Process run: run1." in result["activity_log"]
     assert "Repository write: document doc1" in result["activity_log"]
     assert completed_jobs[0]["job_id"] == job_id
     assert completed_jobs[0]["inserted"]["activity_log"] == result["activity_log"]
@@ -167,9 +170,12 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
     assert result["activity_report"]["kind"] == "ingestion_activity_report"
     assert result["activity_report"]["status"] == "failed"
     assert result["activity_report"]["queue"]["job_id"] == str(job_id)
+    assert result["activity_report"]["queue"]["process_run_id"] == "run1"
     assert result["activity_report"]["outcome"]["reason"] == "source_missing"
     assert result["activity_report"]["outcome"]["details"] == {"path": str(missing)}
     assert result["activity_log"].startswith("Ingestion Activity Log")
+    assert f"Queue job: {job_id}." in result["activity_log"]
+    assert "Process run: run1." in result["activity_log"]
     assert "Outcome reason: source_missing." in result["activity_log"]
     assert "Restore source file and retry." in result["activity_log"]
     assert failed_jobs == [
@@ -243,10 +249,13 @@ def test_process_next_rejects_duplicate_with_activity_fields(monkeypatch, tmp_pa
     assert result["existing_document_id"] == str(existing_document_id)
     assert result["activity_report"]["status"] == "rejected"
     assert result["activity_report"]["queue"]["job_id"] == str(job_id)
+    assert result["activity_report"]["queue"]["process_run_id"] == "run1"
     assert result["activity_report"]["outcome"]["reason"] == "duplicate_checksum"
     assert result["activity_report"]["outcome"]["details"]["dead_letter_path"].endswith(
         "duplicate.md"
     )
+    assert f"Queue job: {job_id}." in result["activity_log"]
+    assert "Process run: run1." in result["activity_log"]
     assert "Semantic processing: mock generated" in result["activity_log"]
     assert "Existing document:" in result["activity_log"]
     assert rejected_jobs == [
@@ -324,11 +333,15 @@ def test_process_next_retries_transient_error_with_activity_fields(
     assert result["ok"] is False
     assert result["status"] == "retrying"
     assert result["job_id"] == str(job_id)
+    assert result["process_run_id"] == "run1"
     assert result["attempts"] == attempts
     assert result["max_attempts"] == 3
     assert result["activity_report"]["status"] == "retrying"
     assert result["activity_report"]["queue"]["job_id"] == str(job_id)
+    assert result["activity_report"]["queue"]["process_run_id"] == "run1"
     assert result["activity_report"]["outcome"]["reason"] == "RuntimeError"
+    assert f"Queue job: {job_id}." in result["activity_log"]
+    assert "Process run: run1." in result["activity_log"]
     assert "Retry ingestion after transient failure." in result["activity_log"]
     assert retried_jobs == [
         {
@@ -405,10 +418,14 @@ def test_process_next_fails_terminal_error_with_activity_fields(
     assert result["ok"] is False
     assert result["status"] == "failed"
     assert result["job_id"] == str(job_id)
+    assert result["process_run_id"] == "run1"
     assert result["dead_letter_path"] == str(tmp_path / "failed.md")
     assert result["activity_report"]["status"] == "failed"
     assert result["activity_report"]["queue"]["job_id"] == str(job_id)
+    assert result["activity_report"]["queue"]["process_run_id"] == "run1"
     assert result["activity_report"]["outcome"]["reason"] == "ValueError"
+    assert f"Queue job: {job_id}." in result["activity_log"]
+    assert "Process run: run1." in result["activity_log"]
     assert "Inspect failed source and retry if appropriate." in result["activity_log"]
     assert failed_jobs == [
         {
@@ -456,7 +473,9 @@ def test_process_next_persists_embeddings_through_worker_ingestion(monkeypatch, 
     assert result["ok"] is True
     assert result["status"] == "completed"
     assert result["job_id"] == str(job_id)
+    assert result["process_run_id"] == "run1"
     assert result["activity_report"]["queue"]["job_id"] == str(job_id)
+    assert result["activity_report"]["queue"]["process_run_id"] == "run1"
     assert result["embedded_node_count"] == len(db.nodes.rows)
     assert db.nodes.rows, "expected the worker path to insert nodes"
     for row in db.nodes.rows:
@@ -465,6 +484,8 @@ def test_process_next_persists_embeddings_through_worker_ingestion(monkeypatch, 
         assert embedding["dimensions"] == 16
         assert len(embedding["vector"]) == 16
         assert embedding["source_text_hash"].startswith("sha256:")
+    assert f"Queue job: {job_id}." in result["activity_log"]
+    assert "Process run: run1." in result["activity_log"]
     assert "node(s) profiled" in result["activity_log"]
 
 
