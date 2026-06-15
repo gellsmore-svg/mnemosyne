@@ -9,7 +9,7 @@ from bson import ObjectId
 
 from tirzah.adapters.embedding import embedding_adapter
 from tirzah.adapters.ingestion import ingestion_adapter
-from tirzah.config import AppConfig, load_config
+from tirzah.config import AppConfig, RuntimeConfig, load_config
 from tirzah.db.client import get_database
 from tirzah.db.governance import (
     PROCESS_RUN_STATUSES,
@@ -295,7 +295,7 @@ def rebuild_document_from_existing_source(
     document_id: str,
     source_override: str | None = None,
     ingestion_epoch: str | None = None,
-    runtime_config=None,
+    runtime_config: RuntimeConfig | None = None,
 ) -> dict:
     document = get_document(db, document_id)
     if not document:

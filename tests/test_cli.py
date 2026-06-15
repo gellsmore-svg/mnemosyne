@@ -381,6 +381,70 @@ def test_rebuild_document_uses_original_source_path_for_adapter_title(
     assert captured["title"] == "original-name"
 
 
+def test_rebuild_document_uses_runtime_ingestion_adapter(monkeypatch, tmp_path: Path) -> None:
+    archive = tmp_path / "abc123.txt"
+    archive.write_text("plain text", encoding="utf-8")
+    document_id = ObjectId()
+    db = FakeDb(
+        [],
+        document={
+            "document_id": str(document_id),
+            "source": {
+                "path": "data/ingest/original-name.txt",
+                "archive_path": str(archive),
+                "checksum_sha256": "abc123",
+            },
+        },
+    )
+    runtime = SimpleNamespace(ingestion_adapter="fake_ingestion")
+    captured = {}
+
+    class FakeAdapter:
+        def process(self, path, text, source_kind, extra_labels=None):
+            captured["path"] = path
+            captured["text"] = text
+            captured["source_kind"] = source_kind
+            captured["extra_labels"] = extra_labels
+            return IngestionResult(
+                source=SourceRef(path=str(path), kind=source_kind),
+                title="fake rebuild",
+                summary="fake summary",
+                nodes=[
+                    IngestedNode(
+                        node_key="root",
+                        title="fake rebuild",
+                        text="fake summary",
+                        labels=["source_root"],
+                    )
+                ],
+                adapter="fake_ingestion",
+            )
+
+    monkeypatch.setattr("tirzah.cli.get_document", lambda _db, _document_id: db.document)
+    monkeypatch.setattr("tirzah.cli.existing_document_extra_labels", lambda _db, _document_id: ["domain_label"])
+    monkeypatch.setattr("tirzah.cli.ingestion_adapter", lambda runtime_config: FakeAdapter())
+    monkeypatch.setattr(
+        "tirzah.cli.rebuild_document",
+        lambda _db, _document_id, result: {
+            "document_id": str(document_id),
+            "adapter": result.adapter,
+            "title": result.title,
+        },
+    )
+
+    result = rebuild_document_from_existing_source(db, str(document_id), runtime_config=runtime)
+
+    assert result["ok"] is True
+    assert result["adapter"] == "fake_ingestion"
+    assert result["title"] == "fake rebuild"
+    assert captured == {
+        "path": Path("data/ingest/original-name.txt"),
+        "text": "plain text",
+        "source_kind": "txt",
+        "extra_labels": ["domain_label"],
+    }
+
+
 def test_ingest_source_path_uses_configured_ingestion_adapter(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "source.md"
     source.write_text("# Source\n\nText.", encoding="utf-8")
