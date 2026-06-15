@@ -1,6 +1,6 @@
 # Improvements and Enhancements
 
-**Date:** 2026-06-13
+**Date:** 2026-06-15
 **Status:** Living post-V1 proposal document. This captures concrete, actionable improvements and enhancements to existing V1 features that would meaningfully strengthen Tirzah as a local memory and retrieval layer.
 
 All proposals are evaluated against Tirzah's core principles (see `docs/consolidated-requirements-and-design.md`):
@@ -10,7 +10,7 @@ All proposals are evaluated against Tirzah's core principles (see `docs/consolid
 - Appropriate human review gates for endorsement and semantic relationships in the current phase.
 - Quality over premature optimization or automation.
 
-This document complements (and does not duplicate) the staged roadmap in `docs/build-roadmap.md`, known gaps listed in the V1 reconciliation, the "Required next improvements" section of the consolidated requirements, `docs/open-questions.md`, and `docs/development-plan.md`.
+This document complements (and does not duplicate) the staged roadmap in `docs/build-roadmap.md`, known gaps listed in the V1 reconciliation, the "Required next improvements" section of the consolidated requirements, `docs/open-questions.md`, and `docs/development-plan.md`. Filed review artifacts in `docs/reviews/` are supporting evidence; actionable findings belong here, in known limitations, or in the consolidated design.
 
 ## How to Use This Document
 - Items are grouped by functional area.
@@ -231,13 +231,15 @@ This document complements (and does not duplicate) the staged roadmap in `docs/b
 ## 5. Session Continuity & Long-Term Memory
 
 ### 5.1 Last Prompt Iteration Records and Continuity Panel
+**Status:** Partially implemented after V1. Initial `session_continuity` records are written on saved answers and exposed through `tirzah session-continuity`, `/api/session-continuity`, and the Ask workspace continuity panel. Remaining work is unresolved follow-up capture, rejected/full-context expansion, and using the record to seed future prompts.
+
 **Description:** Implement the "last prompt iteration record" concept described in the consolidated requirements: a dedicated continuity artifact per session (or conversation domain) that captures submitted prompt, interpreted intent, retrieved chunks, context package, answer, and unresolved follow-ups.
 
 **Rationale:** This is called out as open implementation work in the consolidated design. Active documents provide a skeleton, but richer thread continuity is needed for the "persistent working memory" vision (Stage 5).
 
 **Approach notes:**
 - Store as a bounded recent history collection or embedded in the session document.
-- Expose via CLI (`session-continuity <session-id>`) and a web panel (visible in work mode).
+- Keep CLI (`session-continuity <session-id>`) and work-mode web panel inspection lightweight while expanding the underlying record detail.
 - Use the record to seed follow-up prompts ("continue from last...") and to improve active document vocabulary.
 
 **Priority:** High

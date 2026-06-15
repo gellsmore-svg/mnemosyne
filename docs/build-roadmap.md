@@ -1,8 +1,10 @@
 # Build Roadmap
 
-Last updated: 2026-06-13
+Last updated: 2026-06-15
 
 Product/design entry point: `docs/consolidated-requirements-and-design.md` is the canonical working requirements and design document for the current product. `docs/lifecycle-next-phase-requirements.md` remains the detailed Lifecycle direction for repository refresh, higher-quality ingestion, LLM transparency, internet-assisted reasoning, chronological corpus processing, multi-corpus interrogation, and product self-awareness. The implementation below remains scaffolded toward those requirements.
+
+Filed implementation review artifacts live in `docs/reviews/`. Their active follow-up items are represented in `docs/v1-known-limitations.md` and `docs/improvements-and-enhancements.md`.
 
 ## Version 1 Scope — Local Memory Workbench
 
@@ -31,6 +33,7 @@ The product promise for V1 is:
 - reviewed semantic-edge candidate queue, accept/reject workflow, and reviewed graph-edge promotion;
 - one-hop proximity and bounded graph-path inspection;
 - saved ask/chat exchanges, history, session selection, and active document references;
+- first-class prompt-iteration continuity records with CLI/API inspection;
 - node usage updates for non-rejected used nodes;
 - generated-output ingestion as unreviewed memory, with explicit review controls for endorsement/rejection;
 - trust/temporal diagnostics as explanatory signals, not ranking authority;

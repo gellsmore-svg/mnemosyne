@@ -1,8 +1,10 @@
 # Consolidated Requirements And Design
 
-Date: 2026-06-08
+Date: 2026-06-15
 
 Status: canonical working product/design document. This document consolidates the current Tirzah requirements, implemented design, inferred decisions, and open work into one review entry point. The older detailed documents remain useful supporting records, but this file should be the first place to look when deciding what to build next. The product was renamed from Mnemosyne to Tirzah because the previous name conflicted with another memory-oriented GitHub project and was harder to use consistently.
+
+Review artifacts from the June 14 implementation audits are filed under `docs/reviews/`. Their findings are treated as evidence behind this document, `docs/v1-known-limitations.md`, and `docs/improvements-and-enhancements.md`; those living documents are the active task and product sources.
 
 Version boundary: V1 is defined in `docs/build-roadmap.md` as the local memory workbench release. V1 is intentionally narrower than the full cognitive-memory design: it prioritizes dependable local ingestion, provenance, retrieval, transparent answer flow, review controls, and session continuity, while leaving LLM-driven ingestion, REM consolidation, semantic-map sense clusters, automatic endorsement, and full traversal feedback for later releases.
 
@@ -271,7 +273,7 @@ Each prompt cycle should save a continuity record containing:
 
 The UI should expose the last used chunks/context records in a simple continuity panel so a user can understand and continue the prior thread.
 
-Implementation status: open. Exchange records now carry domain IDs, but last prompt iteration records and the continuity panel still need to be built.
+Implementation status: partial. Exchange records carry domain IDs, and answer-save now writes a `session_continuity` prompt-iteration record with prompt, domains, exchange ID, focus/used/active node IDs, prompt budget, context metadata, controller decision, evidence summary, answer preview, and process-trace summary. `tirzah session-continuity`, `/api/session-continuity`, and the Ask workspace continuity panel expose the latest/recent continuity state. Rejected-chunk expansion, full final context package display, unresolved follow-up capture, and use of these records to seed follow-up prompts remain open.
 
 ### Mahalath Integration
 

@@ -1,6 +1,6 @@
 # Source Documents
 
-Last updated: 2026-05-17
+Last updated: 2026-06-15
 
 ## Imported Documents
 
@@ -8,6 +8,17 @@ Last updated: 2026-05-17
 |---|---|---:|---|
 | `LLM_Memory_Architecture_Requirements_v0.3.md` | Requirements document | 0.3 | working draft, for review |
 | `Mnemosyne_Technical_Design_v0.1.md` | Technical design document | 0.1 | working draft, for review |
+
+## Product Documentation Corpus
+
+| File | Role | Status |
+|---|---|---|
+| `docs/consolidated-requirements-and-design.md` | Canonical current product/design entry point | active |
+| `docs/build-roadmap.md` | V1 and staged build roadmap | active |
+| `docs/v1-known-limitations.md` | Release precision and scaffolded-area list | active |
+| `docs/improvements-and-enhancements.md` | Living post-V1 improvement backlog | active |
+| `docs/code-module-boundaries.md` | Module ownership and refactor boundaries | active |
+| `docs/reviews/` | Filed audit artifacts that informed the living docs | archived evidence |
 
 ## Requirements Document Summary
 
@@ -49,3 +60,17 @@ The technical design selects:
 - APScheduler for folder polling and REM scheduling;
 - `config.yaml` as the single configuration source.
 
+## Review Artifact Summary
+
+The June 14 Codex review artifacts are filed in `docs/reviews/`. Their findings
+have been folded into the active product documentation rather than treated as
+separate open-task lists:
+
+- implemented follow-up: first-class `session_continuity` prompt-iteration
+  records with CLI/API inspection;
+- tracked limitations: non-transactional persistence, lexical-dominant
+  retrieval, observational governance, rename compatibility remnants, monolithic
+  modules, and fake-heavy tests;
+- tracked enhancements: hybrid retrieval, trust/ranking integration,
+  LLM-assisted ingestion, richer continuity record use/prompt seeding, stronger
+  memory-agent validation, and per-node inclusion diagnostics.

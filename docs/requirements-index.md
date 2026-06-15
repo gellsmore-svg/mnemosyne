@@ -1,10 +1,10 @@
 # Requirements Index
 
-Last updated: 2026-05-17
+Last updated: 2026-06-15
 
 This file is a compact implementation index for `LLM_Memory_Architecture_Requirements_v0.3.md`.
 
-Current product-level requirements and implementation design are consolidated in `docs/consolidated-requirements-and-design.md`. That document should be used as the review entry point when assessing the present UI, answer behavior, ingestion transparency, retrieval guardrails, governance direction, repository rebuild requirements, and near-term product design. Code organization boundaries are tracked in `docs/code-module-boundaries.md`.
+Current product-level requirements and implementation design are consolidated in `docs/consolidated-requirements-and-design.md`. That document should be used as the review entry point when assessing the present UI, answer behavior, ingestion transparency, retrieval guardrails, governance direction, repository rebuild requirements, and near-term product design. Code organization boundaries are tracked in `docs/code-module-boundaries.md`. Filed review artifacts live in `docs/reviews/`; their actionable findings are folded into `docs/v1-known-limitations.md`, `docs/improvements-and-enhancements.md`, and the consolidated design.
 
 ## Ingestion
 
@@ -54,6 +54,7 @@ Current product-level requirements and implementation design are consolidated in
 |---|---|---|
 | Continuity types | REQ-SCO-01 | Thought, process, session. |
 | Session ingestion | REQ-SCO-02, REQ-SCO-03 | Session IDs and project/session clusters. |
+| Prompt iteration records | REQ-SCO-01 to REQ-SCO-03 | Initial `session_continuity` records persist the latest/recent prompt cycle per session with prompt, domains, exchange ID, focus/used/active nodes, controller decision, evidence summary, answer preview, and process-trace summary. CLI/API/work-mode panel inspection exists; richer record expansion and prompt seeding remain open. |
 | Continuity-critical flag | REQ-SCO-04, REQ-SCO-05 | Flag, not label type; must survive compression. |
 | Restart state | REQ-SCO-06, REQ-SCO-07 | Graph node is source of truth; `.restart.md` is rendered view. |
 | Endorsement | REQ-END-01 to REQ-END-05 | Natural language endorsement, chunk-level writes, clarify if ambiguous. |

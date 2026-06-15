@@ -1,8 +1,10 @@
 # V1 Known Limitations
 
-Date: 2026-06-14
+Date: 2026-06-15
 
 Tirzah V1 is complete as a local memory workbench: ingestion, inspection, retrieval, sessions, active documents, generated-output review, semantic-edge review, governance listings, and readable activity logs are implemented across CLI and web surfaces. The limits below describe what remains scaffolded or post-V1, so release and checklist language stays precise.
+
+This file incorporates the durable findings from the June 14 review artifacts now filed under `docs/reviews/`.
 
 ## Persistence And Recovery
 
@@ -19,7 +21,7 @@ Tirzah V1 is complete as a local memory workbench: ingestion, inspection, retrie
 ## Continuity
 
 - Sessions, exchanges, active documents, used nodes, and context metadata are persisted.
-- The richer last-prompt-iteration artifact described in the requirements is not yet first-class: rejected chunks, full controller proposal, final context package, unresolved follow-ups, and a dedicated continuity panel remain post-V1 work.
+- Initial first-class prompt-iteration records are persisted in `session_continuity` and exposed through CLI/API inspection plus the Ask workspace continuity panel. Rejected-chunk expansion, full final context package display, unresolved follow-ups, and follow-up prompt seeding remain post-V1 work.
 
 ## Governance
 
