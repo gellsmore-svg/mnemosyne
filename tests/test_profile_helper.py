@@ -57,7 +57,7 @@ def test_profile_helper_returns_vector_json(monkeypatch) -> None:
 def test_profile_helper_shows_help_without_reading_stdin(monkeypatch) -> None:
     module = load_profile_helper()
 
-    code, stdout, stderr = run_helper(module, monkeypatch, "", ["profile_helper.py", "--help"])
+    code, stdout, stderr = run_helper(module, monkeypatch, "{not-json", ["profile_helper.py", "--help"])
 
     assert code == 0
     assert stderr == ""
@@ -65,15 +65,35 @@ def test_profile_helper_shows_help_without_reading_stdin(monkeypatch) -> None:
     assert module.SUPPORTED_MODEL in stdout
 
 
+def test_profile_helper_short_help_without_reading_stdin(monkeypatch) -> None:
+    module = load_profile_helper()
+
+    code, stdout, stderr = run_helper(module, monkeypatch, "{not-json", ["profile_helper.py", "-h"])
+
+    assert code == 0
+    assert stderr == ""
+    assert "usage: profile_helper.py [--worker]" in stdout
+
+
 def test_packaged_profile_helper_shows_help_without_reading_stdin(monkeypatch) -> None:
     module = load_packaged_profile_helper()
 
-    code, stdout, stderr = run_helper(module, monkeypatch, "", ["tirzah-profile-helper", "--help"])
+    code, stdout, stderr = run_helper(module, monkeypatch, "{not-json", ["tirzah-profile-helper", "--help"])
 
     assert code == 0
     assert stderr == ""
     assert "usage: tirzah-profile-helper [--worker]" in stdout
     assert module.SUPPORTED_MODEL in stdout
+
+
+def test_packaged_profile_helper_short_help_without_reading_stdin(monkeypatch) -> None:
+    module = load_packaged_profile_helper()
+
+    code, stdout, stderr = run_helper(module, monkeypatch, "{not-json", ["tirzah-profile-helper", "-h"])
+
+    assert code == 0
+    assert stderr == ""
+    assert "usage: tirzah-profile-helper [--worker]" in stdout
 
 
 def test_profile_helper_rejects_empty_stdin(monkeypatch) -> None:
