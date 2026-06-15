@@ -7,6 +7,17 @@ from typing import Any
 
 SUPPORTED_MODEL = "BAAI/bge-small-en-v1.5"
 _EMBEDDER: Any = None
+HELP_TEXT = f"""usage: tirzah-profile-helper [--worker]
+
+Local text-similarity profile helper for Tirzah.
+
+Reads JSON requests with fields "model" and "text" and writes JSON responses
+containing "vector". Supported model: {SUPPORTED_MODEL}
+
+Options:
+  --worker    read one JSON request per stdin line and write one response per line
+  -h, --help  show this help message and exit
+"""
 
 
 def load_embedder() -> Any:
@@ -86,6 +97,9 @@ def run_worker() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv
+    if any(arg in {"-h", "--help"} for arg in args[1:]):
+        sys.stdout.write(HELP_TEXT)
+        return 0
     if "--worker" in args[1:]:
         return run_worker()
     try:

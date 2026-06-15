@@ -79,6 +79,17 @@ from typing import Any
 # requested via stdin (set in runtime.embedding_model), the helper errors
 # out rather than silently lying about which model produced the vector.
 SUPPORTED_MODEL = "BAAI/bge-small-en-v1.5"
+HELP_TEXT = f"""usage: profile_helper.py [--worker]
+
+Local text-similarity profile helper for Tirzah.
+
+Reads JSON requests with fields "model" and "text" and writes JSON responses
+containing "vector". Supported model: {SUPPORTED_MODEL}
+
+Options:
+  --worker    read one JSON request per stdin line and write one response per line
+  -h, --help  show this help message and exit
+"""
 
 # Module-level cache for the embedder. Under the current per-call
 # subprocess contract this only saves time within a single process
@@ -208,6 +219,9 @@ def run_worker() -> int:
 
 
 def main(argv: list[str]) -> int:
+    if any(arg in {"-h", "--help"} for arg in argv[1:]):
+        sys.stdout.write(HELP_TEXT)
+        return 0
     if "--worker" in argv[1:]:
         return run_worker()
 
