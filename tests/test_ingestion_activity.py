@@ -55,6 +55,8 @@ def test_ingestion_activity_log_summarizes_success() -> None:
     assert "Semantic processing: mock generated 1 node(s)." in log
     assert "Relationship hints: 1 proposed by ingestion." in log
     assert "Repository write: document doc1" in log
+    assert "Queue job:" not in log
+    assert "Process run:" not in log
 
 
 def test_ingestion_activity_log_summarizes_duplicate() -> None:
@@ -72,6 +74,8 @@ def test_ingestion_activity_log_summarizes_duplicate() -> None:
     assert "Status: rejected." in log
     assert "Outcome reason: duplicate_checksum." in log
     assert "Existing document: doc1." in log
+    assert "Queue job:" not in log
+    assert "Process run:" not in log
 
 
 def test_ingestion_activity_log_summarizes_queue_metadata() -> None:
@@ -85,6 +89,8 @@ def test_ingestion_activity_log_summarizes_queue_metadata() -> None:
 
     log = ingestion_activity_log(report)
 
+    assert report["queue"]["job_id"] == "job1"
+    assert report["queue"]["process_run_id"] == "run1"
     assert "Queue job: job1." in log
     assert "Process run: run1." in log
 

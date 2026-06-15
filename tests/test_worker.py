@@ -52,6 +52,8 @@ def test_activity_for_worker_failure_matches_activity_fields(tmp_path: Path) -> 
     )
 
     assert fields == ingestion_activity_fields(report)
+    assert "Queue job: job1." in fields["activity_log"]
+    assert "Process run: run1." in fields["activity_log"]
 
 
 def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path) -> None:
@@ -123,6 +125,63 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
             "exception": None,
         }
     ]
+
+
+def test_process_next_continues_when_process_run_creation_fails(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import tirzah.ingestion.worker as worker
+
+    completed_jobs = []
+    job_id = ObjectId()
+    source = tmp_path / "source.md"
+    source.write_text("# Source\n\nText.", encoding="utf-8")
+
+    def raise_process_error(_db, **kwargs):
+        raise RuntimeError("governance unavailable")
+
+    def fail_update_process_run(_db, run_id, **kwargs):
+        raise AssertionError("no process run should be updated")
+
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending",
+        lambda _db: {
+            "_id": job_id,
+            "path": str(source),
+            "checksum_sha256": "abc123",
+            "attempts": 1,
+        },
+    )
+    monkeypatch.setattr(worker, "archive_source", lambda path, archive_dir, checksum: tmp_path / "archive.md")
+    monkeypatch.setattr(worker, "move_request_file", lambda path, destination, checksum: tmp_path / "processed.md")
+    monkeypatch.setattr(
+        worker,
+        "commit_ingestion",
+        lambda _db, result, embedder=None: {"document_id": "doc1", "tree_id": "tree1", "node_ids": ["node1"]},
+    )
+    monkeypatch.setattr(
+        worker,
+        "complete_job",
+        lambda _db, _job_id, inserted: completed_jobs.append(
+            {"job_id": _job_id, "inserted": inserted}
+        ),
+    )
+    monkeypatch.setattr(worker, "create_process_run", raise_process_error)
+    monkeypatch.setattr(worker, "update_process_run", fail_update_process_run)
+
+    result = process_next(FakeDb(), AppConfig())
+
+    assert result["ok"] is True
+    assert result["job_id"] == str(job_id)
+    assert result["process_run_id"] is None
+    assert result["activity_report"]["queue"]["job_id"] == str(job_id)
+    assert result["activity_report"]["queue"]["process_run_id"] is None
+    assert f"Queue job: {job_id}." in result["activity_log"]
+    assert "Process run:" not in result["activity_log"]
+    assert completed_jobs[0]["job_id"] == job_id
+    assert "Process run:" not in completed_jobs[0]["inserted"]["activity_log"]
 
 
 def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch, tmp_path: Path) -> None:
