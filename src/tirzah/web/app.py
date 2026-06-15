@@ -35,6 +35,7 @@ from tirzah.db.governance import (
 )
 from tirzah.db.health import memory_health_payload
 from tirzah.db.indexes import ensure_indexes
+from tirzah.db.serializers import serialize_queue_job, serialize_queue_summary
 from tirzah.db.repositories import (
     backfill_node_embeddings,
     enqueue_semantic_edge_candidates,
@@ -1059,35 +1060,6 @@ def ingest_folder_file_rows(ingest_dir: Path) -> list[dict[str, Any]]:
 
 def ingest_folder_sort_key(row: dict[str, Any]) -> tuple[str, str]:
     return (row.get("origin_date") or "9999-12-31", row.get("path") or "")
-
-
-def serialize_queue_job(job: dict[str, Any]) -> dict[str, Any]:
-    serialized = dict(job)
-    serialized["_id"] = str(serialized["_id"])
-    if serialized.get("existing_document_id"):
-        serialized["existing_document_id"] = str(serialized["existing_document_id"])
-    if serialized.get("existing_queue_id"):
-        serialized["existing_queue_id"] = str(serialized["existing_queue_id"])
-    if serialized.get("result"):
-        result = dict(serialized["result"])
-        if result.get("document_id"):
-            result["document_id"] = str(result["document_id"])
-        serialized["result"] = result
-    for field in ("created_at", "updated_at"):
-        if serialized.get(field):
-            serialized[field] = serialized[field].isoformat()
-    return serialized
-
-
-def serialize_queue_summary(summary: dict[str, Any]) -> dict[str, Any]:
-    serialized = dict(summary)
-    if serialized.get("oldest_pending"):
-        oldest_pending = dict(serialized["oldest_pending"])
-        oldest_pending["_id"] = str(oldest_pending["_id"])
-        if oldest_pending.get("created_at"):
-            oldest_pending["created_at"] = oldest_pending["created_at"].isoformat()
-        serialized["oldest_pending"] = oldest_pending
-    return serialized
 
 
 def list_ingestion_epochs(db: Any, limit: int = 8) -> list[dict[str, Any]]:

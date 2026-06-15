@@ -20,9 +20,8 @@ from tirzah.web.app import (
     profile_adapter_status,
     process_inbox_activity_log,
     recommended_embedding_backfill_job,
-    serialize_queue_job,
-    serialize_queue_summary,
 )
+from tirzah.db.serializers import serialize_queue_job, serialize_queue_summary
 
 
 class SimpleEpochDb:

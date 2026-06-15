@@ -1,5 +1,6 @@
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -634,6 +635,63 @@ def test_cli_process_embedding_backfill_command(monkeypatch, capsys) -> None:
         "embedder": "fake_embedding",
         "max_batches": 4,
     }
+
+
+def test_cli_queue_status_serializes_without_mutating_summary(monkeypatch, capsys) -> None:
+    job_id = ObjectId()
+    timestamp = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    summary = {
+        "total": 1,
+        "statuses": {"pending": 1},
+        "oldest_pending": {
+            "_id": job_id,
+            "path": "data/ingest/source.md",
+            "created_at": timestamp,
+            "attempts": 0,
+        },
+    }
+    monkeypatch.setattr(sys, "argv", ["tirzah", "queue-status"])
+    monkeypatch.setattr("tirzah.cli.load_config", lambda _path: SimpleNamespace(mongo=SimpleNamespace()))
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.queue_summary", lambda _db: summary)
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["oldest_pending"]["_id"] == str(job_id)
+    assert output["oldest_pending"]["created_at"] == "2026-06-15T00:00:00+00:00"
+    assert summary["oldest_pending"]["_id"] == job_id
+    assert summary["oldest_pending"]["created_at"] == timestamp
+
+
+def test_cli_queue_recent_serializes_without_mutating_jobs(monkeypatch, capsys) -> None:
+    job_id = ObjectId()
+    document_id = ObjectId()
+    timestamp = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    jobs = [
+        {
+            "_id": job_id,
+            "path": "data/ingest/source.md",
+            "status": "completed",
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "result": {"document_id": document_id},
+        }
+    ]
+    monkeypatch.setattr(sys, "argv", ["tirzah", "queue-recent"])
+    monkeypatch.setattr("tirzah.cli.load_config", lambda _path: SimpleNamespace(mongo=SimpleNamespace()))
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.cli.recent_jobs", lambda *_args, **_kwargs: jobs)
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["jobs"][0]["_id"] == str(job_id)
+    assert output["jobs"][0]["result"]["document_id"] == str(document_id)
+    assert jobs[0]["_id"] == job_id
+    assert jobs[0]["result"]["document_id"] == document_id
 
 
 def test_cli_queue_profile_backfill_alias(monkeypatch, capsys) -> None:

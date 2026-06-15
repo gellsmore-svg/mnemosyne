@@ -28,6 +28,7 @@ from tirzah.db.governance import (
 )
 from tirzah.db.health import memory_health_payload, render_memory_health_text
 from tirzah.db.indexes import ensure_indexes
+from tirzah.db.serializers import serialize_queue_job, serialize_queue_summary
 from tirzah.db.repositories import (
     DuplicateSourceError,
     backfill_node_embeddings,
@@ -1256,13 +1257,7 @@ def main() -> None:
 
     if args.command == "queue-status":
         ensure_indexes(db)
-        summary = queue_summary(db)
-        if summary["oldest_pending"]:
-            summary["oldest_pending"]["_id"] = str(summary["oldest_pending"]["_id"])
-            summary["oldest_pending"]["created_at"] = summary["oldest_pending"][
-                "created_at"
-            ].isoformat()
-        print(json.dumps({"ok": True, **summary}, indent=2))
+        print(json.dumps({"ok": True, **serialize_queue_summary(queue_summary(db))}, indent=2))
         return
 
     if args.command == "labels":
@@ -1938,23 +1933,16 @@ def main() -> None:
 
     if args.command == "queue-recent":
         ensure_indexes(db)
-        jobs = []
-        for job in recent_jobs(
-            db,
-            limit=args.limit,
-            status=args.status,
-            query_text=args.query,
-            reason=args.reason,
-        ):
-            job["_id"] = str(job["_id"])
-            if job.get("existing_document_id"):
-                job["existing_document_id"] = str(job["existing_document_id"])
-            if job.get("existing_queue_id"):
-                job["existing_queue_id"] = str(job["existing_queue_id"])
-            for field in ("created_at", "updated_at"):
-                if job.get(field):
-                    job[field] = job[field].isoformat()
-            jobs.append(job)
+        jobs = [
+            serialize_queue_job(job)
+            for job in recent_jobs(
+                db,
+                limit=args.limit,
+                status=args.status,
+                query_text=args.query,
+                reason=args.reason,
+            )
+        ]
         print(json.dumps({"ok": True, "jobs": jobs}, indent=2))
         return
 
