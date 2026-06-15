@@ -46,5 +46,5 @@ def collection_available(db: Any, name: str) -> bool:
         try:
             return name in set(list_collection_names())
         except Exception:
-            pass
+            return False
     return hasattr(db, name)

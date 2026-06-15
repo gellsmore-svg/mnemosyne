@@ -39,6 +39,28 @@ def test_collection_available_uses_collection_inventory_when_available() -> None
     assert collection_available(db, "graph_edges") is False
 
 
+def test_collection_available_inventory_takes_precedence_over_attributes() -> None:
+    db = FakeDb(existing=set())
+    db.documents = object()
+
+    assert collection_available(db, "documents") is False
+
+
+def test_collection_available_handles_pymongo_like_synthetic_attributes() -> None:
+    db = PymongoLikeDb(existing={"documents"})
+
+    assert hasattr(db, "graph_edges") is True
+    assert collection_available(db, "documents") is True
+    assert collection_available(db, "graph_edges") is False
+
+
+def test_collection_available_fails_closed_when_inventory_is_unavailable() -> None:
+    db = RaisingInventoryDb()
+    db.documents = object()
+
+    assert collection_available(db, "documents") is False
+
+
 def test_collection_available_falls_back_to_attribute_guard_without_inventory() -> None:
     db = AttributeOnlyDb()
     db.documents = object()
@@ -67,3 +89,21 @@ class FakeDb:
 
 class AttributeOnlyDb:
     pass
+
+
+class PymongoLikeDb:
+    def __init__(self, *, existing: set[str]) -> None:
+        self.existing = set(existing)
+
+    def list_collection_names(self) -> list[str]:
+        return sorted(self.existing)
+
+    def __getattr__(self, name: str) -> object:
+        return object()
+
+
+class RaisingInventoryDb:
+    documents = object()
+
+    def list_collection_names(self) -> list[str]:
+        raise RuntimeError("inventory unavailable")
