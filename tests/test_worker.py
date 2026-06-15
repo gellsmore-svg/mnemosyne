@@ -201,9 +201,12 @@ def test_process_next_continues_when_process_run_creation_fails(
         "job_id": str(job_id),
         "process_run_id": None,
     }
+    assert "Ingestion Activity Log" in result["activity_log"]
     assert f"Queue job: {job_id}." in result["activity_log"]
     assert "Process run:" not in result["activity_log"]
+    assert "Repository write: document doc1" in result["activity_log"]
     assert completed_jobs[0]["job_id"] == job_id
+    assert completed_jobs[0]["inserted"]["activity_log"] == result["activity_log"]
     assert completed_jobs[0]["inserted"]["activity_report"]["queue"] == {
         "job_id": str(job_id),
         "process_run_id": None,
@@ -393,6 +396,7 @@ def test_process_next_failure_paths_continue_when_process_run_creation_fails(
         }
     assert f"Queue job: {job_id}." in result["activity_log"]
     assert "Process run:" not in result["activity_log"]
+    assert f"Outcome reason: {expected_reason}." in result["activity_log"]
     if scenario == "duplicate":
         assert "Semantic processing: mock generated" in result["activity_log"]
         assert "Existing document:" in result["activity_log"]
