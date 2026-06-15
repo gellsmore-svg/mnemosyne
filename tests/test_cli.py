@@ -21,6 +21,7 @@ from tirzah.cli import (
 )
 from tirzah.db.health import memory_health_payload, render_memory_health_text
 from tirzah.db.repositories import DuplicateSourceError
+from tirzah.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
 
 def test_discover_folder_sources_finds_markdown_and_text(tmp_path: Path) -> None:
@@ -378,6 +379,57 @@ def test_rebuild_document_uses_original_source_path_for_adapter_title(
 
     assert result["ok"] is True
     assert captured["title"] == "original-name"
+
+
+def test_ingest_source_path_uses_configured_ingestion_adapter(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "source.md"
+    source.write_text("# Source\n\nText.", encoding="utf-8")
+    config = SimpleNamespace(
+        runtime=SimpleNamespace(ingestion_adapter="fake_ingestion", embedding_adapter="mock"),
+        paths=SimpleNamespace(archive=tmp_path / "archive"),
+    )
+    captured = {}
+
+    class FakeAdapter:
+        def process(self, path, text, source_kind, extra_labels=None):
+            captured["path"] = path
+            captured["text"] = text
+            captured["source_kind"] = source_kind
+            captured["extra_labels"] = extra_labels
+            return IngestionResult(
+                source=SourceRef(path=str(path), kind=source_kind),
+                title="fake title",
+                summary="fake summary",
+                nodes=[
+                    IngestedNode(
+                        node_key="root",
+                        title="fake title",
+                        text="fake summary",
+                        labels=["source_root"],
+                    )
+                ],
+                adapter="fake_ingestion",
+            )
+
+    monkeypatch.setattr("tirzah.cli.find_duplicate_by_checksum", lambda _db, _checksum: None)
+    monkeypatch.setattr("tirzah.cli.ingestion_adapter", lambda runtime: FakeAdapter())
+    monkeypatch.setattr("tirzah.cli.archive_source", lambda path, archive_dir, checksum: tmp_path / "archive.md")
+    monkeypatch.setattr("tirzah.cli.embedding_adapter", lambda _runtime: "embedder")
+    monkeypatch.setattr(
+        "tirzah.cli.commit_ingestion",
+        lambda _db, result, embedder=None: {"document_id": "doc1", "tree_id": "tree1", "node_ids": ["node1"]},
+    )
+
+    result = ingest_source_path("db", config, source, ["custom label"])
+
+    assert result["ok"] is True
+    assert result["activity_report"]["semantic_processing"]["adapter"] == "fake_ingestion"
+    assert captured == {
+        "path": source,
+        "text": "# Source\n\nText.",
+        "source_kind": "md",
+        "extra_labels": ["custom label"],
+    }
 
 
 def test_cli_graph_edges_command(monkeypatch, capsys) -> None:

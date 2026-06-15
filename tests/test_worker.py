@@ -7,6 +7,7 @@ from tirzah.config import AppConfig
 from tirzah.db.repositories import DuplicateSourceError
 from tirzah.ingestion.activity import ingestion_activity_fields, ingestion_activity_report
 from tirzah.ingestion.worker import activity_for_worker_failure, discover_sources, process_next
+from tirzah.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
 from test_repositories import FakeDb as RepoFakeDb
 
@@ -146,6 +147,75 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
             "exception": None,
         }
     ]
+
+
+def test_process_next_uses_configured_ingestion_adapter(monkeypatch, tmp_path: Path) -> None:
+    import tirzah.ingestion.worker as worker
+
+    completed_jobs = []
+    job_id = ObjectId()
+    source = tmp_path / "source.md"
+    source.write_text("# Source\n\nText.", encoding="utf-8")
+    config = AppConfig()
+    config.runtime.ingestion_adapter = "fake_ingestion"
+    captured = {}
+
+    class FakeAdapter:
+        def process(self, path, text, source_kind, extra_labels=None):
+            captured["path"] = path
+            captured["text"] = text
+            captured["source_kind"] = source_kind
+            captured["extra_labels"] = extra_labels
+            return IngestionResult(
+                source=SourceRef(path=str(path), kind=source_kind),
+                title="fake title",
+                summary="fake summary",
+                nodes=[
+                    IngestedNode(
+                        node_key="root",
+                        title="fake title",
+                        text="fake summary",
+                        labels=["source_root"],
+                    )
+                ],
+                adapter="fake_ingestion",
+            )
+
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending",
+        lambda _db: {
+            "_id": job_id,
+            "path": str(source),
+            "checksum_sha256": "abc123",
+            "attempts": 1,
+        },
+    )
+    monkeypatch.setattr(worker, "ingestion_adapter", lambda runtime: FakeAdapter())
+    monkeypatch.setattr(worker, "archive_source", lambda path, archive_dir, checksum: tmp_path / "archive.md")
+    monkeypatch.setattr(worker, "move_request_file", lambda path, destination, checksum: tmp_path / "processed.md")
+    monkeypatch.setattr(
+        worker,
+        "commit_ingestion",
+        lambda _db, result, embedder=None: {"document_id": "doc1", "tree_id": "tree1", "node_ids": ["node1"]},
+    )
+    monkeypatch.setattr(
+        worker,
+        "complete_job",
+        lambda _db, _job_id, inserted: completed_jobs.append({"job_id": _job_id, "inserted": inserted}),
+    )
+
+    result = process_next(FakeDb(), config)
+
+    assert result["ok"] is True
+    assert result["activity_report"]["semantic_processing"]["adapter"] == "fake_ingestion"
+    assert captured == {
+        "path": source,
+        "text": "# Source\n\nText.",
+        "source_kind": "md",
+        "extra_labels": None,
+    }
+    assert completed_jobs[0]["inserted"]["activity_report"]["semantic_processing"]["adapter"] == "fake_ingestion"
 
 
 def test_process_next_continues_when_process_run_creation_fails(

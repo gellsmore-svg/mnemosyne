@@ -22,6 +22,7 @@ class PathConfig(BaseModel):
 class RuntimeConfig(BaseModel):
     model_adapter: str = "mock"
     answer_adapter: str = "ollama_cli"
+    ingestion_adapter: str = "mock"
     embedding_adapter: str = "mock"
     allow_http_ingestion_adapters: bool = False
     embedding_model: str = "nomic-embed-text:latest"

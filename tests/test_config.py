@@ -86,6 +86,21 @@ runtime:
     assert config.runtime.profile_command == ["python", "tools/profile.py"]
 
 
+def test_load_config_reads_ingestion_adapter(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+runtime:
+  ingestion_adapter: mock
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_file)
+
+    assert config.runtime.ingestion_adapter == "mock"
+
+
 def test_load_config_accepts_unquoted_ollama_think_false(tmp_path: Path) -> None:
     config_file = tmp_path / "config.yaml"
     config_file.write_text(

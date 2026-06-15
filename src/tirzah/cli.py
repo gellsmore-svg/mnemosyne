@@ -8,7 +8,7 @@ import yaml
 from bson import ObjectId
 
 from tirzah.adapters.embedding import embedding_adapter
-from tirzah.adapters.mock import MockIngestionAdapter
+from tirzah.adapters.ingestion import ingestion_adapter
 from tirzah.config import AppConfig, load_config
 from tirzah.db.client import get_database
 from tirzah.db.governance import (
@@ -178,7 +178,7 @@ def ingest_source_path(
         return attach_ingestion_activity(rejected, report)
 
     text, source_kind = read_text_source(path)
-    result = MockIngestionAdapter().process(
+    result = ingestion_adapter(config.runtime).process(
         path,
         text,
         source_kind,
@@ -295,6 +295,7 @@ def rebuild_document_from_existing_source(
     document_id: str,
     source_override: str | None = None,
     ingestion_epoch: str | None = None,
+    runtime_config=None,
 ) -> dict:
     document = get_document(db, document_id)
     if not document:
@@ -319,7 +320,7 @@ def rebuild_document_from_existing_source(
         }
     text, source_kind = read_text_source(source_path)
     adapter_path = Path(source.get("path") or source_path)
-    result = MockIngestionAdapter().process(
+    result = ingestion_adapter(runtime_config).process(
         adapter_path,
         text,
         source_kind,
@@ -2063,6 +2064,7 @@ def main() -> None:
                     args.document_id,
                     args.source,
                     ingestion_epoch=args.ingestion_epoch,
+                    runtime_config=config.runtime,
                 ),
                 indent=2,
             )
@@ -2079,6 +2081,7 @@ def main() -> None:
                 db,
                 document_id,
                 ingestion_epoch=args.ingestion_epoch,
+                runtime_config=config.runtime,
             )
             for document_id in document_ids
         ]

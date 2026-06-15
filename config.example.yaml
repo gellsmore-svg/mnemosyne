@@ -12,6 +12,7 @@ paths:
 runtime:
   model_adapter: mock
   answer_adapter: ollama_cli
+  ingestion_adapter: mock
   embedding_adapter: mock
   # HTTP-backed embedding adapters are not compliant for ingestion/retrieval memory operations.
   allow_http_ingestion_adapters: false

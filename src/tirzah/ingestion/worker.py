@@ -6,7 +6,7 @@ from typing import Any
 from pymongo.database import Database
 
 from tirzah.adapters.embedding import embedding_adapter
-from tirzah.adapters.mock import MockIngestionAdapter
+from tirzah.adapters.ingestion import ingestion_adapter
 from tirzah.config import AppConfig
 from tirzah.db.governance import create_process_run, update_process_run
 from tirzah.db.queue import claim_next_pending, complete_job, fail_job, reject_job, retry_job
@@ -70,7 +70,7 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
 
     try:
         text, source_kind = read_text_source(path)
-        result = MockIngestionAdapter().process(path, text, source_kind)
+        result = ingestion_adapter(config.runtime).process(path, text, source_kind)
         annotate_source_dates(result, path, text)
         archived_path = archive_source(path, config.paths.archive, checksum)
         result.source.checksum_sha256 = checksum
