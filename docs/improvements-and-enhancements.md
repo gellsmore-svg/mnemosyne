@@ -418,6 +418,24 @@ This document complements (and does not duplicate) the staged roadmap in `docs/b
 **Priority:** Medium
 **Related:** archive paths, rebuild logic, domains/registry.py.
 
+### 10.3 Kafka-Backed Hoglah Delivery Adapter
+**Status:** Future feature; details blocked until Hoglah defines its Kafka capability surface.
+
+**Description:** Add optional Tirzah support for routing Hoglah-bound answer and embedding jobs through Kafka once Hoglah exposes Kafka producers/consumers or a compatible transport contract.
+
+**Rationale:** Hoglah is already the durability boundary for queued model work. Kafka could provide a higher-throughput, multi-process, observable delivery layer for Hoglah-backed deployments while preserving Tirzah's local-first submitter role.
+
+**Approach notes:**
+- Treat Kafka as an optional Hoglah transport, not as a replacement for Tirzah's Mongo-backed memory store or review queues.
+- Keep Tirzah as a pure submitter: Tirzah should publish/consume only the minimal Hoglah job/result envelope that Hoglah specifies, while the Hoglah daemon owns execution, retry semantics, and any Ollama/worker calls.
+- Preserve existing `hoglah_delivery: poll` and `hoglah_delivery: callback` behavior as the default, simpler local modes.
+- Require explicit config for Kafka bootstrap servers, topic names, consumer group IDs, and delivery timeouts; do not enable Kafka implicitly.
+- Keep the local memory interface boundary intact: Kafka transport must remain local/operator-configured IPC for memory-critical answer/embedding paths, not a hosted-service dependency.
+- Add smoke tests only after Hoglah's Kafka contract is stable, using a local single-node Kafka broker.
+
+**Priority:** Low-to-Medium until Hoglah Kafka support exists; can become Medium if multi-worker Hoglah deployment becomes a near-term need.
+**Related:** `src/tirzah/adapters/hoglah_runtime.py`, Hoglah runtime config, README "Routing via Hoglah", local Kafka operator setup.
+
 ---
 
 ## 11. Evaluation, Testing & Benchmarking
