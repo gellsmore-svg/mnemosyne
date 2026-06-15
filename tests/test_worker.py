@@ -251,12 +251,16 @@ def test_process_next_source_missing_continues_when_process_run_creation_fails(
     assert result["status"] == "failed"
     assert result["job_id"] == str(job_id)
     assert result["process_run_id"] is None
-    assert result["activity_report"]["queue"]["job_id"] == str(job_id)
-    assert result["activity_report"]["queue"]["process_run_id"] is None
+    assert result["activity_report"]["queue"] == {
+        "job_id": str(job_id),
+        "process_run_id": None,
+    }
     assert result["activity_report"]["outcome"]["reason"] == "source_missing"
     assert result["activity_report"]["outcome"]["details"] == {"path": str(missing)}
     assert f"Queue job: {job_id}." in result["activity_log"]
     assert "Process run:" not in result["activity_log"]
+    assert "Outcome reason: source_missing." in result["activity_log"]
+    assert "Restore source file and retry." in result["activity_log"]
     assert failed_jobs == [
         {
             "job_id": job_id,
@@ -368,10 +372,28 @@ def test_process_next_failure_paths_continue_when_process_run_creation_fails(
         "process_run_id": None,
     }
     assert result["activity_report"]["outcome"]["reason"] == expected_reason
+    if scenario == "duplicate":
+        assert result["activity_report"]["outcome"]["details"] == {
+            "checksum_sha256": "commit-checksum",
+            "existing_document_id": str(existing_document_id),
+            "dead_letter_path": str(tmp_path / "duplicate.md"),
+        }
+    elif scenario == "retrying":
+        assert result["activity_report"]["outcome"]["details"] == {
+            "path": str(source),
+            "error": "adapter unavailable",
+        }
+    else:
+        assert result["activity_report"]["outcome"]["details"] == {
+            "path": str(source),
+            "error": "bad source",
+            "dead_letter_path": str(tmp_path / "failed.md"),
+        }
     assert f"Queue job: {job_id}." in result["activity_log"]
     assert "Process run:" not in result["activity_log"]
     assert actions[0]["job_id"] == job_id
     assert actions[0]["reason"] == expected_reason
+    assert actions[0]["details"] == result["activity_report"]["outcome"]["details"]
 
 
 def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch, tmp_path: Path) -> None:
