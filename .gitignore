@@ -15,3 +15,8 @@ data/staging/*
 !data/dead_letter/.gitkeep
 !data/ingest/.gitkeep
 !data/staging/.gitkeep
+
+# Internal working/state docs — never publish
+.restart.md
+.restart.md.*.bak
+.session-log.md
