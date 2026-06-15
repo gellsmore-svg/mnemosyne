@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from bson import ObjectId
 
 from tirzah.config import AppConfig
@@ -68,7 +69,7 @@ def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path)
             "_id": ObjectId(),
             "path": str(source),
             "checksum_sha256": "abc123",
-            "attempts": 0,
+            "attempts": 1,
         },
     )
     monkeypatch.setattr(worker, "archive_source", lambda path, archive_dir, checksum: tmp_path / "archive.md")
@@ -119,6 +120,7 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
     import tirzah.ingestion.worker as worker
 
     updates = []
+    failed_jobs = []
     missing = tmp_path / "missing.md"
 
     monkeypatch.setattr(
@@ -128,10 +130,16 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
             "_id": ObjectId(),
             "path": str(missing),
             "checksum_sha256": "abc123",
-            "attempts": 0,
+            "attempts": 1,
         },
     )
-    monkeypatch.setattr(worker, "fail_job", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        worker,
+        "fail_job",
+        lambda _db, _job_id, reason, details: failed_jobs.append(
+            {"reason": reason, "details": details}
+        ),
+    )
     monkeypatch.setattr(
         worker,
         "create_process_run",
@@ -155,6 +163,9 @@ def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch,
     assert result["activity_log"].startswith("Ingestion Activity Log")
     assert "Outcome reason: source_missing." in result["activity_log"]
     assert "Restore source file and retry." in result["activity_log"]
+    assert failed_jobs == [
+        {"reason": "source_missing", "details": {"path": str(missing)}}
+    ]
     assert updates[0]["status"] == "blocked"
     assert updates[0]["current_step_id"] == "source_missing"
     assert updates[0]["exception"]["reason"] == "source_missing"
@@ -237,9 +248,11 @@ def test_process_next_rejects_duplicate_with_activity_fields(monkeypatch, tmp_pa
     assert updates[0]["exception"]["reason"] == "duplicate_checksum"
 
 
+@pytest.mark.parametrize("attempts", [1, 2])
 def test_process_next_retries_transient_error_with_activity_fields(
     monkeypatch,
     tmp_path: Path,
+    attempts: int,
 ) -> None:
     import tirzah.ingestion.worker as worker
 
@@ -258,7 +271,7 @@ def test_process_next_retries_transient_error_with_activity_fields(
             "_id": ObjectId(),
             "path": str(source),
             "checksum_sha256": "abc123",
-            "attempts": 1,
+            "attempts": attempts,
         },
     )
     monkeypatch.setattr(worker, "read_text_source", raise_runtime)
@@ -284,7 +297,7 @@ def test_process_next_retries_transient_error_with_activity_fields(
 
     assert result["ok"] is False
     assert result["status"] == "retrying"
-    assert result["attempts"] == 1
+    assert result["attempts"] == attempts
     assert result["max_attempts"] == 3
     assert result["activity_report"]["status"] == "retrying"
     assert result["activity_report"]["outcome"]["reason"] == "RuntimeError"
@@ -385,7 +398,7 @@ def test_process_next_persists_embeddings_through_worker_ingestion(monkeypatch, 
             "_id": ObjectId(),
             "path": str(source),
             "checksum_sha256": "worker-checksum",
-            "attempts": 0,
+            "attempts": 1,
         },
     )
     monkeypatch.setattr(worker, "archive_source", lambda path, archive_dir, checksum: tmp_path / "archive.md")
