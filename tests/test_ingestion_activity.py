@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from tirzah.ingestion.activity import (
+    attach_ingestion_activity,
     ingestion_activity_fields,
     ingestion_activity_log,
     ingestion_activity_report,
@@ -84,3 +85,17 @@ def test_ingestion_activity_fields_returns_report_and_log() -> None:
 
     assert fields["activity_report"] is report
     assert fields["activity_log"].startswith("Ingestion Activity Log")
+
+
+def test_attach_ingestion_activity_mutates_and_returns_result() -> None:
+    result = {"ok": True}
+    report = ingestion_activity_report(
+        path="source.md",
+        status="completed",
+        checksum_sha256="abc123",
+    )
+
+    returned = attach_ingestion_activity(result, report)
+
+    assert returned is result
+    assert result == {"ok": True, **ingestion_activity_fields(report)}

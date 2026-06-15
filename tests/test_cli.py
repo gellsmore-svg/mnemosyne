@@ -12,6 +12,7 @@ from tirzah.cli import (
     document_ids_for_label,
     destructive_rebuild_refusal,
     existing_document_extra_labels,
+    ingest_source_path,
     init_config_payload,
     main,
     rebuild_document_from_existing_source,
@@ -692,6 +693,50 @@ def test_cli_queue_recent_serializes_without_mutating_jobs(monkeypatch, capsys) 
     assert output["jobs"][0]["result"]["document_id"] == str(document_id)
     assert jobs[0]["_id"] == job_id
     assert jobs[0]["result"]["document_id"] == document_id
+
+
+def test_ingest_source_path_success_returns_activity_fields(monkeypatch, tmp_path: Path) -> None:
+    source_path = tmp_path / "source.md"
+    source_path.write_text("# Source\n\nBody.", encoding="utf-8")
+    archive_path = tmp_path / "archive" / "source.md"
+    config = SimpleNamespace(
+        paths=SimpleNamespace(archive=tmp_path / "archive"),
+        runtime=SimpleNamespace(),
+    )
+
+    monkeypatch.setattr("tirzah.cli.sha256_file", lambda _path: "checksum")
+    monkeypatch.setattr("tirzah.cli.find_duplicate_by_checksum", lambda _db, _checksum: None)
+    monkeypatch.setattr(
+        "tirzah.cli.archive_source",
+        lambda _path, _archive_root, _checksum: archive_path,
+    )
+    monkeypatch.setattr("tirzah.cli.embedding_adapter", lambda _runtime: "embedder")
+    monkeypatch.setattr(
+        "tirzah.cli.commit_ingestion",
+        lambda _db, result, embedder=None: {
+            "document_id": "doc1",
+            "tree_id": "tree1",
+            "node_ids": ["node1"],
+            "ingestion_epoch": result.ingestion_epoch,
+            "embedded_node_count": 1,
+            "embedding_model": "mock",
+            "embedding_dimensions": 16,
+        },
+    )
+
+    result = ingest_source_path(
+        "db",
+        config,
+        source_path,
+        labels=["source_root"],
+        ingestion_epoch="2026-06-15-test",
+    )
+
+    assert result["ok"] is True
+    assert result["document_id"] == "doc1"
+    assert result["activity_report"]["kind"] == "ingestion_activity_report"
+    assert result["activity_report"]["repository_actions"]["document_id"] == "doc1"
+    assert "Repository write: document doc1" in result["activity_log"]
 
 
 def test_cli_queue_profile_backfill_alias(monkeypatch, capsys) -> None:
