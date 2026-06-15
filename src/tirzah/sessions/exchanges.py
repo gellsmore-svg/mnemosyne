@@ -13,6 +13,7 @@ from tirzah.domains.registry import (
     ensure_conversation_domain,
 )
 from tirzah.sessions.active_documents import record_active_documents
+from tirzah.sessions.continuity import persist_prompt_iteration
 from tirzah.sessions.output_ingestion import queue_exchange_output
 from tirzah.sessions.registry import touch_session
 from tirzah.sessions.usage import record_node_usage
@@ -97,6 +98,41 @@ def save_exchange(
             {"_id": result.inserted_id},
             {"$set": {"output_ingestion_job_id": output_job_id}},
         )
+    try:
+        prompt_iteration_id = persist_prompt_iteration(
+            db,
+            exchange_id=exchange_id,
+            session_id=session_id,
+            project_domain_id=project_domain_id,
+            conversation_domain_id=conversation_domain_id,
+            query=query,
+            answer=answer,
+            prompt=prompt,
+            focus_node_id=focus_node_id,
+            used_node_ids=used_node_ids,
+            active_document_ids=active_document_ids,
+            process_trace=process_trace or [],
+        )
+        if prompt_iteration_id:
+            db.exchanges.update_one(
+                {"_id": result.inserted_id},
+                {"$set": {"prompt_iteration_id": prompt_iteration_id}},
+            )
+    except Exception as error:
+        try:
+            db.exchanges.update_one(
+                {"_id": result.inserted_id},
+                {
+                    "$set": {
+                        "prompt_iteration_error": {
+                            "type": type(error).__name__,
+                            "message": str(error),
+                        }
+                    }
+                },
+            )
+        except Exception:
+            pass
     return exchange_id
 
 
@@ -157,5 +193,6 @@ def serialize_exchange(row: dict[str, Any]) -> dict[str, Any]:
         "used_node_ids": row.get("answer", {}).get("used_node_ids", []),
         "scored_node_count": row.get("scored_node_count", 0),
         "output_ingestion_job_id": row.get("output_ingestion_job_id"),
+        "prompt_iteration_id": row.get("prompt_iteration_id"),
         "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
     }

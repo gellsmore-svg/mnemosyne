@@ -67,6 +67,7 @@ from tirzah.retrieval.trust import trust_temporal_diagnostic_for_node
 from tirzah.sessions.exchanges import recent_exchanges
 from tirzah.sessions.interaction import answer_query
 from tirzah.sessions.active_documents import list_active_documents
+from tirzah.sessions.continuity import session_continuity
 from tirzah.sessions.endorsements import (
     list_generated_output_nodes,
     update_node_endorsement,
@@ -878,6 +879,10 @@ def create_app() -> FastAPI:
                 model=model,
             ),
         }
+
+    @app.get("/api/session-continuity")
+    def continuity(session_id: str = "default", limit: int = 5) -> dict[str, Any]:
+        return {"ok": True, **session_continuity(db, session_id=session_id, limit=limit)}
 
     return app
 

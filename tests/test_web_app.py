@@ -133,6 +133,31 @@ def test_memory_health_endpoint(monkeypatch) -> None:
     assert response.json() == {"ok": True, "totals": {"documents": 2}}
 
 
+def test_session_continuity_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+
+    monkeypatch.setattr(
+        "tirzah.web.app.session_continuity",
+        lambda _db, *, session_id, limit: {
+            "session_id": session_id,
+            "limit": limit,
+            "latest": {"exchange_id": "ex1"},
+            "recent": [],
+        },
+    )
+
+    response = client.get("/api/session-continuity", params={"session_id": "s1", "limit": 3})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "session_id": "s1",
+        "limit": 3,
+        "latest": {"exchange_id": "ex1"},
+        "recent": [],
+    }
+
+
 def test_homepage_defaults_to_work_mode_with_developer_toggle() -> None:
     client = TestClient(app)
 
@@ -147,6 +172,8 @@ def test_homepage_defaults_to_work_mode_with_developer_toggle() -> None:
     assert 'class="technical-report developer-only"' in html
     assert 'class="answer-panel trace-panel developer-only"' in html
     assert 'id="model"' in html
+    assert 'id="continuityPanel"' in html
+    assert 'id="refreshContinuity"' in html
 
 
 def test_process_inbox_activity_log_prefers_human_summary() -> None:

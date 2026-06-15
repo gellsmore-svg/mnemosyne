@@ -196,6 +196,51 @@ function evidenceSummaryText(summary) {
   return parts.length ? ` Evidence: ${parts.join("; ")}.` : "";
 }
 
+function renderContinuity(payload) {
+  const latest = payload && payload.latest;
+  if (!latest) {
+    $("continuityPanel").replaceChildren(
+      item(`<strong>No saved prompt iteration</strong><div class="muted">${html(payload?.session_id || $("sessionId").value || "web")}</div>`)
+    );
+    return;
+  }
+  const evidence = latest.evidence_summary || {};
+  const decision = latest.controller_decision || {};
+  const sourceDocuments = Array.isArray(evidence.source_documents) ? evidence.source_documents : [];
+  const trace = Array.isArray(latest.process_trace_summary) ? latest.process_trace_summary : [];
+  const details = document.createElement("details");
+  details.className = "continuity-details";
+  const summary = document.createElement("summary");
+  summary.textContent = "Show continuity detail";
+  const pre = document.createElement("pre");
+  pre.textContent = JSON.stringify(latest, null, 2);
+  details.append(summary, pre);
+  const panel = item(
+    `<strong>${html(latest.query || "Untitled prompt")}</strong>` +
+      `<div>${html(latest.answer_preview || "No answer preview.")}</div>` +
+      `<div class="muted">exchange ${html(latest.exchange_id)} | ${html(latest.answer_adapter)} ${html(latest.answer_model)} | ${html(latest.created_at)}</div>` +
+      `<div class="muted">focus ${html(latest.focus_node_id || "none")} | used nodes ${html(String((latest.used_node_ids || []).length))} | active documents ${html(String((latest.active_document_ids || []).length))}</div>` +
+      `<div class="muted">controller ${html(decision.action || decision.retrieval_status || "recorded")} | evidence ${html(String(evidence.included_node_count || 0))} node(s), ${html(String(sourceDocuments.length))} source document(s)</div>` +
+      `<div class="muted">trace steps ${html(String(trace.length))}</div>`
+  );
+  panel.appendChild(details);
+  $("continuityPanel").replaceChildren(panel);
+}
+
+async function loadContinuity() {
+  const params = new URLSearchParams();
+  params.set("session_id", $("sessionId").value || "web");
+  params.set("limit", "3");
+  try {
+    const data = await api(`/api/session-continuity?${params.toString()}`);
+    renderContinuity(data);
+  } catch (error) {
+    $("continuityPanel").replaceChildren(
+      item(`<strong>Continuity unavailable</strong><div class="muted">${html(error.message)}</div>`)
+    );
+  }
+}
+
 function activityPayload(step) {
   const input = step.input || {};
   const output = step.output || {};
@@ -919,7 +964,7 @@ async function ask() {
     $("answerMeta").innerHTML = `<div class="muted">exchange ${html(data.exchange_id)} | ${html(data.adapter)} ${html(data.model)}</div>`;
     renderActivityReport(data.activity_report, data.activity_log, data.process_trace);
     renderConsole(data.process_trace);
-    await Promise.all([loadSessions(), loadHistory(), loadActiveDocuments()]);
+    await Promise.all([loadSessions(), loadHistory(), loadActiveDocuments(), loadContinuity()]);
   } catch (error) {
     $("answerText").textContent = error.message;
     renderActivityReport(null, "", [
@@ -1250,6 +1295,7 @@ async function refresh() {
     loaders.push(loadDeveloperWorkspace());
   }
   await Promise.all(loaders);
+  await loadContinuity();
 }
 
 async function loadDeveloperWorkspace() {
@@ -1285,6 +1331,7 @@ $("queueEmbeddingBackfill").addEventListener("click", queueEmbeddingBackfillJob)
 $("processEmbeddingBackfillJob").addEventListener("click", processEmbeddingBackfillJob);
 $("loadIngestionStatus").addEventListener("click", loadIngestionStatus);
 $("loadHistory").addEventListener("click", loadHistory);
+$("refreshContinuity").addEventListener("click", loadContinuity);
 $("loadJobs").addEventListener("click", loadJobs);
 $("loadSemanticCandidates").addEventListener("click", loadSemanticCandidates);
 $("enqueueLabelCandidates").addEventListener("click", () => enqueueSemanticCandidates("label_overlap"));
@@ -1298,6 +1345,7 @@ document.querySelectorAll(".tab-button").forEach((button) => {
 $("sessionId").addEventListener("change", () => {
   $("historySession").value = $("sessionId").value;
   loadHistory();
+  loadContinuity();
 });
 $("historyQuery").addEventListener("keydown", (event) => {
   if (event.key === "Enter") loadHistory();

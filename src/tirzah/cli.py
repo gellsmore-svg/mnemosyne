@@ -79,6 +79,7 @@ from tirzah.retrieval.queries import (
 )
 from tirzah.retrieval.trust import trust_temporal_diagnostic_for_node
 from tirzah.sessions.active_documents import list_active_documents
+from tirzah.sessions.continuity import render_session_continuity_text, session_continuity
 from tirzah.sessions.exchanges import recent_exchanges
 from tirzah.sessions.endorsements import (
     ENDORSEMENT_LABELS,
@@ -825,6 +826,10 @@ def main() -> None:
     active_documents = subcommands.add_parser("active-documents")
     active_documents.add_argument("--session-id", default="default")
     active_documents.add_argument("--limit", type=int, default=20)
+    continuity = subcommands.add_parser("session-continuity")
+    continuity.add_argument("--session-id", default="default")
+    continuity.add_argument("--limit", type=int, default=5)
+    continuity.add_argument("--format", choices=["json", "text"], default="text")
 
     output_jobs = subcommands.add_parser("output-ingestion")
     output_jobs.add_argument("--session-id", default=None)
@@ -1277,6 +1282,15 @@ def main() -> None:
             print(json.dumps(report, indent=2))
             return
         print(render_memory_health_text(report))
+        return
+
+    if args.command == "session-continuity":
+        ensure_indexes(db)
+        payload = {"ok": True, **session_continuity(db, session_id=args.session_id, limit=args.limit)}
+        if args.format == "json":
+            print(json.dumps(payload, indent=2))
+            return
+        print(render_session_continuity_text(payload))
         return
 
     if args.command == "agent-identities":

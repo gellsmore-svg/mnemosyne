@@ -127,6 +127,49 @@ def test_cli_process_output_ingestion_passes_target_filters(monkeypatch, capsys)
     assert output == {"ok": True, "session_id": "session1", "job_id": "job1"}
 
 
+def test_cli_session_continuity_command(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tirzah",
+            "session-continuity",
+            "--session-id",
+            "s1",
+            "--limit",
+            "2",
+            "--format",
+            "json",
+        ],
+    )
+    monkeypatch.setattr(
+        "tirzah.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "tirzah.cli.session_continuity",
+        lambda _db, *, session_id, limit: {
+            "session_id": session_id,
+            "limit": limit,
+            "latest": {"exchange_id": "ex1"},
+            "recent": [],
+        },
+    )
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "ok": True,
+        "session_id": "s1",
+        "limit": 2,
+        "latest": {"exchange_id": "ex1"},
+        "recent": [],
+    }
+
+
 def test_init_config_payload_uses_docker_mongo_and_mock_defaults() -> None:
     payload = init_config_payload(docker=True, runtime_choice="mock")
 

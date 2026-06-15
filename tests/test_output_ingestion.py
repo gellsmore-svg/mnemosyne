@@ -179,6 +179,26 @@ def test_save_exchange_records_score_count_before_output_queue_failure(monkeypat
     assert "output_ingestion_job_id" not in db.exchanges.rows[0]
 
 
+def test_save_exchange_continues_when_prompt_iteration_write_fails() -> None:
+    db = FakeDb()
+    db.session_continuity = FailingUpdateCollection()
+
+    exchange_id = save_exchange(
+        db,
+        query="What should be remembered?",
+        answer={"answer": "Remember this.", "used_node_ids": []},
+        prompt={"budget": {}, "context_metadata": {}},
+        focus_node_id=None,
+        session_id="session1",
+    )
+
+    assert exchange_id == str(db.exchanges.rows[0]["_id"])
+    assert db.exchanges.rows[0]["prompt_iteration_error"] == {
+        "type": "RuntimeError",
+        "message": "continuity failed",
+    }
+
+
 def test_list_output_ingestion_jobs_filters_and_serializes() -> None:
     db = FakeDb()
     now = datetime.now(timezone.utc)
@@ -438,6 +458,11 @@ class DuplicateExchangeCollection(FakeCollection):
 class FailingInsertCollection(FakeCollection):
     def insert_one(self, row):
         raise RuntimeError("insert failed")
+
+
+class FailingUpdateCollection(FakeCollection):
+    def update_many(self, filter_query, update):
+        raise RuntimeError("continuity failed")
 
 
 class FakeUpdateResult:

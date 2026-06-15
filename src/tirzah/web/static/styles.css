@@ -294,6 +294,51 @@ pre {
   max-height: 300px;
 }
 
+.continuity-panel {
+  margin-top: 16px;
+}
+
+.continuity-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.continuity-heading h3 {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+}
+
+.continuity-heading button {
+  padding: 6px 9px;
+}
+
+.continuity-log {
+  display: grid;
+  gap: 8px;
+}
+
+.continuity-details {
+  margin-top: 8px;
+}
+
+.continuity-details summary {
+  cursor: pointer;
+  color: #334155;
+  font-size: 13px;
+}
+
+.continuity-details pre {
+  min-height: 0;
+  max-height: 280px;
+  margin-top: 8px;
+  overflow: auto;
+  font-size: 12px;
+}
+
 .activity-log {
   background: white;
   border: 1px solid #d6dce4;
@@ -605,6 +650,11 @@ body.epaper .activity-entry:first-child {
 body.epaper .activity-details summary {
   color: #000;
   font-size: 14px;
+}
+
+body.epaper .continuity-heading h3,
+body.epaper .continuity-details summary {
+  color: #000;
 }
 
 body.epaper .console-log {
