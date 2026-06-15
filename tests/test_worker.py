@@ -56,6 +56,27 @@ def test_activity_for_worker_failure_matches_activity_fields(tmp_path: Path) -> 
     assert "Process run: run1." in fields["activity_log"]
 
 
+def test_activity_for_worker_failure_omits_missing_process_run(tmp_path: Path) -> None:
+    source = tmp_path / "source.md"
+    fields = activity_for_worker_failure(
+        path=source,
+        status="failed",
+        checksum_sha256="abc123",
+        job_id="job1",
+        process_run_id=None,
+        reason="source_missing",
+        message="Restore source file and retry.",
+        details={"path": str(source)},
+    )
+
+    assert fields["activity_report"]["queue"] == {
+        "job_id": "job1",
+        "process_run_id": None,
+    }
+    assert "Queue job: job1." in fields["activity_log"]
+    assert "Process run:" not in fields["activity_log"]
+
+
 def test_process_next_records_completed_process_run(monkeypatch, tmp_path: Path) -> None:
     import tirzah.ingestion.worker as worker
 
@@ -181,7 +202,62 @@ def test_process_next_continues_when_process_run_creation_fails(
     assert f"Queue job: {job_id}." in result["activity_log"]
     assert "Process run:" not in result["activity_log"]
     assert completed_jobs[0]["job_id"] == job_id
+    assert completed_jobs[0]["inserted"]["activity_report"]["queue"]["process_run_id"] is None
     assert "Process run:" not in completed_jobs[0]["inserted"]["activity_log"]
+
+
+def test_process_next_source_missing_continues_when_process_run_creation_fails(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import tirzah.ingestion.worker as worker
+
+    failed_jobs = []
+    job_id = ObjectId()
+    missing = tmp_path / "missing.md"
+
+    def raise_process_error(_db, **kwargs):
+        raise RuntimeError("governance unavailable")
+
+    def fail_update_process_run(_db, run_id, **kwargs):
+        raise AssertionError("no process run should be updated")
+
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending",
+        lambda _db: {
+            "_id": job_id,
+            "path": str(missing),
+            "checksum_sha256": "abc123",
+            "attempts": 1,
+        },
+    )
+    monkeypatch.setattr(
+        worker,
+        "fail_job",
+        lambda _db, _job_id, reason, details: failed_jobs.append(
+            {"job_id": _job_id, "reason": reason, "details": details}
+        ),
+    )
+    monkeypatch.setattr(worker, "create_process_run", raise_process_error)
+    monkeypatch.setattr(worker, "update_process_run", fail_update_process_run)
+
+    result = process_next(FakeDb(), AppConfig())
+
+    assert result["ok"] is False
+    assert result["job_id"] == str(job_id)
+    assert result["process_run_id"] is None
+    assert result["activity_report"]["queue"]["job_id"] == str(job_id)
+    assert result["activity_report"]["queue"]["process_run_id"] is None
+    assert f"Queue job: {job_id}." in result["activity_log"]
+    assert "Process run:" not in result["activity_log"]
+    assert failed_jobs == [
+        {
+            "job_id": job_id,
+            "reason": "source_missing",
+            "details": {"path": str(missing)},
+        }
+    ]
 
 
 def test_process_next_marks_process_run_blocked_when_source_missing(monkeypatch, tmp_path: Path) -> None:

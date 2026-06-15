@@ -50,6 +50,7 @@ def test_ingestion_activity_log_summarizes_success() -> None:
 
     log = ingestion_activity_log(report)
 
+    assert report["queue"] == {"job_id": None, "process_run_id": None}
     assert log.startswith("Ingestion Activity Log")
     assert "Source dating: selected 2020-01-01" in log
     assert "Semantic processing: mock generated 1 node(s)." in log
@@ -71,6 +72,7 @@ def test_ingestion_activity_log_summarizes_duplicate() -> None:
 
     log = ingestion_activity_log(report)
 
+    assert report["queue"] == {"job_id": None, "process_run_id": None}
     assert "Status: rejected." in log
     assert "Outcome reason: duplicate_checksum." in log
     assert "Existing document: doc1." in log
