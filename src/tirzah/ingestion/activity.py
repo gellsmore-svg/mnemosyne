@@ -154,9 +154,15 @@ def ingestion_activity_log(report: dict[str, Any]) -> str:
 
 
 def attach_ingestion_activity(result: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
-    result["activity_report"] = report
-    result["activity_log"] = ingestion_activity_log(report)
+    result.update(ingestion_activity_fields(report))
     return result
+
+
+def ingestion_activity_fields(report: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "activity_report": report,
+        "activity_log": ingestion_activity_log(report),
+    }
 
 
 def human_date_source(source: str | None) -> str:

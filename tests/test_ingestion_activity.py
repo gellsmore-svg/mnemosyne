@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from tirzah.ingestion.activity import ingestion_activity_log, ingestion_activity_report
+from tirzah.ingestion.activity import (
+    ingestion_activity_fields,
+    ingestion_activity_log,
+    ingestion_activity_report,
+)
 from tirzah.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
 
@@ -67,3 +71,16 @@ def test_ingestion_activity_log_summarizes_duplicate() -> None:
     assert "Status: rejected." in log
     assert "Outcome reason: duplicate_checksum." in log
     assert "Existing document: doc1." in log
+
+
+def test_ingestion_activity_fields_returns_report_and_log() -> None:
+    report = ingestion_activity_report(
+        path="source.md",
+        status="completed",
+        checksum_sha256="abc123",
+    )
+
+    fields = ingestion_activity_fields(report)
+
+    assert fields["activity_report"] is report
+    assert fields["activity_log"].startswith("Ingestion Activity Log")

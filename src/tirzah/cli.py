@@ -48,7 +48,11 @@ from tirzah.db.repositories import (
     review_semantic_edge_candidate,
 )
 from tirzah.db.queue import enqueue_source, queue_summary, recent_jobs
-from tirzah.ingestion.activity import attach_ingestion_activity, ingestion_activity_report
+from tirzah.ingestion.activity import (
+    attach_ingestion_activity,
+    ingestion_activity_fields,
+    ingestion_activity_report,
+)
 from tirzah.ingestion.dates import analyze_source_dates, annotate_source_dates
 from tirzah.ingestion.embedding_backfill import (
     create_embedding_backfill_job,
@@ -218,7 +222,7 @@ def ingest_source_path(
         result=result,
         inserted=inserted,
     )
-    return attach_ingestion_activity(inserted, report)
+    return {**inserted, **ingestion_activity_fields(report)}
 
 
 def embedding_smoke_payload(config, text: str) -> dict:

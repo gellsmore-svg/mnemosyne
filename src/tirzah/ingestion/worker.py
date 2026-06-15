@@ -13,6 +13,7 @@ from tirzah.db.queue import claim_next_pending, complete_job, fail_job, reject_j
 from tirzah.db.repositories import DuplicateSourceError, commit_ingestion
 from tirzah.ingestion.activity import (
     attach_ingestion_activity,
+    ingestion_activity_fields,
     ingestion_activity_log,
     ingestion_activity_report,
 )
@@ -205,10 +206,9 @@ def process_next(db: Database, config: AppConfig) -> dict[str, Any]:
         job_id=str(job["_id"]),
         process_run_id=process_run_id,
     )
-    attach_ingestion_activity(completed, report)
-    inserted["activity_report"] = completed["activity_report"]
-    inserted["activity_log"] = completed["activity_log"]
-    complete_job(db, job["_id"], inserted)
+    activity_fields = ingestion_activity_fields(report)
+    completed.update(activity_fields)
+    complete_job(db, job["_id"], {**inserted, **activity_fields})
     finish_ingestion_process_run(
         db,
         process_run_id,
