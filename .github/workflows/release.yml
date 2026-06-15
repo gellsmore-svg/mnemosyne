@@ -28,16 +28,19 @@ jobs:
 
       - name: Validate Python artifacts install
         run: |
-          python -m venv /tmp/tirzah-release-smoke
-          /tmp/tirzah-release-smoke/bin/pip install --upgrade pip
-          /tmp/tirzah-release-smoke/bin/pip install dist/*.whl
-          /tmp/tirzah-release-smoke/bin/tirzah --help
-          /tmp/tirzah-release-smoke/bin/tirzah-profile-helper --help
-          /tmp/tirzah-release-smoke/bin/python - <<'PY'
-          from importlib.resources import files
+          python -m venv /tmp/tirzah-release-wheel-smoke
+          /tmp/tirzah-release-wheel-smoke/bin/pip install --upgrade pip
+          /tmp/tirzah-release-wheel-smoke/bin/pip install dist/*.whl
+          /tmp/tirzah-release-wheel-smoke/bin/tirzah --help
+          /tmp/tirzah-release-wheel-smoke/bin/tirzah-profile-helper --help
+          /tmp/tirzah-release-wheel-smoke/bin/python -c 'from importlib.resources import files; assert files("tirzah.web.static").joinpath("index.html").is_file()'
 
-          assert files("tirzah.web.static").joinpath("index.html").is_file()
-          PY
+          python -m venv /tmp/tirzah-release-sdist-smoke
+          /tmp/tirzah-release-sdist-smoke/bin/pip install --upgrade pip
+          /tmp/tirzah-release-sdist-smoke/bin/pip install dist/*.tar.gz
+          /tmp/tirzah-release-sdist-smoke/bin/tirzah --help
+          /tmp/tirzah-release-sdist-smoke/bin/tirzah-profile-helper --help
+          /tmp/tirzah-release-sdist-smoke/bin/python -c 'from importlib.resources import files; assert files("tirzah.web.static").joinpath("index.html").is_file()'
 
       - name: Validate Docker image builds
         run: |
