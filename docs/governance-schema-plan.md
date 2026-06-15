@@ -191,4 +191,4 @@ The current system only implements pieces of steps 3, 6, and 7. Reviewed semanti
 - Decide whether visibility rules live directly on nodes/edges, as separate ACL documents, or both.
 - Decide whether trust score should be manually reviewed only, model-assisted, or computed from provenance and usage signals.
 - Decide how moderator agents are represented: identity only, process role, or separate policy evaluator.
-- Decide how much of `.restart.md` should be rendered from `process_runs` and continuity-state records.
+- Partly resolved: `.restart.md` now renders from continuity-state records (`session_continuity`) via `tirzah restart-render`. Still open: whether and how much to fold in `process_runs`.

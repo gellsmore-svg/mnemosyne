@@ -170,6 +170,36 @@ def test_cli_session_continuity_command(monkeypatch, capsys) -> None:
     }
 
 
+def test_cli_restart_render_command_writes_file(tmp_path: Path, monkeypatch, capsys) -> None:
+    output_path = tmp_path / "restart.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["tirzah", "restart-render", "--session-id", "s1", "--output", str(output_path)],
+    )
+    monkeypatch.setattr(
+        "tirzah.cli.load_config",
+        lambda _path: SimpleNamespace(mongo=SimpleNamespace()),
+    )
+    monkeypatch.setattr("tirzah.cli.get_database", lambda _config: "db")
+    monkeypatch.setattr("tirzah.cli.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr(
+        "tirzah.cli.session_continuity",
+        lambda _db, *, session_id, limit: {
+            "session_id": session_id,
+            "latest": {"exchange_id": "ex1", "query": "Resume?"},
+            "recent": [],
+        },
+    )
+
+    main()
+
+    assert "Wrote restart state" in capsys.readouterr().out
+    rendered = output_path.read_text(encoding="utf-8")
+    assert rendered.startswith("# Restart State")
+    assert "Resume?" in rendered
+
+
 def test_init_config_payload_uses_docker_mongo_and_mock_defaults() -> None:
     payload = init_config_payload(docker=True, runtime_choice="mock")
 

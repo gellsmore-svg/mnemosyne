@@ -287,8 +287,8 @@ Minimum build:
 
 - session prompt/response chunking;
 - exchanges collection;
-- restart state update;
-- `.restart.md` renderer;
+- restart state update (implemented: `session_continuity` collection);
+- `.restart.md` renderer (implemented: `tirzah restart-render`, rendered from continuity-state records);
 - active document registry;
 - continuity-critical flag handling;
 - endorsement detection and chunk-level provenance updates.

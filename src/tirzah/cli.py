@@ -79,7 +79,11 @@ from tirzah.retrieval.queries import (
 )
 from tirzah.retrieval.trust import trust_temporal_diagnostic_for_node
 from tirzah.sessions.active_documents import list_active_documents
-from tirzah.sessions.continuity import render_session_continuity_text, session_continuity
+from tirzah.sessions.continuity import (
+    render_restart_markdown,
+    render_session_continuity_text,
+    session_continuity,
+)
 from tirzah.sessions.exchanges import recent_exchanges
 from tirzah.sessions.endorsements import (
     ENDORSEMENT_LABELS,
@@ -830,6 +834,12 @@ def main() -> None:
     continuity.add_argument("--session-id", default="default")
     continuity.add_argument("--limit", type=int, default=5)
     continuity.add_argument("--format", choices=["json", "text"], default="text")
+    restart_render = subcommands.add_parser("restart-render")
+    restart_render.add_argument("--session-id", default="default")
+    restart_render.add_argument("--limit", type=int, default=5)
+    restart_render.add_argument(
+        "--output", default=None, help="Write the rendered markdown to this path instead of stdout."
+    )
 
     output_jobs = subcommands.add_parser("output-ingestion")
     output_jobs.add_argument("--session-id", default=None)
@@ -1291,6 +1301,16 @@ def main() -> None:
             print(json.dumps(payload, indent=2))
             return
         print(render_session_continuity_text(payload))
+        return
+    if args.command == "restart-render":
+        ensure_indexes(db)
+        payload = session_continuity(db, session_id=args.session_id, limit=args.limit)
+        markdown = render_restart_markdown(payload)
+        if args.output:
+            Path(args.output).write_text(markdown, encoding="utf-8")
+            print(f"Wrote restart state for session '{args.session_id}' to {args.output}")
+            return
+        print(markdown, end="")
         return
 
     if args.command == "agent-identities":

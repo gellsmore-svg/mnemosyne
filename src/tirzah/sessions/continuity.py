@@ -188,6 +188,82 @@ def render_session_continuity_text(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_restart_markdown(payload: dict[str, Any]) -> str:
+    """Render a human-readable restart-state document from a `session_continuity`
+    payload (see :func:`session_continuity`).
+
+    The database is the source of truth for restart state; this is the rendered
+    ".restart.md" view (build-roadmap Stage 5), generated on demand from the
+    continuity-state records rather than maintained by hand.
+    """
+    session_id = payload.get("session_id")
+    latest = payload.get("latest")
+    recent = payload.get("recent") or []
+
+    lines = [
+        f"# Restart State — session `{session_id}`",
+        "",
+        "_Rendered from the `session_continuity` collection; the database is the "
+        "source of truth for restart state._",
+        "",
+    ]
+    if not latest:
+        lines.append("No prompt iteration has been saved for this session yet.")
+        return "\n".join(lines) + "\n"
+
+    lines += [
+        "## Latest exchange",
+        "",
+        f"- **Exchange:** `{latest.get('exchange_id')}`",
+        f"- **Prompt:** {latest.get('query') or '(none)'}",
+        f"- **Answer preview:** {latest.get('answer_preview') or '(none)'}",
+        f"- **Focus node:** {latest.get('focus_node_id') or '(none)'}",
+        f"- **Used nodes:** {len(latest.get('used_node_ids') or [])}",
+        f"- **Active documents:** {len(latest.get('active_document_ids') or [])}",
+    ]
+    adapter, model = latest.get("answer_adapter"), latest.get("answer_model")
+    if adapter or model:
+        lines.append(f"- **Answer adapter/model:** {adapter or '(none)'} / {model or '(none)'}")
+    if latest.get("created_at"):
+        lines.append(f"- **Recorded at:** {latest.get('created_at')}")
+
+    decision = latest.get("controller_decision") or {}
+    if decision:
+        action = decision.get("action") or decision.get("retrieval_status") or "recorded"
+        line = f"- **Controller decision:** {action}"
+        if decision.get("reason"):
+            line += f" — {decision['reason']}"
+        lines.append(line)
+    evidence = latest.get("evidence_summary") or {}
+    if evidence:
+        lines.append(
+            "- **Evidence:** "
+            f"{evidence.get('included_node_count', 0)} included node(s), "
+            f"{len(evidence.get('source_documents') or [])} source document(s)"
+        )
+
+    trace = latest.get("process_trace_summary") or []
+    if trace:
+        lines += ["", "### Process trace", ""]
+        for step in trace:
+            if step.get("ok") is True:
+                status = "ok"
+            elif step.get("ok") is False:
+                status = "not ok"
+            else:
+                status = "—"
+            detail = step.get("error") or step.get("reason")
+            lines.append(f"- `{step.get('step')}` — {status}{f' ({detail})' if detail else ''}")
+
+    if recent:
+        lines += ["", "## Recent iterations", ""]
+        for item in recent:
+            marker = " *(latest)*" if item.get("is_latest") else ""
+            lines.append(f"- [{item.get('created_at') or ''}] {item.get('query') or '(none)'}{marker}")
+
+    return "\n".join(lines) + "\n"
+
+
 def object_id_or_string(value: str | None) -> ObjectId | str | None:
     if value is None:
         return None

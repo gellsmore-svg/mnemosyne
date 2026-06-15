@@ -2,6 +2,7 @@ from bson import ObjectId
 
 from tirzah.sessions.continuity import (
     persist_prompt_iteration,
+    render_restart_markdown,
     render_session_continuity_text,
     session_continuity,
 )
@@ -143,6 +144,67 @@ def test_render_session_continuity_text_handles_empty_and_latest() -> None:
 
     assert "Latest exchange: ex1" in text
     assert "Controller decision: answer_without_repository_context" in text
+
+
+def test_render_restart_markdown_empty_and_populated() -> None:
+    empty = render_restart_markdown({"session_id": "s0", "latest": None, "recent": []})
+    assert empty.startswith("# Restart State")
+    assert "No prompt iteration has been saved" in empty
+
+    markdown = render_restart_markdown(
+        {
+            "session_id": "s1",
+            "latest": {
+                "exchange_id": "ex1",
+                "query": "Question?",
+                "answer_preview": "Answer.",
+                "focus_node_id": None,
+                "used_node_ids": ["n1"],
+                "active_document_ids": [],
+                "answer_adapter": "mock",
+                "answer_model": "mock",
+                "created_at": "2026-06-16T00:00:00+00:00",
+                "controller_decision": {"action": "use_repository_context", "reason": "match"},
+                "evidence_summary": {"included_node_count": 1, "source_documents": ["d1"]},
+                "process_trace_summary": [
+                    {"step": "retrieval_context", "ok": True, "reason": None, "error": None}
+                ],
+            },
+            "recent": [
+                {"created_at": "2026-06-16T00:00:00+00:00", "query": "Question?", "is_latest": True},
+                {"created_at": "2026-06-15T00:00:00+00:00", "query": "Earlier?", "is_latest": False},
+            ],
+        }
+    )
+    assert "## Latest exchange" in markdown
+    assert "**Prompt:** Question?" in markdown
+    assert "**Controller decision:** use_repository_context — match" in markdown
+    assert "**Evidence:** 1 included node(s), 1 source document(s)" in markdown
+    assert "`retrieval_context` — ok" in markdown
+    assert "## Recent iterations" in markdown
+    assert "*(latest)*" in markdown
+
+
+def test_render_restart_markdown_from_persisted_iteration() -> None:
+    db = Db()
+    exchange_id = str(ObjectId())
+    persist_prompt_iteration(
+        db,
+        exchange_id=exchange_id,
+        session_id="s1",
+        project_domain_id="project",
+        conversation_domain_id="conversation",
+        query="Resume from here?",
+        answer={"answer": "Resumed answer", "adapter": "mock", "model": "mock"},
+        prompt={"budget": {}, "context_metadata": {}},
+        focus_node_id=None,
+        used_node_ids=[],
+        active_document_ids=[],
+        process_trace=[],
+    )
+    markdown = render_restart_markdown(session_continuity(db, session_id="s1"))
+    assert "Resume from here?" in markdown
+    assert exchange_id in markdown
 
 
 def matches(row, query):
