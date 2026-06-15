@@ -20,6 +20,7 @@ from tirzah.cli import (
     write_initial_config,
 )
 from tirzah.db.health import memory_health_payload, render_memory_health_text
+from tirzah.db.repositories import DuplicateSourceError
 
 
 def test_discover_folder_sources_finds_markdown_and_text(tmp_path: Path) -> None:
@@ -737,6 +738,79 @@ def test_ingest_source_path_success_returns_activity_fields(monkeypatch, tmp_pat
     assert result["activity_report"]["kind"] == "ingestion_activity_report"
     assert result["activity_report"]["repository_actions"]["document_id"] == "doc1"
     assert "Repository write: document doc1" in result["activity_log"]
+
+
+def test_ingest_source_path_duplicate_precheck_returns_activity_fields(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "source.md"
+    source_path.write_text("# Source\n\nBody.", encoding="utf-8")
+    existing_document_id = ObjectId()
+    config = SimpleNamespace(
+        paths=SimpleNamespace(archive=tmp_path / "archive"),
+        runtime=SimpleNamespace(),
+    )
+
+    monkeypatch.setattr("tirzah.cli.sha256_file", lambda _path: "checksum")
+    monkeypatch.setattr(
+        "tirzah.cli.find_duplicate_by_checksum",
+        lambda _db, _checksum: {"_id": existing_document_id},
+    )
+
+    result = ingest_source_path("db", config, source_path, labels=[])
+
+    assert result["ok"] is False
+    assert result["status"] == "rejected"
+    assert result["reason"] == "duplicate_checksum"
+    assert result["checksum_sha256"] == "checksum"
+    assert result["existing_document_id"] == str(existing_document_id)
+    assert result["activity_report"]["status"] == "rejected"
+    assert result["activity_report"]["outcome"]["details"] == {
+        "existing_document_id": str(existing_document_id)
+    }
+    assert "Existing document:" in result["activity_log"]
+
+
+def test_ingest_source_path_commit_duplicate_returns_activity_fields(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "source.md"
+    source_path.write_text("# Source\n\nBody.", encoding="utf-8")
+    archive_path = tmp_path / "archive" / "source.md"
+    existing_document_id = ObjectId()
+    config = SimpleNamespace(
+        paths=SimpleNamespace(archive=tmp_path / "archive"),
+        runtime=SimpleNamespace(),
+    )
+
+    def raise_duplicate(_db, _result, embedder=None):
+        raise DuplicateSourceError("commit-checksum", existing_document_id)
+
+    monkeypatch.setattr("tirzah.cli.sha256_file", lambda _path: "checksum")
+    monkeypatch.setattr("tirzah.cli.find_duplicate_by_checksum", lambda _db, _checksum: None)
+    monkeypatch.setattr(
+        "tirzah.cli.archive_source",
+        lambda _path, _archive_root, _checksum: archive_path,
+    )
+    monkeypatch.setattr("tirzah.cli.embedding_adapter", lambda _runtime: "embedder")
+    monkeypatch.setattr("tirzah.cli.commit_ingestion", raise_duplicate)
+
+    result = ingest_source_path("db", config, source_path, labels=["source_root"])
+
+    assert result["ok"] is False
+    assert result["status"] == "rejected"
+    assert result["reason"] == "duplicate_checksum"
+    assert result["checksum_sha256"] == "commit-checksum"
+    assert result["existing_document_id"] == str(existing_document_id)
+    assert result["activity_report"]["status"] == "rejected"
+    assert result["activity_report"]["outcome"]["details"] == {
+        "existing_document_id": str(existing_document_id)
+    }
+    assert result["activity_report"]["semantic_processing"]["title"] == "Source"
+    assert "Semantic processing: mock generated" in result["activity_log"]
+    assert "Existing document:" in result["activity_log"]
 
 
 def test_cli_queue_profile_backfill_alias(monkeypatch, capsys) -> None:

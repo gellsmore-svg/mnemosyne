@@ -99,3 +99,17 @@ def test_attach_ingestion_activity_mutates_and_returns_result() -> None:
 
     assert returned is result
     assert result == {"ok": True, **ingestion_activity_fields(report)}
+
+
+def test_activity_field_composition_matches_attach_result() -> None:
+    base = {"ok": True, "document_id": "doc1"}
+    report = ingestion_activity_report(
+        path="source.md",
+        status="completed",
+        checksum_sha256="abc123",
+    )
+
+    attached = attach_ingestion_activity(dict(base), report)
+    composed = {**base, **ingestion_activity_fields(report)}
+
+    assert composed == attached
