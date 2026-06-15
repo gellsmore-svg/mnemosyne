@@ -28,6 +28,9 @@ jobs:
 
       - name: Validate Python artifacts install
         run: |
+          test "$(find dist -maxdepth 1 -name '*.whl' | wc -l)" -eq 1
+          test "$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 1
+
           python -m venv /tmp/tirzah-release-wheel-smoke
           /tmp/tirzah-release-wheel-smoke/bin/pip install --upgrade pip
           /tmp/tirzah-release-wheel-smoke/bin/pip install dist/*.whl
