@@ -26,6 +26,19 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build
 
+      - name: Validate Python artifacts install
+        run: |
+          python -m venv /tmp/tirzah-release-smoke
+          /tmp/tirzah-release-smoke/bin/pip install --upgrade pip
+          /tmp/tirzah-release-smoke/bin/pip install dist/*.whl
+          /tmp/tirzah-release-smoke/bin/tirzah --help
+          /tmp/tirzah-release-smoke/bin/tirzah-profile-helper --help
+          /tmp/tirzah-release-smoke/bin/python - <<'PY'
+          from importlib.resources import files
+
+          assert files("tirzah.web.static").joinpath("index.html").is_file()
+          PY
+
       - name: Validate Docker image builds
         run: |
           docker build -t tirzah:${GITHUB_REF_NAME} .

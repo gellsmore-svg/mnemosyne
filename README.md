@@ -165,7 +165,7 @@ Text similarity profiles default to the deterministic `mock` adapter in committe
 .venv/bin/pip install -e '.[profiles]'
 ```
 
-Set `runtime.embedding_adapter: local_command`, `runtime.embedding_model: BAAI/bge-small-en-v1.5`, `runtime.embedding_dimensions: 384`, `runtime.profile_command: [.venv/bin/python, tools/profile_helper.py, --worker]`, and `runtime.profile_command_mode: worker`. In worker mode, the helper reads one `{"model": "...", "text": "..."}` request per stdin line and returns one `{"vector": [...]}` response per stdout line, keeping the model loaded across a batch. HTTP-backed profile adapters are retained only for temporary diagnostics and are blocked by default for ingestion and retrieval memory operations. Verify the selected adapter before ingestion:
+Set `runtime.embedding_adapter: local_command`, `runtime.embedding_model: BAAI/bge-small-en-v1.5`, `runtime.embedding_dimensions: 384`, `runtime.profile_command: [tirzah-profile-helper, --worker]`, and `runtime.profile_command_mode: worker`. `tirzah init --runtime local_command` writes those defaults for new installs. In worker mode, the helper reads one `{"model": "...", "text": "..."}` request per stdin line and returns one `{"vector": [...]}` response per stdout line, keeping the model loaded across a batch. HTTP-backed profile adapters are retained only for temporary diagnostics and are blocked by default for ingestion and retrieval memory operations. Verify the selected adapter before ingestion:
 
 ```bash
 .venv/bin/tirzah embedding-smoke "Taj Mahal test"
