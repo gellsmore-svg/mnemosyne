@@ -166,7 +166,11 @@ both sides rather than retrofitting.
   **Done (building block):** `hybrid_rank` + `merge_candidate_pools` in
   `retrieval/queries.py` — deterministic gate (lexical OR vector floor) + min-max
   normalised lexical blended with vector similarity, component scores exposed.
-  Still to do: wire it into the live retrieval path and the `deep`-mode shortlist.
+  **Wired into the live agentic `search_nodes` tool** via an optional
+  `query_embedding` on `search_nodes` (opt-in `runtime.hybrid_search_enabled`,
+  active only with a real, non-mock embedding adapter; degrades to lexical
+  otherwise). Still to do: the `deep`-mode shortlist + direct-mode activation +
+  making it the default once validated on a real corpus.
 - A token estimator good enough to drive summarisation thresholds.
 - The frontier answer adapter for `synthesis_model`.
 - Concrete `coverage` heuristic (advisory).

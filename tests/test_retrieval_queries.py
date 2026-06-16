@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from bson import ObjectId
 
 from tirzah.retrieval.queries import (
+    attach_query_similarity,
     build_prompt_envelope,
     build_prompt_envelope_without_context,
     context_record,
@@ -28,6 +29,7 @@ from tirzah.retrieval.queries import (
     text_query_filters,
     text_query_terms,
 )
+from tirzah.db.memory_store import MemoryStore
 
 
 def test_serialize_document_handles_source_and_dates() -> None:
@@ -1864,3 +1866,72 @@ def test_node_search_sort_key_breaks_score_ties_toward_compact_nodes() -> None:
         broad,
         "Taj Mahal commissioned Mumtaz",
     )
+
+
+def _embedding(vector):
+    return {"vector": vector, "dimensions": len(vector), "model": "test-embed"}
+
+
+def test_attach_query_similarity_sets_cosine_for_comparable_nodes() -> None:
+    query_embedding = _embedding([1.0, 0.0])
+    nodes = [
+        {"node_id": "match", "embedding": _embedding([1.0, 0.0])},
+        {"node_id": "orthogonal", "embedding": _embedding([0.0, 1.0])},
+        {"node_id": "wrong_model", "embedding": {"vector": [1.0, 0.0], "dimensions": 2, "model": "other"}},
+        {"node_id": "no_embedding"},
+    ]
+    attach_query_similarity(nodes, query_embedding)
+    by_id = {node["node_id"]: node for node in nodes}
+    assert by_id["match"]["embedding_similarity"] == 1.0
+    assert by_id["orthogonal"]["embedding_similarity"] == 0.0
+    # incomparable model / missing embedding get no vector signal.
+    assert "embedding_similarity" not in by_id["wrong_model"]
+    assert "embedding_similarity" not in by_id["no_embedding"]
+
+
+class _StubStore(MemoryStore):
+    """A MemoryStore that returns fixed nodes, bypassing Mongo filter evaluation
+    (the FakeDb does not evaluate regex text filters)."""
+
+    def __init__(self, nodes):
+        self._stub_nodes = nodes
+
+    def find_nodes(self, filters, sort=None, limit=None):
+        nodes = [dict(node) for node in self._stub_nodes]
+        return nodes[:limit] if limit else nodes
+
+
+def test_search_nodes_hybrid_reranks_by_query_embedding() -> None:
+    doc_id = ObjectId()
+    store = _StubStore(
+        [
+            {
+                "_id": ObjectId(),
+                "document_id": doc_id,
+                "tree_id": ObjectId(),
+                "title": "Memory Systems Overview",
+                "text": "memory",
+                "labels": ["source_chunk"],
+            },
+            {
+                "_id": ObjectId(),
+                "document_id": doc_id,
+                "tree_id": ObjectId(),
+                "title": "Storage Internals",
+                "text": "memory note",
+                "labels": ["source_chunk"],
+                "embedding": _embedding([1.0, 0.0]),
+            },
+        ]
+    )
+
+    lexical = [row["title"] for row in search_nodes(store, query="memory")]
+    assert lexical == ["Memory Systems Overview", "Storage Internals"]
+
+    hybrid = [
+        row["title"]
+        for row in search_nodes(store, query="memory", query_embedding=_embedding([1.0, 0.0]))
+    ]
+    # the vector-similar (but lexically weaker) node is lifted above the
+    # lexically-stronger one once the query embedding is supplied.
+    assert hybrid == ["Storage Internals", "Memory Systems Overview"]

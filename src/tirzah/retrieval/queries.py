@@ -68,6 +68,7 @@ def search_nodes(
     created_before: datetime | None = None,
     limit: int = 20,
     identity: dict[str, Any] | None = None,
+    query_embedding: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     store = as_memory_store(db)
     filters: dict[str, Any] = active_node_filter()
@@ -94,6 +95,10 @@ def search_nodes(
     if identity:
         nodes = filter_nodes_for_identity(nodes, identity)
     if query:
+        if query_embedding is not None:
+            ranked = hybrid_rank(attach_query_similarity(nodes, query_embedding), query, limit=limit)
+            if ranked:  # fall back to lexical only if the relevance gate emptied the pool
+                return [serialize_node(item["node"]) for item in ranked]
         nodes.sort(key=lambda node: node_search_sort_key(node, query), reverse=True)
     return [serialize_node(node) for node in nodes[:limit]]
 
@@ -329,6 +334,29 @@ def hybrid_rank(
         )
     )
     return scored if limit is None else scored[:limit]
+
+
+def attach_query_similarity(
+    nodes: list[dict[str, Any]],
+    query_embedding: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Set `embedding_similarity` on each node from cosine similarity against a
+    query embedding, for nodes with a *comparable* stored embedding (same model +
+    dimensions). Nodes without a comparable embedding are left without a vector
+    signal (the hybrid ranker treats them as 0.0). Returns the list for chaining.
+    """
+    if not isinstance(query_embedding, dict):
+        return nodes
+    query_vector = query_embedding.get("vector")
+    if not isinstance(query_vector, list) or not query_vector:
+        return nodes
+    for node in nodes:
+        node_embedding = node.get("embedding")
+        if isinstance(node_embedding, dict) and comparable_embeddings(query_embedding, node_embedding):
+            candidate_vector = node_embedding.get("vector")
+            if isinstance(candidate_vector, list) and candidate_vector:
+                node["embedding_similarity"] = cosine_similarity(query_vector, candidate_vector)
+    return nodes
 
 
 def node_context(

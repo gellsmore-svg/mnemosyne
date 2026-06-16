@@ -14,7 +14,7 @@ This file incorporates the durable findings from the June 14 review artifacts no
 
 ## Retrieval Quality
 
-- Primary retrieval is still lexical and locally reranked; vector/profile signals exist but are not yet a full hybrid lexical+vector retrieval path. A deterministic hybrid ranker (`hybrid_rank` in `retrieval/queries.py`, ADR-020) now exists as the pre-rank building block but is not yet wired into the default retrieval path.
+- Primary retrieval is still lexical and locally reranked; vector/profile signals exist but are not yet a full hybrid lexical+vector retrieval path. A deterministic hybrid ranker (`hybrid_rank` in `retrieval/queries.py`, ADR-020) is wired into the agentic `search_nodes` tool, opt-in via `runtime.hybrid_search_enabled` and active only with a real (non-mock) embedding adapter; it is not yet the default and direct mode is not yet wired.
 - Trust and temporal diagnostics are exposed for inspection, but they do not yet affect default ranking.
 - Relevance gating remains V1-scaffold depth for broad prompts; stronger thresholds and per-node "why included" explanations are post-V1 work.
 

@@ -1254,7 +1254,7 @@ def test_agentic_answer_query_runs_planner_tools_then_answer(monkeypatch) -> Non
     monkeypatch.setattr(
         interaction,
         "execute_tool_calls",
-        lambda _db, calls, original_query=None, session_id="default": [
+        lambda _db, calls, original_query=None, session_id="default", runtime_config=None: [
             {
                 "index": 0,
                 "tool": calls[0]["tool"],
@@ -1448,7 +1448,7 @@ def test_agentic_answer_query_falls_back_when_planner_stops_without_tools(monkey
                 "used_node_ids": ["node1"],
             }
 
-    def fake_execute_tool_calls(_db, calls, original_query=None, session_id="default"):
+    def fake_execute_tool_calls(_db, calls, original_query=None, session_id="default", runtime_config=None):
         executed.extend(calls)
         assert session_id == "default"
         return [
@@ -1516,7 +1516,7 @@ def test_agentic_answer_query_stops_after_parse_failure_fallback_context(monkeyp
             }
 
     monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
-    def fake_execute_tool_calls(_db, calls, original_query=None, session_id="default"):
+    def fake_execute_tool_calls(_db, calls, original_query=None, session_id="default", runtime_config=None):
         executed.extend(calls)
         return [
             {
@@ -1614,7 +1614,7 @@ def test_agentic_answer_query_stops_when_planner_fails_after_context(monkeypatch
     monkeypatch.setattr(
         interaction,
         "execute_tool_calls",
-        lambda _db, calls, original_query=None, session_id="default": [
+        lambda _db, calls, original_query=None, session_id="default", runtime_config=None: [
             {
                 "index": 0,
                 "tool": calls[0]["tool"],
@@ -4126,3 +4126,45 @@ def test_prepare_tool_results_for_answer_applies_aggregate_context_budget() -> N
     assert len(assembled) == 1
     assert assembled[0]["focus_node_id"] == "node0"
     assert len(rendered) < 5000
+
+
+def test_build_query_embedding_gating(monkeypatch) -> None:
+    import tirzah.sessions.interaction as interaction
+    from tirzah.config import RuntimeConfig
+
+    class FakeEmbedder:
+        def embed(self, text):
+            return {"model": "real", "dimensions": 2, "vector": [1.0, 0.0]}
+
+    enabled_real = RuntimeConfig(hybrid_search_enabled=True, embedding_adapter="local_command")
+
+    # disabled / mock adapter / empty text → no query embedding (lexical-only).
+    assert (
+        interaction.build_query_embedding(
+            RuntimeConfig(hybrid_search_enabled=False, embedding_adapter="local_command"), "q"
+        )
+        is None
+    )
+    assert (
+        interaction.build_query_embedding(
+            RuntimeConfig(hybrid_search_enabled=True, embedding_adapter="mock"), "q"
+        )
+        is None
+    )
+    assert interaction.build_query_embedding(enabled_real, "") is None
+
+    # enabled + real adapter → payload from the embedder.
+    monkeypatch.setattr(interaction, "embedding_adapter", lambda _cfg: FakeEmbedder())
+    assert interaction.build_query_embedding(enabled_real, "q") == {
+        "model": "real",
+        "dimensions": 2,
+        "vector": [1.0, 0.0],
+    }
+
+    # embedder failure degrades gracefully to lexical-only.
+    class BoomEmbedder:
+        def embed(self, text):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(interaction, "embedding_adapter", lambda _cfg: BoomEmbedder())
+    assert interaction.build_query_embedding(enabled_real, "q") is None

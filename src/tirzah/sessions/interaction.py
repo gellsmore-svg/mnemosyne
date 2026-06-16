@@ -11,6 +11,7 @@ from bson.errors import InvalidId
 from pymongo.database import Database
 
 from tirzah.adapters.answer import answer_adapter
+from tirzah.adapters.embedding import embedding_adapter
 from tirzah.config import AppConfig
 from tirzah.db.governance import create_process_run, list_agent_identities, update_process_run
 from tirzah.db.repositories import document_tree
@@ -1377,6 +1378,7 @@ def run_memory_agent_loop(
             tool_calls,
             original_query=query,
             session_id=session_id,
+            runtime_config=runtime_config,
         )
         all_tool_results.extend(tool_results)
         history.append(
@@ -1819,6 +1821,7 @@ def execute_tool_calls(
     tool_calls: list[dict[str, Any]],
     original_query: str | None = None,
     session_id: str = "default",
+    runtime_config: Any = None,
 ) -> list[dict[str, Any]]:
     results = []
     for index, call in enumerate(tool_calls):
@@ -1834,6 +1837,7 @@ def execute_tool_calls(
                     label=arguments.get("label"),
                     limit=bounded_limit(arguments.get("limit"), default=5),
                     session_id=session_id,
+                    runtime_config=runtime_config,
                 )
             elif tool == "compile_context":
                 node_id = arguments.get("node_id")
@@ -1999,6 +2003,23 @@ def weak_match_fallback_needed(
     return max(score_node_match(row, query_assembly) for row in matches) < threshold
 
 
+def build_query_embedding(runtime_config: Any, text: str | None) -> dict[str, Any] | None:
+    """Embed the query text for hybrid search, or return None to fall back to
+    lexical-only ranking. Returns None when hybrid search is disabled, the
+    embedding adapter is the deterministic mock (its query-vs-node similarity is
+    not meaningful), or embedding fails for any reason."""
+    if not text or runtime_config is None:
+        return None
+    if not getattr(runtime_config, "hybrid_search_enabled", False):
+        return None
+    if getattr(runtime_config, "embedding_adapter", "mock") == "mock":
+        return None
+    try:
+        return embedding_adapter(runtime_config).embed(text)
+    except Exception:
+        return None
+
+
 def execute_search_nodes_tool(
     db: Database,
     query: str | None,
@@ -2006,10 +2027,12 @@ def execute_search_nodes_tool(
     label: str | None = None,
     limit: int = 5,
     session_id: str | None = None,
+    runtime_config: Any = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     cleaned_query = normalize_query_text(query)
     ranking_query = combined_query_text(cleaned_query, original_query)
     query_assembly = build_query_assembly(cleaned_query, original_query)
+    query_embedding = build_query_embedding(runtime_config, ranking_query)
     identity = first_active_agent_identity(db) if session_id else None
     identity_excluded_count = 0
     identity_exclusion_sample_size = 0
@@ -2030,6 +2053,11 @@ def execute_search_nodes_tool(
             label=label,
             limit=limit,
             identity=identity,
+            query_embedding=query_embedding,
+        )
+    elif query_embedding is not None:
+        matches = search_nodes(
+            db, query=cleaned_query, label=label, limit=limit, query_embedding=query_embedding
         )
     else:
         matches = search_nodes(db, query=cleaned_query, label=label, limit=limit)
@@ -2063,6 +2091,7 @@ def execute_search_nodes_tool(
                 label=label,
                 limit=fallback_candidate_limit(limit),
                 identity=identity,
+                query_embedding=query_embedding,
             )
             details["fallback_queries"].append(
                 {
@@ -2096,10 +2125,12 @@ def search_nodes_with_optional_identity(
     label: str | None,
     limit: int,
     identity: dict[str, Any] | None,
+    query_embedding: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    extra = {"query_embedding": query_embedding} if query_embedding is not None else {}
     if identity:
-        return search_nodes(db, query=query, label=label, limit=limit, identity=identity)
-    return search_nodes(db, query=query, label=label, limit=limit)
+        return search_nodes(db, query=query, label=label, limit=limit, identity=identity, **extra)
+    return search_nodes(db, query=query, label=label, limit=limit, **extra)
 
 
 def annotate_matches_with_trust_diagnostics(
