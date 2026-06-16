@@ -10,6 +10,7 @@ from pymongo.database import Database
 
 ANSWER_PREVIEW_CHARS = 600
 TRACE_SUMMARY_LIMIT = 12
+SKIPPED_SUMMARY_LIMIT = 12
 
 
 def utc_now() -> datetime:
@@ -60,6 +61,7 @@ def persist_prompt_iteration(
             "answer_adapter": answer.get("adapter"),
             "answer_model": answer.get("model"),
             "process_trace_summary": process_trace_summary(process_trace),
+            "skipped_summary": skipped_summary(context_metadata.get("skipped") or []),
             "is_latest": True,
             "created_at": now,
             "updated_at": now,
@@ -126,6 +128,24 @@ def process_trace_summary(process_trace: list[dict[str, Any]]) -> list[dict[str,
     return summary
 
 
+def skipped_summary(skipped: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Bounded summary of chunks that were retrieved/considered but not included
+    in the final context (e.g. dropped under the character budget). Lets the
+    continuity record show what was left out, not only what was used."""
+    summary = []
+    for item in skipped[:SKIPPED_SUMMARY_LIMIT]:
+        if not isinstance(item, dict):
+            continue
+        summary.append(
+            {
+                "node_id": stringify_id(item.get("node_id")),
+                "role": item.get("role"),
+                "reason": item.get("reason"),
+            }
+        )
+    return summary
+
+
 def serialize_prompt_iteration(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "iteration_id": str(row["_id"]),
@@ -147,6 +167,7 @@ def serialize_prompt_iteration(row: dict[str, Any]) -> dict[str, Any]:
         "answer_adapter": row.get("answer_adapter"),
         "answer_model": row.get("answer_model"),
         "process_trace_summary": row.get("process_trace_summary", []),
+        "skipped_summary": row.get("skipped_summary", []),
         "is_latest": bool(row.get("is_latest")),
         "created_at": isoformat(row.get("created_at")),
         "updated_at": isoformat(row.get("updated_at")),
@@ -185,6 +206,9 @@ def render_session_continuity_text(payload: dict[str, Any]) -> str:
             f"{evidence.get('included_node_count', 0)} included node(s), "
             f"{len(evidence.get('source_documents') or [])} source document(s)."
         )
+    skipped = latest.get("skipped_summary") or []
+    if skipped:
+        lines.append(f"- Considered but not included: {len(skipped)} node(s).")
     return "\n".join(lines)
 
 
@@ -254,6 +278,14 @@ def render_restart_markdown(payload: dict[str, Any]) -> str:
                 status = "—"
             detail = step.get("error") or step.get("reason")
             lines.append(f"- `{step.get('step')}` — {status}{f' ({detail})' if detail else ''}")
+
+    skipped = latest.get("skipped_summary") or []
+    if skipped:
+        lines += ["", "### Considered but not included", ""]
+        for item in skipped:
+            reason = item.get("reason")
+            role = item.get("role") or "—"
+            lines.append(f"- `{item.get('node_id')}` ({role}){f' — {reason}' if reason else ''}")
 
     if recent:
         lines += ["", "## Recent iterations", ""]

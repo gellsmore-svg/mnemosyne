@@ -207,6 +207,48 @@ def test_render_restart_markdown_from_persisted_iteration() -> None:
     assert exchange_id in markdown
 
 
+def test_skipped_chunks_captured_and_rendered() -> None:
+    db = Db()
+    persist_prompt_iteration(
+        db,
+        exchange_id=str(ObjectId()),
+        session_id="s1",
+        project_domain_id="project",
+        conversation_domain_id="conversation",
+        query="What next?",
+        answer={"answer": "An answer", "adapter": "mock", "model": "mock"},
+        prompt={
+            "budget": {},
+            "context_metadata": {
+                "skipped": [
+                    {
+                        "node_id": "n9",
+                        "role": "sibling",
+                        "reason": "char_budget_exceeded",
+                        "chars": 1200,
+                    }
+                ],
+            },
+        },
+        focus_node_id=None,
+        used_node_ids=[],
+        active_document_ids=[],
+        process_trace=[],
+    )
+
+    payload = session_continuity(db, session_id="s1")
+    assert payload["latest"]["skipped_summary"] == [
+        {"node_id": "n9", "role": "sibling", "reason": "char_budget_exceeded"}
+    ]
+
+    text = render_session_continuity_text(payload)
+    assert "Considered but not included: 1 node(s)." in text
+
+    markdown = render_restart_markdown(payload)
+    assert "### Considered but not included" in markdown
+    assert "`n9` (sibling) — char_budget_exceeded" in markdown
+
+
 def matches(row, query):
     for key, expected in query.items():
         if row.get(key) != expected:

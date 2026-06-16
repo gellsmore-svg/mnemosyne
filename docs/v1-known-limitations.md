@@ -21,7 +21,7 @@ This file incorporates the durable findings from the June 14 review artifacts no
 ## Continuity
 
 - Sessions, exchanges, active documents, used nodes, and context metadata are persisted.
-- Initial first-class prompt-iteration records are persisted in `session_continuity` and exposed through CLI/API inspection plus the Ask workspace continuity panel. Rejected-chunk expansion, full final context package display, unresolved follow-ups, and follow-up prompt seeding remain post-V1 work.
+- Initial first-class prompt-iteration records are persisted in `session_continuity` and exposed through CLI/API inspection plus the Ask workspace continuity panel. Each record now also captures a bounded summary of considered-but-not-included ("skipped") chunks, surfaced in the continuity text and the `restart-render` view. Full final context package display, unresolved follow-ups, and follow-up prompt seeding remain post-V1 work.
 
 ## Governance
 
