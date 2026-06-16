@@ -222,6 +222,115 @@ def usage_score_bonus(value: Any) -> int:
     return min(parsed_usage_score(value), 10)
 
 
+# --------------------------------------------------------------------------- #
+# Hybrid lexical + vector coarse ranking (ADR-020 retrieval pre-rank).
+# Deterministic; the LLM is not involved. This is the Python pre-rank that gates
+# and ranks a candidate pool down to a bounded shortlist for the retrieval agent.
+# --------------------------------------------------------------------------- #
+
+DEFAULT_HYBRID_LEXICAL_WEIGHT = 0.5
+DEFAULT_HYBRID_VECTOR_WEIGHT = 0.5
+DEFAULT_HYBRID_MIN_LEXICAL_SCORE = 1
+DEFAULT_HYBRID_MIN_VECTOR_SIMILARITY = 0.15
+
+
+def node_identity(node: dict[str, Any]) -> str:
+    return str(node.get("node_id") or node.get("_id") or "")
+
+
+def candidate_vector_similarity(node: dict[str, Any]) -> float:
+    try:
+        return max(0.0, min(1.0, float(node.get("embedding_similarity") or 0.0)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def merge_candidate_pools(
+    lexical_nodes: list[dict[str, Any]],
+    embedding_candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Union lexical and embedding candidate pools by node identity into one pool.
+
+    Embedding similarity (when present) is carried onto the merged node so the
+    hybrid ranker can score both signals. Full node documents from the lexical
+    pool win where the same node appears in both.
+    """
+    merged: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for candidate in embedding_candidates:
+        key = node_identity(candidate)
+        if not key:
+            continue
+        if key not in merged:
+            merged[key] = dict(candidate)
+            order.append(key)
+    for node in lexical_nodes:
+        key = node_identity(node)
+        if not key:
+            continue
+        if key in merged:
+            merged[key] = {**dict(node), "embedding_similarity": merged[key].get("embedding_similarity")}
+        else:
+            merged[key] = dict(node)
+            order.append(key)
+    return [merged[key] for key in order]
+
+
+def hybrid_rank(
+    candidates: list[dict[str, Any]],
+    query: str,
+    *,
+    lexical_weight: float = DEFAULT_HYBRID_LEXICAL_WEIGHT,
+    vector_weight: float = DEFAULT_HYBRID_VECTOR_WEIGHT,
+    min_lexical_score: int = DEFAULT_HYBRID_MIN_LEXICAL_SCORE,
+    min_vector_similarity: float = DEFAULT_HYBRID_MIN_VECTOR_SIMILARITY,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Coarse-rank a candidate pool by a blend of lexical and vector relevance,
+    after a relevance gate (ADR-020 pre-rank).
+
+    Gate: a candidate is kept if it clears either the lexical floor OR the vector
+    floor, so a strong vector match with weak keywords (or vice versa) survives
+    while clearly-irrelevant / rejected nodes are dropped.
+
+    Rank: lexical scores are min-max normalised across the gated pool to 0..1 and
+    blended with the (already 0..1) vector similarity using the configured
+    weights. Ties break on vector similarity, then raw lexical score, then node
+    identity for determinism. Each result carries its component scores so callers
+    can later explain "why included".
+    """
+    scored: list[dict[str, Any]] = []
+    for node in candidates:
+        lexical = node_search_score(node, query)
+        vector = candidate_vector_similarity(node)
+        if lexical < min_lexical_score and vector < min_vector_similarity:
+            continue
+        scored.append({"node": node, "lexical_score": lexical, "vector_similarity": vector})
+
+    if not scored:
+        return []
+
+    lexical_values = [item["lexical_score"] for item in scored]
+    low, high = min(lexical_values), max(lexical_values)
+    span = high - low
+    for item in scored:
+        norm_lexical = 1.0 if span == 0 else (item["lexical_score"] - low) / span
+        item["normalized_lexical"] = round(norm_lexical, 6)
+        item["hybrid_score"] = round(
+            lexical_weight * norm_lexical + vector_weight * item["vector_similarity"], 6
+        )
+
+    scored.sort(
+        key=lambda item: (
+            -item["hybrid_score"],
+            -item["vector_similarity"],
+            -item["lexical_score"],
+            node_identity(item["node"]),
+        )
+    )
+    return scored if limit is None else scored[:limit]
+
+
 def node_context(
     db: Database | MemoryStore,
     node_id: str,

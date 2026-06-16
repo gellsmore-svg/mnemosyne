@@ -162,7 +162,11 @@ both sides rather than retrofitting.
 ## 13. Open items for the implementation phase
 
 - Exact per-primitive JSON schemas and prompt templates.
-- The coarse-rank/relevance-gate function (the hybrid lexical+vector reranker).
+- ~~The coarse-rank/relevance-gate function (the hybrid lexical+vector reranker).~~
+  **Done (building block):** `hybrid_rank` + `merge_candidate_pools` in
+  `retrieval/queries.py` — deterministic gate (lexical OR vector floor) + min-max
+  normalised lexical blended with vector similarity, component scores exposed.
+  Still to do: wire it into the live retrieval path and the `deep`-mode shortlist.
 - A token estimator good enough to drive summarisation thresholds.
 - The frontier answer adapter for `synthesis_model`.
 - Concrete `coverage` heuristic (advisory).
