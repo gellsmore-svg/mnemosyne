@@ -597,7 +597,8 @@ def prepare_direct_answer_prompt(
         if selected_node_id:
             selected_node_source = "active_document"
     if not selected_node_id and retrieval_decision["should_search_corpus"]:
-        selected_node_id = select_focus_node(db, query)
+        query_embedding = build_query_embedding(config.runtime, query)
+        selected_node_id = select_focus_node(db, query, query_embedding=query_embedding)
         if selected_node_id:
             selected_node_source = "corpus"
     retrieval_status = "matched_context"
@@ -870,9 +871,13 @@ def finish_answer_process_run(
         return
 
 
-def select_focus_node(db: Database, query: str) -> str | None:
+def select_focus_node(
+    db: Database, query: str, query_embedding: dict[str, Any] | None = None
+) -> str | None:
     for label in ("source_chunk", None):
-        matches = ranked_focus_matches(db, query, label=label, limit=5)
+        matches = ranked_focus_matches(
+            db, query, label=label, limit=5, query_embedding=query_embedding
+        )
         match = first_qualified_focus_match(matches)
         if match:
             return match["node_id"]
@@ -1103,15 +1108,18 @@ def ranked_focus_matches(
     label: str | None,
     limit: int,
     document_id: str | None = None,
+    query_embedding: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     cleaned_query = normalize_query_text(query)
     assembly = build_query_assembly(cleaned_query)
+    extra = {"query_embedding": query_embedding} if query_embedding is not None else {}
     matches = search_nodes(
         db,
         query=cleaned_query,
         label=label,
         document_id=document_id,
         limit=limit,
+        **extra,
     )
     if cleaned_query:
         seen = {row["node_id"] for row in matches}
@@ -1122,6 +1130,7 @@ def ranked_focus_matches(
                 label=label,
                 document_id=document_id,
                 limit=fallback_candidate_limit(limit),
+                **extra,
             )
             for row in fallback_results:
                 if row["node_id"] not in seen:

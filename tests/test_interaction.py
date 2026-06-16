@@ -4168,3 +4168,26 @@ def test_build_query_embedding_gating(monkeypatch) -> None:
 
     monkeypatch.setattr(interaction, "embedding_adapter", lambda _cfg: BoomEmbedder())
     assert interaction.build_query_embedding(enabled_real, "q") is None
+
+
+def test_ranked_focus_matches_forwards_query_embedding(monkeypatch) -> None:
+    import tirzah.sessions.interaction as interaction
+
+    captured = []
+
+    def fake_search_nodes(_db, query=None, label=None, document_id=None, limit=5, **kwargs):
+        captured.append(kwargs.get("query_embedding"))
+        return []
+
+    monkeypatch.setattr(interaction, "search_nodes", fake_search_nodes)
+    monkeypatch.setattr(interaction, "weak_match_fallback_needed", lambda *a, **k: False)
+    embedding = {"vector": [1.0, 0.0], "dimensions": 2, "model": "m"}
+
+    # Provided → forwarded to every search_nodes call (hybrid in direct mode).
+    interaction.ranked_focus_matches(None, "memory", label=None, limit=3, query_embedding=embedding)
+    assert captured and all(c == embedding for c in captured)
+
+    # Omitted → not forwarded (lexical path unchanged; kwarg absent).
+    captured.clear()
+    interaction.ranked_focus_matches(None, "memory", label=None, limit=3)
+    assert captured and all(c is None for c in captured)
