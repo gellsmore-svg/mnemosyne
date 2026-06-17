@@ -74,6 +74,11 @@ class RetrievalConfig(BaseModel):
     prompt_token_budget: int = 2000
     reserved_response_tokens: int = 500
     memory_agent_max_iterations: int = 4
+    # Deep retrieval mode (ADR-020) — bounds for the agent loop + Python pre-rank.
+    deep_max_iterations: int = 4
+    deep_max_candidates: int = 50
+    deep_shortlist_size: int = 12
+    deep_page_size: int = 5
 
 
 class AppConfig(BaseModel):

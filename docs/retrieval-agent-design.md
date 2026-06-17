@@ -161,7 +161,13 @@ both sides rather than retrofitting.
 
 ## 13. Open items for the implementation phase
 
-- Exact per-primitive JSON schemas and prompt templates.
+- ~~Per-primitive schemas~~ **Done (skeleton):** the fixed validated primitive
+  menu is `retrieval/deep.py` (`PRIMITIVES`, `validate_primitive_call`,
+  `run_primitive`, `allowed_primitive_specs`) — keyword/hybrid/adjacent/graph,
+  each delegating to the read-only query functions. Deep bounds added to
+  `RetrievalConfig` (`deep_max_iterations/_max_candidates/_shortlist_size/_page_size`).
+  Still to do: the orchestrator loop (plan → validate → execute → gate/shortlist →
+  triage → synthesise), prompt templates, and wiring `retrieval_mode == "deep"`.
 - ~~The coarse-rank/relevance-gate function (the hybrid lexical+vector reranker).~~
   **Done (building block):** `hybrid_rank` + `merge_candidate_pools` in
   `retrieval/queries.py` — deterministic gate (lexical OR vector floor) + min-max
