@@ -243,3 +243,116 @@ class DeepRetrievalSession:
             return False  # no score signal to judge improvement by
         gains = [recent[i + 1]["best_score"] - recent[i]["best_score"] for i in range(len(recent) - 1)]
         return all(g <= min_gain for g in gains)
+
+
+# --------------------------------------------------------------------------- #
+# The orchestrator loop (ADR-020 §4). Python-authoritative; the two LLM seams
+# (planner, triager) are injected so the orchestration is testable without a
+# model. The real prompt/parse planner + triager, synthesis, and the
+# `retrieval_mode == "deep"` wiring are built on top of this.
+# --------------------------------------------------------------------------- #
+
+
+def _pages(items: list[Any], size: int):
+    for i in range(0, len(items), max(1, size)):
+        yield items[i : i + size]
+
+
+def _as_candidates(results: Any) -> list[dict[str, Any]]:
+    """Normalise a primitive's result into a flat list of node-like dicts (those
+    carrying a node identity), so search results and context results both feed the
+    shortlist."""
+    if isinstance(results, list):
+        return [r for r in results if isinstance(r, dict) and node_identity(r)]
+    if isinstance(results, dict):
+        out: list[dict[str, Any]] = []
+        if node_identity(results):
+            out.append(results)
+        node = results.get("node")
+        if isinstance(node, dict) and node_identity(node):
+            out.append(node)
+        for key in ("children", "nodes", "results"):
+            for r in results.get(key) or []:
+                if isinstance(r, dict) and node_identity(r):
+                    out.append(r)
+        return out
+    return []
+
+
+def run_deep_retrieval(
+    db: Any,
+    query: str,
+    *,
+    config: Any,
+    planner,
+    triager,
+    query_embedding: dict[str, Any] | None = None,
+    identity: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run one deep retrieval session.
+
+    Loop: **plan** (`planner`, the LLM) -> **validate + execute** (the primitive
+    menu) -> **dedup + shortlist** (Python, session-scoped) -> **triage**
+    (`triager`, the LLM, paged) -> **stop** (`DeepRetrievalSession`, deterministic).
+
+    - `planner(plan_context) -> decision`: returns `{"action": "stop"}` or
+      `{"primitive": name, "args": {...}}`.
+    - `triager(query, page) -> kept`: returns the subset of the page to keep.
+
+    Returns the gathered `useful_chunks` (for synthesis), the round log, and a
+    trace. Guaranteed to terminate (stop signals + invalid-plan cap + hard cap).
+    """
+    rc = config.retrieval
+    session = DeepRetrievalSession(max_iterations=rc.deep_max_iterations)
+    trace: list[dict[str, Any]] = []
+    invalid_attempts = 0
+    hard_cap = 2 * session.max_iterations + 2
+
+    for _ in range(hard_cap):
+        plan_context = {
+            "query": query,
+            "iteration": session.iterations,
+            "useful_count": len(session.useful_chunks),
+            "seen_count": len(session.exclusion_ids),
+            "primitives": allowed_primitive_specs(),
+            "rounds": session.round_log,
+        }
+        decision = planner(plan_context) or {}
+        if decision.get("action") == "stop":
+            trace.append({"step": "stop", "reason": "planner_stop"})
+            break
+
+        name = decision.get("primitive")
+        raw_args = decision.get("args") or {}
+        try:
+            results = run_primitive(
+                db, name, raw_args, query_embedding=query_embedding, identity=identity
+            )
+        except PrimitiveError as exc:
+            invalid_attempts += 1
+            trace.append({"step": "invalid_plan", "primitive": name, "error": str(exc)})
+            if invalid_attempts > session.max_iterations:
+                trace.append({"step": "stop", "reason": "repeated_invalid_plans"})
+                break
+            continue  # bounded repair: let the planner try again
+
+        candidates = _as_candidates(results)
+        new = session.filter_new(candidates)
+        shortlist = new[: max(1, rc.deep_shortlist_size)]
+        kept: list[dict[str, Any]] = []
+        for page in _pages(shortlist, rc.deep_page_size):
+            kept.extend(triager(query, page) or [])
+        session.add_useful(kept)
+        session.record_round(new_count=len(new), total_count=len(candidates))
+        trace.append({"step": "search", "primitive": name, "new": len(new), "kept": len(kept)})
+
+        stop, reason = session.should_stop()
+        if stop:
+            trace.append({"step": "stop", "reason": reason})
+            break
+
+    return {
+        "useful_chunks": session.useful_chunks,
+        "rounds": session.round_log,
+        "trace": trace,
+    }

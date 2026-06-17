@@ -129,3 +129,72 @@ def test_session_stop_diminishing_returns_and_continue() -> None:
     s2.record_round(new_count=4, total_count=8, best_score=0.7)
     s2.record_round(new_count=3, total_count=9, best_score=0.9)  # still improving + novel
     assert s2.should_stop() == (False, None)
+
+
+from types import SimpleNamespace
+
+from tirzah.retrieval.deep import run_deep_retrieval
+
+
+def _cfg(max_it=3, shortlist=12, page=5):
+    return SimpleNamespace(
+        retrieval=SimpleNamespace(
+            deep_max_iterations=max_it, deep_shortlist_size=shortlist, deep_page_size=page
+        )
+    )
+
+
+def _planner(seq):
+    it = iter(seq)
+    return lambda ctx: next(it, {"action": "stop"})
+
+
+def test_deep_loop_happy_path(monkeypatch) -> None:
+    counter = {"n": 0}
+
+    def fake_run(db, name, args, *, query_embedding=None, identity=None):
+        counter["n"] += 1
+        base = counter["n"] * 10
+        return [{"node_id": f"n{base}"}, {"node_id": f"n{base + 1}"}]
+
+    monkeypatch.setattr(deep, "run_primitive", fake_run)
+    planner = _planner(
+        [
+            {"primitive": "keyword_search", "args": {"query": "q"}},
+            {"primitive": "keyword_search", "args": {"query": "q2"}},
+            {"action": "stop"},
+        ]
+    )
+    out = run_deep_retrieval(None, "q", config=_cfg(), planner=planner, triager=lambda q, page: page[:1])
+    assert [c["node_id"] for c in out["useful_chunks"]] == ["n10", "n20"]
+    assert [t["step"] for t in out["trace"]] == ["search", "search", "stop"]
+    assert out["trace"][-1]["reason"] == "planner_stop"
+
+
+def test_deep_loop_stops_at_max_iterations(monkeypatch) -> None:
+    counter = {"n": 0}
+
+    def fake_run(db, name, args, *, query_embedding=None, identity=None):
+        counter["n"] += 1
+        return [{"node_id": f"n{counter['n']}"}]  # new each round
+
+    monkeypatch.setattr(deep, "run_primitive", fake_run)
+    planner = lambda ctx: {"primitive": "keyword_search", "args": {"query": "q"}}
+    out = run_deep_retrieval(None, "q", config=_cfg(max_it=2), planner=planner, triager=lambda q, p: [])
+    assert out["trace"][-1]["reason"] == "max_iterations"
+    assert sum(1 for t in out["trace"] if t["step"] == "search") == 2
+
+
+def test_deep_loop_stops_on_no_new(monkeypatch) -> None:
+    monkeypatch.setattr(deep, "run_primitive", lambda *a, **k: [{"node_id": "same"}])
+    planner = lambda ctx: {"primitive": "keyword_search", "args": {"query": "q"}}
+    out = run_deep_retrieval(None, "q", config=_cfg(max_it=9), planner=planner, triager=lambda q, p: p)
+    assert out["trace"][-1]["reason"] == "no_new_candidates"
+
+
+def test_deep_loop_bounded_invalid_plans() -> None:
+    # real run_primitive raises PrimitiveError for an unknown primitive
+    planner = lambda ctx: {"primitive": "bogus", "args": {}}
+    out = run_deep_retrieval(None, "q", config=_cfg(max_it=2), planner=planner, triager=lambda q, p: p)
+    assert out["trace"][-1]["reason"] == "repeated_invalid_plans"
+    assert out["useful_chunks"] == []
