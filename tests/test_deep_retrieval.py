@@ -198,3 +198,72 @@ def test_deep_loop_bounded_invalid_plans() -> None:
     out = run_deep_retrieval(None, "q", config=_cfg(max_it=2), planner=planner, triager=lambda q, p: p)
     assert out["trace"][-1]["reason"] == "repeated_invalid_plans"
     assert out["useful_chunks"] == []
+
+
+import json as _json
+
+from tirzah.retrieval.deep import (
+    make_planner,
+    make_triager,
+    parse_deep_decision,
+    parse_deep_triage,
+)
+
+
+class _ScriptedAdapter:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.i = 0
+
+    def answer(self, prompt):
+        r = self.responses[min(self.i, len(self.responses) - 1)]
+        self.i += 1
+        return {"answer": r}
+
+
+def test_parse_deep_decision_variants() -> None:
+    assert parse_deep_decision('{"action": "stop"}') == {"action": "stop"}
+    assert parse_deep_decision('```json\n{"primitive": "keyword_search", "args": {"query": "q"}}\n```') == {
+        "primitive": "keyword_search",
+        "args": {"query": "q"},
+    }
+    # garbage / no primitive → routed to bounded invalid-plan repair
+    assert parse_deep_decision("not json")["primitive"] == "__unparseable__"
+    assert parse_deep_decision('{"rationale": "hmm"}')["primitive"] == "__unparseable__"
+
+
+def test_parse_deep_triage_keeps_listed_ids() -> None:
+    page = [{"node_id": "a"}, {"node_id": "b"}, {"node_id": "c"}]
+    assert [n["node_id"] for n in parse_deep_triage('["a", "c"]', page)] == ["a", "c"]
+    assert parse_deep_triage("nope", page) == []
+    assert parse_deep_triage('{"keep": "a"}', page) == []  # not a list
+
+
+def test_make_planner_and_triager() -> None:
+    planner = make_planner(_ScriptedAdapter([_json.dumps({"primitive": "keyword_search", "args": {"query": "q"}})]))
+    assert planner({"query": "q", "primitives": []}) == {"primitive": "keyword_search", "args": {"query": "q"}}
+
+    triager = make_triager(_ScriptedAdapter(['["b"]']))
+    page = [{"node_id": "a"}, {"node_id": "b"}]
+    assert [n["node_id"] for n in triager("q", page)] == ["b"]
+    assert make_triager(_ScriptedAdapter(["[]"]))("q", []) == []  # empty page → no model call
+
+
+def test_deep_loop_with_real_planner_triager(monkeypatch) -> None:
+    monkeypatch.setattr(
+        deep,
+        "run_primitive",
+        lambda *a, **k: [{"node_id": "n10", "text_preview": "hi"}, {"node_id": "n11", "text_preview": "yo"}],
+    )
+    adapter = _ScriptedAdapter(
+        [
+            _json.dumps({"primitive": "keyword_search", "args": {"query": "q"}}),
+            _json.dumps(["n10"]),
+            _json.dumps({"action": "stop"}),
+        ]
+    )
+    out = run_deep_retrieval(
+        None, "q", config=_cfg(max_it=5), planner=make_planner(adapter), triager=make_triager(adapter)
+    )
+    assert [c["node_id"] for c in out["useful_chunks"]] == ["n10"]
+    assert out["trace"][-1]["reason"] == "planner_stop"

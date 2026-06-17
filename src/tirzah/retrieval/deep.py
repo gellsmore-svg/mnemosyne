@@ -13,6 +13,8 @@ on top of this menu and is added separately.
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 from tirzah.retrieval.queries import (
@@ -356,3 +358,110 @@ def run_deep_retrieval(
         "rounds": session.round_log,
         "trace": trace,
     }
+
+
+# --------------------------------------------------------------------------- #
+# Real planner + triager — the two LLM seams, built on the answer adapter.
+# Prompt-build + parse are separate from the model call so both are testable;
+# the model output is treated as hostile input (parse failures degrade safely).
+# --------------------------------------------------------------------------- #
+
+
+def _extract_json(text: str) -> Any:
+    """Best-effort: pull the first JSON value out of a model response (tolerating
+    code fences and surrounding prose). Returns the parsed value or None."""
+    stripped = (text or "").strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```(?:json)?", "", stripped).strip()
+        stripped = re.sub(r"```$", "", stripped).strip()
+    decoder = json.JSONDecoder(strict=False)
+    for match in re.finditer(r"[{\[]", stripped):
+        try:
+            parsed, _ = decoder.raw_decode(stripped[match.start():])
+            return parsed
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def build_deep_planner_prompt(query: str, plan_context: dict[str, Any]) -> str:
+    return (
+        "You are a retrieval planner. Choose ONE primitive to call next, or stop "
+        "when further search would add little.\n"
+        f"User query: {query}\n"
+        f"Round: {plan_context.get('iteration')}; useful chunks kept: "
+        f"{plan_context.get('useful_count')}; already-seen nodes: "
+        f"{plan_context.get('seen_count')}.\n"
+        "Available primitives (pick exactly one):\n"
+        + json.dumps(plan_context.get("primitives", []), indent=2)
+        + '\n\nReply with ONLY a JSON object, one of:\n'
+        '  {"action": "stop"}\n'
+        '  {"primitive": "<name>", "args": { ... }, "rationale": "<why>"}\n'
+    )
+
+
+def parse_deep_decision(text: str) -> dict[str, Any]:
+    """Parse a planner response into a decision the orchestrator understands.
+    A `stop` is honoured; a usable primitive call is returned as-is; anything
+    unparseable becomes an unknown-primitive call so the loop's bounded
+    invalid-plan repair handles it (rather than silently stopping)."""
+    data = _extract_json(text)
+    if isinstance(data, dict) and data.get("action") == "stop":
+        return {"action": "stop"}
+    if isinstance(data, dict) and isinstance(data.get("primitive"), str) and data["primitive"]:
+        args = data.get("args")
+        return {"primitive": data["primitive"], "args": args if isinstance(args, dict) else {}}
+    return {"primitive": "__unparseable__", "args": {}}
+
+
+def build_deep_triage_prompt(query: str, page: list[dict[str, Any]]) -> str:
+    items = [
+        {
+            "node_id": node_identity(c),
+            "title": c.get("title"),
+            "preview": c.get("text_preview") or c.get("text"),
+        }
+        for c in page
+    ]
+    return (
+        "Keep only the candidate chunks genuinely relevant to the query.\n"
+        f"Query: {query}\n"
+        "Candidates:\n" + json.dumps(items, indent=2)
+        + '\n\nReply with ONLY a JSON array of the node_id strings to KEEP, '
+        'e.g. ["id1", "id3"]. Keep none with [].'
+    )
+
+
+def parse_deep_triage(text: str, page: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    data = _extract_json(text)
+    if not isinstance(data, list):
+        return []
+    keep = {str(x) for x in data if isinstance(x, (str, int))}
+    return [c for c in page if node_identity(c) in keep]
+
+
+def _adapter_answer(adapter: Any, prompt_text: str) -> str:
+    result = adapter.answer({"prompt_text": prompt_text})
+    return result.get("answer", "") if isinstance(result, dict) else str(result)
+
+
+def make_planner(adapter: Any):
+    """Wrap an answer adapter into a `planner(plan_context) -> decision`."""
+
+    def planner(plan_context: dict[str, Any]) -> dict[str, Any]:
+        prompt = build_deep_planner_prompt(plan_context.get("query", ""), plan_context)
+        return parse_deep_decision(_adapter_answer(adapter, prompt))
+
+    return planner
+
+
+def make_triager(adapter: Any):
+    """Wrap an answer adapter into a `triager(query, page) -> kept`."""
+
+    def triager(query: str, page: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not page:
+            return []
+        prompt = build_deep_triage_prompt(query, page)
+        return parse_deep_triage(_adapter_answer(adapter, prompt), page)
+
+    return triager
