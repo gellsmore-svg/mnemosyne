@@ -75,3 +75,57 @@ def test_run_primitive_dispatches(monkeypatch) -> None:
     assert calls["node"][0] == (None, "n1") and calls["node"][1]["child_limit"] == 20
     run_primitive(None, "graph_traverse", {"node_id": "n1", "depth": 3})
     assert calls["graph"][1]["max_depth"] == 3
+
+
+from tirzah.retrieval.deep import DeepRetrievalSession
+
+
+def _n(i):
+    return {"node_id": i}
+
+
+def test_session_filter_new_dedups_across_rounds() -> None:
+    s = DeepRetrievalSession(max_iterations=4)
+    first = s.filter_new([_n("a"), _n("b"), _n("a")])  # in-batch dup dropped
+    assert [n["node_id"] for n in first] == ["a", "b"]
+    second = s.filter_new([_n("b"), _n("c")])  # 'b' already seen
+    assert [n["node_id"] for n in second] == ["c"]
+    assert s.exclusion_ids == {"a", "b", "c"}
+
+
+def test_session_add_useful_dedups() -> None:
+    s = DeepRetrievalSession(max_iterations=4)
+    s.add_useful([_n("a"), _n("b")])
+    s.add_useful([_n("b"), _n("c")])
+    assert [n["node_id"] for n in s.useful_chunks] == ["a", "b", "c"]
+
+
+def test_session_stop_max_iterations() -> None:
+    s = DeepRetrievalSession(max_iterations=2)
+    s.record_round(new_count=5, total_count=5, best_score=1.0)
+    assert s.should_stop() == (False, None)
+    s.record_round(new_count=5, total_count=5, best_score=2.0)
+    assert s.should_stop() == (True, "max_iterations")
+
+
+def test_session_stop_no_new_and_low_novelty() -> None:
+    s = DeepRetrievalSession(max_iterations=9)
+    s.record_round(new_count=0, total_count=8)
+    assert s.should_stop() == (True, "no_new_candidates")
+    s2 = DeepRetrievalSession(max_iterations=9, min_novelty=0.5)
+    s2.record_round(new_count=1, total_count=10)  # novelty 0.1 < 0.5
+    assert s2.should_stop() == (True, "low_novelty")
+
+
+def test_session_stop_diminishing_returns_and_continue() -> None:
+    s = DeepRetrievalSession(max_iterations=9)
+    s.record_round(new_count=5, total_count=5, best_score=0.9)
+    s.record_round(new_count=4, total_count=8, best_score=0.9)
+    s.record_round(new_count=3, total_count=9, best_score=0.9)  # no score gain over window
+    assert s.should_stop() == (True, "diminishing_returns")
+
+    s2 = DeepRetrievalSession(max_iterations=9)
+    s2.record_round(new_count=5, total_count=5, best_score=0.5)
+    s2.record_round(new_count=4, total_count=8, best_score=0.7)
+    s2.record_round(new_count=3, total_count=9, best_score=0.9)  # still improving + novel
+    assert s2.should_stop() == (False, None)
