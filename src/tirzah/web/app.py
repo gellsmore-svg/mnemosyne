@@ -218,7 +218,7 @@ def create_app() -> FastAPI:
             "memory_agent_adapter_policy": "local_only_no_http",
             "memory_agent_model": config.runtime.memory_agent_model or config.runtime.ollama_model,
             "retrieval_mode": config.runtime.retrieval_mode,
-            "available_retrieval_modes": ["direct", "agentic"],
+            "available_retrieval_modes": ["direct", "agentic", "deep"],
             "available_adapters": ["mock", "ollama_cli", "ollama_http"],
             "available_embedding_adapters": ["mock", "local_command"],
             "non_compliant_embedding_adapters": ["ollama_http", "ollama_powershell"],

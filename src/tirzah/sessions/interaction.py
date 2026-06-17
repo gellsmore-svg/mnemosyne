@@ -20,6 +20,7 @@ from tirzah.domains.registry import (
     clean_domain_id,
     conversation_domain_id_for_session,
 )
+from tirzah.retrieval.deep import run_deep_answer
 from tirzah.retrieval.queries import (
     build_prompt_envelope,
     build_prompt_envelope_without_context,
@@ -31,6 +32,7 @@ from tirzah.retrieval.queries import (
     get_document,
     graph_edges_for_node,
     list_documents,
+    node_identity,
     node_visible_to_identity,
     node_context,
     render_context_document,
@@ -167,6 +169,19 @@ def answer_query(
         session_id=session_id,
         retrieval_mode=runtime_config.retrieval_mode,
     )
+    if runtime_config.retrieval_mode == "deep":
+        return answer_query_deep(
+            db=db,
+            config=config,
+            runtime_config=runtime_config,
+            query=query,
+            focus_node_id=focus_node_id,
+            session_id=session_id,
+            process_trace=process_trace,
+            process_run_id=process_run_id,
+            project_domain_id=project_domain_id,
+            conversation_domain_id=conversation_domain_id,
+        )
     if runtime_config.retrieval_mode == "agentic":
         return answer_query_agentic(
             db=db,
@@ -356,6 +371,162 @@ def answer_query(
         "adapter": answer["adapter"],
         "model": answer.get("model"),
         "used_node_ids": answer["used_node_ids"],
+        "budget": prompt["budget"],
+        "retrieval_status": retrieval_status,
+        "process_run_id": process_run_id,
+        "process_trace": process_trace,
+    }
+    return attach_answer_activity(result)
+
+
+def answer_query_deep(
+    db: Database,
+    config: AppConfig,
+    runtime_config,
+    query: str,
+    focus_node_id: str | None,
+    session_id: str,
+    process_trace: list[dict[str, Any]],
+    process_run_id: str | None = None,
+    project_domain_id: str | None = None,
+    conversation_domain_id: str | None = None,
+) -> dict[str, Any]:
+    identity = first_active_agent_identity(db) if session_id else None
+    try:
+        deep_result = run_deep_answer(
+            db, query, config=config, runtime_config=runtime_config, identity=identity
+        )
+    except Exception as error:
+        finish_answer_process_run(
+            db,
+            process_run_id,
+            status="blocked",
+            current_step_id="deep_retrieval_failed",
+            exception=answer_exception_payload(
+                "deep_retrieval_failed",
+                "Inspect deep retrieval planning/synthesis and retry.",
+                error,
+            ),
+        )
+        process_trace.append(
+            {
+                "step": "deep_retrieval",
+                "input": {"query": query, "session_id": session_id, "mode": "deep"},
+                "output": {"ok": False, "error": str(error), "type": type(error).__name__},
+            }
+        )
+        return attach_answer_activity(
+            {
+                "ok": False,
+                "reason": "deep_retrieval_failed",
+                "message": str(error),
+                "adapter": runtime_config.answer_adapter,
+                "model": runtime_config.ollama_model,
+                "focus_node_id": focus_node_id,
+                "process_run_id": process_run_id,
+                "process_trace": process_trace,
+            }
+        )
+
+    useful = deep_result["useful_chunks"]
+    used_node_ids = [nid for nid in (node_identity(c) for c in useful) if nid]
+    answer = {
+        "answer": deep_result["answer"],
+        "used_node_ids": used_node_ids,
+        "adapter": runtime_config.answer_adapter,
+        "model": runtime_config.ollama_model,
+    }
+    prompt = {
+        "prompt_text": "",  # the model was already invoked inside the deep flow
+        "budget": {},
+        "context_metadata": {
+            "included": [{"node_id": nid} for nid in used_node_ids],
+            "evidence_summary": {
+                "included_node_count": len(used_node_ids),
+                "source_documents": [],
+            },
+            "skipped": [],
+        },
+    }
+    retrieval_status = "deep_context" if useful else "deep_no_context"
+    process_trace.append(
+        {
+            "step": "deep_retrieval",
+            "input": {"query": query, "session_id": session_id, "mode": "deep"},
+            "output": {
+                "ok": True,
+                "useful_count": len(useful),
+                "rounds": deep_result["rounds"],
+                "trace": deep_result["trace"],
+            },
+        }
+    )
+    try:
+        exchange_id = save_exchange(
+            db,
+            query=query,
+            answer=answer,
+            prompt=prompt,
+            focus_node_id=focus_node_id,
+            session_id=session_id,
+            process_trace=process_trace,
+            project_domain_id=project_domain_id,
+            conversation_domain_id=conversation_domain_id,
+        )
+    except Exception as error:
+        finish_answer_process_run(
+            db,
+            process_run_id,
+            status="blocked",
+            current_step_id="answer_save_failed",
+            exception=answer_exception_payload(
+                "answer_save_failed",
+                "Inspect exchange persistence and retry.",
+                error,
+            ),
+        )
+        process_trace.append(
+            {
+                "step": "save_exchange",
+                "input": {"session_id": session_id, "focus_node_id": focus_node_id},
+                "output": {"ok": False, "error": str(error), "type": type(error).__name__},
+            }
+        )
+        return attach_answer_activity(
+            {
+                "ok": False,
+                "reason": "answer_save_failed",
+                "message": str(error),
+                "adapter": runtime_config.answer_adapter,
+                "model": runtime_config.ollama_model,
+                "focus_node_id": focus_node_id,
+                "process_run_id": process_run_id,
+                "process_trace": process_trace,
+            }
+        )
+    finish_answer_process_run(
+        db,
+        process_run_id,
+        status="completed",
+        current_step_id="answer_saved",
+        completed_step_id="deep_retrieval",
+        exchange_id=exchange_id,
+    )
+    result = {
+        "ok": True,
+        "exchange_id": exchange_id,
+        "session_id": session_id,
+        "project_domain_id": clean_domain_id(project_domain_id),
+        "conversation_domain_id": clean_domain_id(
+            conversation_domain_id,
+            fallback=conversation_domain_id_for_session(session_id),
+        ),
+        "focus_node_id": focus_node_id,
+        "query": query,
+        "answer": answer["answer"],
+        "adapter": answer["adapter"],
+        "model": answer.get("model"),
+        "used_node_ids": used_node_ids,
         "budget": prompt["budget"],
         "retrieval_status": retrieval_status,
         "process_run_id": process_run_id,

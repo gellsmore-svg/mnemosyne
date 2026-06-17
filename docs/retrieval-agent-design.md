@@ -166,12 +166,15 @@ both sides rather than retrofitting.
   `run_primitive`, `allowed_primitive_specs`) — keyword/hybrid/adjacent/graph,
   each delegating to the read-only query functions. Deep bounds added to
   `RetrievalConfig` (`deep_max_iterations/_max_candidates/_shortlist_size/_page_size`).
-  The **orchestrator loop** is built: `run_deep_retrieval` +
-  `DeepRetrievalSession` (deep.py) — plan → validate+execute → dedup+shortlist →
-  paged triage → deterministic stop, with the LLM seams (`planner`, `triager`)
-  injected. Still to do: the real planner/triager (prompt templates + parse),
-  synthesis over the useful-chunks bucket, a token estimator, and wiring
-  `retrieval_mode == "deep"` into the answer flow.
+  The **`deep` mode is complete and selectable** (deep.py + interaction.py):
+  `run_deep_retrieval` + `DeepRetrievalSession` (loop + stop signals),
+  `make_planner`/`make_triager` (real LLM seams over the answer adapter),
+  `synthesize_answer` + `run_deep_answer` (retrieve → synthesise), wired via
+  `answer_query_deep` (`retrieval_mode == "deep"`; CLI `--retrieval-mode deep`,
+  web mode list). Opt-in; mock-gated query embedding for the hybrid primitive.
+  Remaining nice-to-haves: a token estimator (summarisation under pressure), a
+  frontier `synthesis_model` adapter, and flipping defaults after a real-corpus +
+  real-embedding smoke (needs live Mongo/Ollama).
 - ~~The coarse-rank/relevance-gate function (the hybrid lexical+vector reranker).~~
   **Done (building block):** `hybrid_rank` + `merge_candidate_pools` in
   `retrieval/queries.py` — deterministic gate (lexical OR vector floor) + min-max

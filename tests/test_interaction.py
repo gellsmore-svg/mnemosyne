@@ -4191,3 +4191,29 @@ def test_ranked_focus_matches_forwards_query_embedding(monkeypatch) -> None:
     captured.clear()
     interaction.ranked_focus_matches(None, "memory", label=None, limit=3)
     assert captured and all(c is None for c in captured)
+
+
+def test_answer_query_deep_mode_dispatch(monkeypatch) -> None:
+    import tirzah.sessions.interaction as interaction
+
+    monkeypatch.setattr(interaction, "first_active_agent_identity", lambda db: None)
+    monkeypatch.setattr(
+        interaction,
+        "run_deep_answer",
+        lambda db, query, **k: {
+            "answer": "deep answer",
+            "useful_chunks": [{"node_id": "n1"}, {"node_id": "n2"}],
+            "rounds": [],
+            "trace": [{"step": "stop", "reason": "planner_stop"}],
+        },
+    )
+    monkeypatch.setattr(interaction, "save_exchange", lambda *a, **k: "exch-deep")
+    config = AppConfig(runtime=RuntimeConfig(retrieval_mode="deep", answer_adapter="fake"))
+
+    result = answer_query(FakeDb(), config, "find memory")
+
+    assert result["ok"] is True
+    assert result["answer"] == "deep answer"
+    assert result["used_node_ids"] == ["n1", "n2"]
+    assert result["exchange_id"] == "exch-deep"
+    assert result["retrieval_status"] == "deep_context"

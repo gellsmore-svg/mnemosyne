@@ -991,7 +991,7 @@ def main() -> None:
     ask.add_argument("--session-id", default="default")
     ask.add_argument("--adapter", default=None)
     ask.add_argument("--model", default=None)
-    ask.add_argument("--retrieval-mode", choices=["direct", "agentic"], default=None)
+    ask.add_argument("--retrieval-mode", choices=["direct", "agentic", "deep"], default=None)
     ask.add_argument("--json", action="store_true")
 
     chat = subcommands.add_parser("chat")
@@ -999,7 +999,7 @@ def main() -> None:
     chat.add_argument("--session-id", default="default")
     chat.add_argument("--adapter", default=None)
     chat.add_argument("--model", default=None)
-    chat.add_argument("--retrieval-mode", choices=["direct", "agentic"], default=None)
+    chat.add_argument("--retrieval-mode", choices=["direct", "agentic", "deep"], default=None)
 
     history = subcommands.add_parser("history")
     history.add_argument("--session-id", default=None)
