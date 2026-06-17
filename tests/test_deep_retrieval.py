@@ -267,3 +267,45 @@ def test_deep_loop_with_real_planner_triager(monkeypatch) -> None:
     )
     assert [c["node_id"] for c in out["useful_chunks"]] == ["n10"]
     assert out["trace"][-1]["reason"] == "planner_stop"
+
+
+from tirzah.retrieval.deep import run_deep_answer, synthesize_answer
+
+
+class _CapturingAdapter:
+    def __init__(self, answer="ans"):
+        self.prompts = []
+        self._answer = answer
+
+    def answer(self, prompt):
+        self.prompts.append(prompt["prompt_text"])
+        return {"answer": self._answer}
+
+
+def test_synthesize_answer_with_and_without_chunks() -> None:
+    a = _CapturingAdapter("written")
+    out = synthesize_answer("what?", [{"node_id": "n1", "title": "T", "text": "body"}], a)
+    assert out == "written"
+    assert "[n1]" in a.prompts[0] and "body" in a.prompts[0] and "what?" in a.prompts[0]
+
+    a2 = _CapturingAdapter("none")
+    assert synthesize_answer("q", [], a2) == "none"
+    assert "no relevant information" in a2.prompts[0]
+
+
+def test_run_deep_answer_end_to_end(monkeypatch) -> None:
+    monkeypatch.setattr(
+        deep, "run_primitive", lambda *a, **k: [{"node_id": "n10", "text_preview": "hi"}, {"node_id": "n11"}]
+    )
+    adapter = _ScriptedAdapter(
+        [
+            _json.dumps({"primitive": "keyword_search", "args": {"query": "q"}}),
+            _json.dumps(["n10"]),
+            _json.dumps({"action": "stop"}),
+            "Final answer.",
+        ]
+    )
+    rc = SimpleNamespace(hybrid_search_enabled=False, embedding_adapter="mock")
+    out = run_deep_answer(None, "q", config=_cfg(max_it=5), runtime_config=rc, adapter=adapter)
+    assert out["answer"] == "Final answer."
+    assert [c["node_id"] for c in out["useful_chunks"]] == ["n10"]

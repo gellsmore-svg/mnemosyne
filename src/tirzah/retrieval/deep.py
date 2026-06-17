@@ -17,6 +17,8 @@ import json
 import re
 from typing import Any
 
+from tirzah.adapters.answer import answer_adapter
+from tirzah.adapters.embedding import embedding_adapter
 from tirzah.retrieval.queries import (
     expand_graph_paths,
     node_context,
@@ -465,3 +467,81 @@ def make_triager(adapter: Any):
         return parse_deep_triage(_adapter_answer(adapter, prompt), page)
 
     return triager
+
+
+# --------------------------------------------------------------------------- #
+# Synthesis + the full deep flow (retrieve -> synthesise). Self-contained so
+# `deep.py` takes no dependency on the interaction layer (which will call this).
+# --------------------------------------------------------------------------- #
+
+
+def synthesize_answer(query: str, useful_chunks: list[dict[str, Any]], adapter: Any) -> str:
+    """Write the final answer from the kept chunks (the useful-chunks bucket).
+    Reads the chunk text, cites node ids, and is told to flag insufficiency."""
+    if not useful_chunks:
+        prompt = (
+            "Answer the question. If there is no relevant information available, say so plainly.\n\n"
+            f"Question: {query}\n"
+        )
+    else:
+        blocks = []
+        for chunk in useful_chunks:
+            text = chunk.get("text") or chunk.get("text_preview") or ""
+            title = chunk.get("title") or ""
+            blocks.append(f"[{node_identity(chunk)}] {title}\n{text}".strip())
+        prompt = (
+            "Answer the question using ONLY the context below. Cite the [node_id] sources you "
+            "use. If the context is insufficient, say so plainly.\n\n"
+            f"Context:\n{chr(10).join(blocks)}\n\nQuestion: {query}\n"
+        )
+    return _adapter_answer(adapter, prompt)
+
+
+def _build_query_embedding(runtime_config: Any, text: str) -> dict[str, Any] | None:
+    """Embed the query for hybrid primitives, or None to stay lexical. None when
+    hybrid is off, the adapter is the deterministic mock, or embedding fails.
+    (Mirrors interaction.build_query_embedding; kept here to avoid a layer cycle.)"""
+    if not text or runtime_config is None:
+        return None
+    if not getattr(runtime_config, "hybrid_search_enabled", False):
+        return None
+    if getattr(runtime_config, "embedding_adapter", "mock") == "mock":
+        return None
+    try:
+        return embedding_adapter(runtime_config).embed(text)
+    except Exception:
+        return None
+
+
+def run_deep_answer(
+    db: Any,
+    query: str,
+    *,
+    config: Any,
+    runtime_config: Any,
+    identity: dict[str, Any] | None = None,
+    adapter: Any = None,
+    query_embedding: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The full deep retrieval-and-answer flow: build the LLM seams from the
+    answer adapter, run the orchestrator loop, then synthesise over the kept
+    chunks. `adapter` / `query_embedding` are injectable for testing."""
+    adapter = adapter or answer_adapter(runtime_config)
+    if query_embedding is None:
+        query_embedding = _build_query_embedding(runtime_config, query)
+    result = run_deep_retrieval(
+        db,
+        query,
+        config=config,
+        planner=make_planner(adapter),
+        triager=make_triager(adapter),
+        query_embedding=query_embedding,
+        identity=identity,
+    )
+    answer = synthesize_answer(query, result["useful_chunks"], adapter)
+    return {
+        "answer": answer,
+        "useful_chunks": result["useful_chunks"],
+        "rounds": result["rounds"],
+        "trace": result["trace"],
+    }
