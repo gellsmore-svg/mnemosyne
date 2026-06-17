@@ -396,7 +396,13 @@ def build_deep_planner_prompt(query: str, plan_context: dict[str, Any]) -> str:
         f"{plan_context.get('seen_count')}.\n"
         "Available primitives (pick exactly one):\n"
         + json.dumps(plan_context.get("primitives", []), indent=2)
-        + '\n\nReply with ONLY a JSON object, one of:\n'
+        + "\n\nGuidance:\n"
+        "- For search primitives, use a SHORT, focused keyword or key term as the "
+        "`query` (e.g. \"vorton\"), NOT the full question.\n"
+        "- If a previous round returned little that was new, try a DIFFERENT term "
+        "or primitive rather than repeating the same search.\n"
+        "- Stop once you have enough to answer.\n"
+        '\nReply with ONLY a JSON object, one of:\n'
         '  {"action": "stop"}\n'
         '  {"primitive": "<name>", "args": { ... }, "rationale": "<why>"}\n'
     )
