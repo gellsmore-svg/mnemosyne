@@ -113,18 +113,44 @@ class HoglahJobRunner:
     """
 
     def __init__(self, config: Any) -> None:
-        Hoglah = import_hoglah_client()
         self.config = config
         self.output_dir = Path(config.hoglah_output_dir).expanduser()
         self.poll_interval_seconds = 0.5
+        self.transport = getattr(config, "hoglah_transport", "store")
+
+        self._receiver: _CallbackReceiver | None = None
+        self._callback_url: str | None = None
+        self._client: Any | None = None
+        self._submitter: Any | None = None
+
+        if self.transport != "store":
+            # Messaging path: publish a job-request over a broker and await the
+            # result over the same broker. No SQLite client, no callback receiver.
+            from hoglah.messaging_submitter import MessagingSubmitter, make_submitter_transport
+
+            self.delivery = "messaging"
+            self._submitter = MessagingSubmitter(
+                make_submitter_transport(
+                    self.transport,
+                    kafka_bootstrap_servers=getattr(config, "hoglah_kafka_bootstrap_servers", None),
+                    kafka_input_topic=getattr(config, "hoglah_kafka_input_topic", None),
+                    kafka_results_topic=getattr(config, "hoglah_kafka_results_topic", None),
+                    rabbitmq_url=getattr(config, "hoglah_rabbitmq_url", None),
+                    rabbitmq_input_queue=getattr(config, "hoglah_rabbitmq_input_queue", None),
+                    redis_url=getattr(config, "hoglah_redis_url", None),
+                    redis_input_stream=getattr(config, "hoglah_redis_input_stream", None),
+                    redis_results_stream=getattr(config, "hoglah_redis_results_stream", None),
+                )
+            )
+            return
+
+        # Store path (default): the shared SQLite queue + poll/callback delivery.
+        Hoglah = import_hoglah_client()
         self.delivery = getattr(config, "hoglah_delivery", "poll")
         if self.delivery not in ("poll", "callback"):
             raise ValueError(
                 f"Unknown hoglah_delivery {self.delivery!r}; expected 'poll' or 'callback'."
             )
-
-        self._receiver: _CallbackReceiver | None = None
-        self._callback_url: str | None = None
         if self.delivery == "callback":
             self._receiver = _CallbackReceiver(
                 config.hoglah_callback_host, config.hoglah_callback_port
@@ -157,6 +183,16 @@ class HoglahJobRunner:
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         timeout = self.wait_timeout_seconds
+        if self._submitter is not None:
+            return self._submitter.submit(
+                kind="generate",
+                prompt=prompt_text,
+                model=model,
+                timeout=timeout,
+                tags=tags,
+                metadata=metadata,
+                fmt=fmt,
+            )
         job_id = self._client.submit(
             prompt=prompt_text,
             model=model,
@@ -170,6 +206,15 @@ class HoglahJobRunner:
 
     def run_embedding(self, text: str, *, model: str) -> dict[str, Any]:
         timeout = self.wait_timeout_seconds
+        if self._submitter is not None:
+            return self._submitter.submit(
+                kind="embed",
+                prompt=text,
+                model=model,
+                timeout=timeout,
+                tags=["tirzah"],
+                metadata={"source": "tirzah"},
+            )
         job_id = self._client.submit_embedding(
             text,
             model=model,
@@ -219,6 +264,9 @@ class HoglahJobRunner:
             time.sleep(self.poll_interval_seconds)
 
     def close(self) -> None:
+        if self._submitter is not None:
+            self._submitter.close()
+            self._submitter = None
         if self._receiver is not None:
             self._receiver.close()
             self._receiver = None

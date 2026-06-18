@@ -775,7 +775,7 @@ def main() -> None:
     embedding_smoke.add_argument("text")
     embedding_smoke.add_argument(
         "--adapter",
-        choices=["mock", "local_command", "ollama_http", "ollama_powershell"],
+        choices=["mock", "local_command", "ollama_http", "ollama_powershell", "hoglah"],
         default=None,
     )
     embedding_smoke.add_argument("--model", default=None)
