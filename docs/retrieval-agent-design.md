@@ -166,6 +166,13 @@ both sides rather than retrofitting.
   `run_primitive`, `allowed_primitive_specs`) — keyword/hybrid/adjacent/graph,
   each delegating to the read-only query functions. Deep bounds added to
   `RetrievalConfig` (`deep_max_iterations/_max_candidates/_shortlist_size/_page_size`).
+  **`semantic_search` is now wired for free-text queries** (`query_embedding_candidate_nodes`
+  in `retrieval/queries.py`): a pure meaning-based primitive that ranks embedded
+  nodes by cosine similarity to a per-call query embedding — reaching nodes that
+  match by meaning even with **no shared keywords** (unlike `keyword_search`/
+  `hybrid_search`, which filter lexically first). A per-call `embedder` seam lets
+  the planner embed a focused phrase, not just the original question; it degrades
+  to empty (planner falls back to lexical) when hybrid is off / the adapter is mock.
   The **`deep` mode is complete and selectable** (deep.py + interaction.py):
   `run_deep_retrieval` + `DeepRetrievalSession` (loop + stop signals),
   `make_planner`/`make_triager` (real LLM seams over the answer adapter),

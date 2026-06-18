@@ -11,7 +11,13 @@ from tirzah.retrieval.deep import (
 
 def test_menu_lists_primitives_without_handlers() -> None:
     specs = {s["name"]: s for s in allowed_primitive_specs()}
-    assert set(specs) == {"keyword_search", "hybrid_search", "adjacent_context", "graph_traverse"}
+    assert set(specs) == {
+        "keyword_search",
+        "hybrid_search",
+        "semantic_search",
+        "adjacent_context",
+        "graph_traverse",
+    }
     assert "handler" not in specs["keyword_search"]
     assert specs["keyword_search"]["args"]["query"]["required"] is True
 
@@ -75,6 +81,42 @@ def test_run_primitive_dispatches(monkeypatch) -> None:
     assert calls["node"][0] == (None, "n1") and calls["node"][1]["child_limit"] == 20
     run_primitive(None, "graph_traverse", {"node_id": "n1", "depth": 3})
     assert calls["graph"][1]["max_depth"] == 3
+
+
+def test_semantic_search_embeds_call_phrase(monkeypatch) -> None:
+    calls = {}
+
+    def fake_vector(db, query_embedding, *, limit=10, label=None, **k):
+        calls["vector"] = {"q": query_embedding, "limit": limit, "label": label}
+        return [{"node_id": "v1", "embedding_similarity": 0.9}]
+
+    monkeypatch.setattr(deep, "query_embedding_candidate_nodes", fake_vector)
+    session_emb = {"vector": [1.0], "dimensions": 1, "model": "m"}
+    phrase_emb = {"vector": [2.0], "dimensions": 1, "model": "m"}
+
+    # With an embedder, semantic_search embeds THIS call's phrase (not the session one).
+    out = run_primitive(
+        None,
+        "semantic_search",
+        {"query": "how do things cohere", "label": "ams_domain"},
+        query_embedding=session_emb,
+        embedder=lambda text: phrase_emb,
+    )
+    assert out == [{"node_id": "v1", "embedding_similarity": 0.9}]
+    assert calls["vector"]["q"] is phrase_emb
+    assert calls["vector"]["label"] == "ams_domain"
+
+    # No embedder -> falls back to the session query embedding.
+    run_primitive(None, "semantic_search", {"query": "x"}, query_embedding=session_emb)
+    assert calls["vector"]["q"] is session_emb
+
+
+def test_semantic_search_without_embedding_returns_empty(monkeypatch) -> None:
+    monkeypatch.setattr(
+        deep, "query_embedding_candidate_nodes", lambda *a, **k: [{"node_id": "x"}]
+    )
+    # No session embedding and no embedder (hybrid off / mock) -> empty, planner degrades.
+    assert run_primitive(None, "semantic_search", {"query": "x"}) == []
 
 
 from tirzah.retrieval.deep import DeepRetrievalSession
@@ -152,7 +194,7 @@ def _planner(seq):
 def test_deep_loop_happy_path(monkeypatch) -> None:
     counter = {"n": 0}
 
-    def fake_run(db, name, args, *, query_embedding=None, identity=None):
+    def fake_run(db, name, args, *, query_embedding=None, identity=None, embedder=None):
         counter["n"] += 1
         base = counter["n"] * 10
         return [{"node_id": f"n{base}"}, {"node_id": f"n{base + 1}"}]
@@ -174,7 +216,7 @@ def test_deep_loop_happy_path(monkeypatch) -> None:
 def test_deep_loop_stops_at_max_iterations(monkeypatch) -> None:
     counter = {"n": 0}
 
-    def fake_run(db, name, args, *, query_embedding=None, identity=None):
+    def fake_run(db, name, args, *, query_embedding=None, identity=None, embedder=None):
         counter["n"] += 1
         return [{"node_id": f"n{counter['n']}"}]  # new each round
 

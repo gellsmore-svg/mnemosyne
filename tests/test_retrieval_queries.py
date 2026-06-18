@@ -19,6 +19,7 @@ from tirzah.retrieval.queries import (
     node_search_sort_key,
     parse_iso_datetime,
     prioritize_records,
+    query_embedding_candidate_nodes,
     render_context_document,
     render_record,
     search_nodes,
@@ -1935,3 +1936,44 @@ def test_search_nodes_hybrid_reranks_by_query_embedding() -> None:
     # the vector-similar (but lexically weaker) node is lifted above the
     # lexically-stronger one once the query embedding is supplied.
     assert hybrid == ["Storage Internals", "Memory Systems Overview"]
+
+
+def test_query_embedding_candidate_nodes_ranks_by_meaning() -> None:
+    doc_id = ObjectId()
+
+    def _node(title, vector=None, embedding=None, labels=None):
+        node = {
+            "_id": ObjectId(),
+            "document_id": doc_id,
+            "tree_id": ObjectId(),
+            "title": title,
+            "text": title,
+            "labels": labels or ["source_chunk"],
+        }
+        if embedding is not None:
+            node["embedding"] = embedding
+        elif vector is not None:
+            node["embedding"] = _embedding(vector)
+        return node
+
+    store = _StubStore(
+        [
+            _node("Closest", vector=[1.0, 0.0]),
+            _node("Orthogonal", vector=[0.0, 1.0]),
+            _node("Near", vector=[0.9, 0.1]),
+            _node("No embedding"),  # excluded — no vector
+            # incomparable model -> excluded
+            _node("Wrong model", embedding={"vector": [1.0, 0.0], "dimensions": 2, "model": "other"}),
+        ]
+    )
+
+    results = query_embedding_candidate_nodes(store, _embedding([1.0, 0.0]), limit=10)
+    titles = [r["title"] for r in results]
+    # ranked purely by cosine to the query; embedding-less / incomparable dropped.
+    assert titles == ["Closest", "Near", "Orthogonal"]
+    assert results[0]["embedding_similarity"] == 1.0
+    assert results[0]["embedding_model"] == "test-embed"
+
+    # a missing/invalid query embedding yields nothing (planner degrades to lexical).
+    assert query_embedding_candidate_nodes(store, None) == []
+    assert query_embedding_candidate_nodes(store, {"vector": []}) == []

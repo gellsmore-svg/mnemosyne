@@ -608,6 +608,84 @@ def embedding_candidate_report(
     }
 
 
+def query_embedding_candidate_nodes(
+    db: Database | MemoryStore,
+    query_embedding: dict[str, Any] | None,
+    *,
+    limit: int = 10,
+    min_similarity: float = 0.0,
+    candidate_scan_limit: int | None = None,
+    label: str | None = None,
+) -> list[dict[str, Any]]:
+    """Free-text semantic retrieval: rank embedded nodes by cosine similarity to a
+    *query* embedding (not a focus node), highest first. This reaches nodes that
+    match by **meaning** even when they share no keywords with the query — unlike
+    `search_nodes`, which filters lexically first.
+
+    A bounded linear scan over nodes carrying a *comparable* embedding (same model
+    + dimensions as the query). There is no ANN index, so the scan is capped
+    (`candidate_scan_limit`, default ~25x the limit, hard max 10k) and may be
+    approximate on very large corpora — pass `label` to focus the scan. Returns
+    serialized nodes with `embedding_similarity` set; empty if the query embedding
+    is missing/unusable.
+    """
+    store = as_memory_store(db)
+    payload = valid_embedding_payload(query_embedding)
+    if not payload:
+        return []
+    try:
+        parsed_limit = int(limit)
+    except (TypeError, ValueError):
+        parsed_limit = 10
+    bounded_limit = max(1, min(parsed_limit, 100))
+    try:
+        threshold = float(min_similarity)
+    except (TypeError, ValueError):
+        threshold = 0.0
+    threshold = max(-1.0, min(threshold, 1.0))
+    scan_limit = bounded_embedding_candidate_scan_limit(candidate_scan_limit, bounded_limit)
+
+    filters: dict[str, Any] = {
+        "embedding.model": {"$exists": True},
+        "embedding.dimensions": {"$exists": True},
+    }
+    if label:
+        filters["labels"] = label
+
+    candidates: list[dict[str, Any]] = []
+    seen_text_keys: set[str] = set()
+    for index, candidate in enumerate(store.find_nodes(filters, limit=scan_limit + 1)):
+        if index >= scan_limit:
+            break
+        if "source_root" in (candidate.get("labels") or []):
+            continue
+        if is_superseded_node(candidate):
+            continue
+        candidate_embedding = valid_embedding_payload(candidate.get("embedding"))
+        if not candidate_embedding:
+            continue
+        if not comparable_embeddings(payload, candidate_embedding):
+            continue
+        text_key = normalized_candidate_text_key(str(candidate.get("text") or ""))
+        if text_key and text_key in seen_text_keys:
+            continue
+        if text_key:
+            seen_text_keys.add(text_key)
+        similarity = cosine_similarity(payload["vector"], candidate_embedding["vector"])
+        if similarity < threshold:
+            continue
+        candidates.append(
+            {
+                **serialize_node(candidate),
+                "embedding_similarity": round(similarity, 6),
+                "embedding_model": candidate_embedding.get("model"),
+                "embedding_dimensions": candidate_embedding.get("dimensions"),
+            }
+        )
+    candidates.sort(key=lambda c: (-c["embedding_similarity"], node_identity(c)))
+    return candidates[:bounded_limit]
+
+
 def semantic_labels(labels: list[str]) -> list[str]:
     return sorted(
         {

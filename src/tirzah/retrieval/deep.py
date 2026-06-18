@@ -23,6 +23,7 @@ from tirzah.retrieval.queries import (
     expand_graph_paths,
     node_context,
     node_identity,
+    query_embedding_candidate_nodes,
     search_nodes,
 )
 
@@ -44,13 +45,13 @@ class PrimitiveError(ValueError):
 # --------------------------------------------------------------------------- #
 
 
-def _keyword_search(db: Any, args: dict[str, Any], *, query_embedding=None, identity=None):
+def _keyword_search(db: Any, args: dict[str, Any], *, query_embedding=None, identity=None, embedder=None):
     return search_nodes(
         db, query=args["query"], label=args.get("label"), limit=args["limit"], identity=identity
     )
 
 
-def _hybrid_search(db: Any, args: dict[str, Any], *, query_embedding=None, identity=None):
+def _hybrid_search(db: Any, args: dict[str, Any], *, query_embedding=None, identity=None, embedder=None):
     return search_nodes(
         db,
         query=args["query"],
@@ -61,11 +62,28 @@ def _hybrid_search(db: Any, args: dict[str, Any], *, query_embedding=None, ident
     )
 
 
-def _adjacent_context(db: Any, args: dict[str, Any], *, query_embedding=None, identity=None):
+def _semantic_search(db: Any, args: dict[str, Any], *, query_embedding=None, identity=None, embedder=None):
+    # Embed this call's focused phrase if an embedder is available; otherwise fall
+    # back to the session query embedding. Returns [] when no embedding is usable
+    # (hybrid off / mock adapter / embed failure) so the planner degrades to lexical.
+    call_embedding = None
+    text = args.get("query")
+    if text and embedder is not None:
+        call_embedding = embedder(text)
+    if call_embedding is None:
+        call_embedding = query_embedding
+    if call_embedding is None:
+        return []
+    return query_embedding_candidate_nodes(
+        db, call_embedding, limit=args["limit"], label=args.get("label")
+    )
+
+
+def _adjacent_context(db: Any, args: dict[str, Any], *, query_embedding=None, identity=None, embedder=None):
     return node_context(db, args["node_id"], child_limit=args["child_limit"])
 
 
-def _graph_traverse(db: Any, args: dict[str, Any], *, query_embedding=None, identity=None):
+def _graph_traverse(db: Any, args: dict[str, Any], *, query_embedding=None, identity=None, embedder=None):
     return expand_graph_paths(db, args["node_id"], max_depth=args["depth"], limit=args["limit"])
 
 
@@ -91,6 +109,19 @@ PRIMITIVES: dict[str, dict[str, Any]] = {
             "limit": {"type": "int", "required": False, "default": 10},
         },
         "handler": _hybrid_search,
+    },
+    "semantic_search": {
+        "description": (
+            "Pure meaning-based (vector) search — finds nodes whose meaning matches "
+            "the `query`, even when they share NO keywords with it. Use for "
+            "conceptual/paraphrased questions where the wording may differ from the source."
+        ),
+        "args": {
+            "query": {"type": "str", "required": True},
+            "label": {"type": "str", "required": False},
+            "limit": {"type": "int", "required": False, "default": 10},
+        },
+        "handler": _semantic_search,
     },
     "adjacent_context": {
         "description": "The node plus its document, parent, and children.",
@@ -162,10 +193,13 @@ def run_primitive(
     *,
     query_embedding: dict[str, Any] | None = None,
     identity: dict[str, Any] | None = None,
+    embedder=None,
 ) -> Any:
     """Validate then dispatch a primitive call to its read-only handler."""
     args = validate_primitive_call(name, raw_args)
-    return PRIMITIVES[name]["handler"](db, args, query_embedding=query_embedding, identity=identity)
+    return PRIMITIVES[name]["handler"](
+        db, args, query_embedding=query_embedding, identity=identity, embedder=embedder
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -292,6 +326,7 @@ def run_deep_retrieval(
     triager,
     query_embedding: dict[str, Any] | None = None,
     identity: dict[str, Any] | None = None,
+    embedder=None,
 ) -> dict[str, Any]:
     """Run one deep retrieval session.
 
@@ -330,7 +365,8 @@ def run_deep_retrieval(
         raw_args = decision.get("args") or {}
         try:
             results = run_primitive(
-                db, name, raw_args, query_embedding=query_embedding, identity=identity
+                db, name, raw_args,
+                query_embedding=query_embedding, identity=identity, embedder=embedder,
             )
         except PrimitiveError as exc:
             invalid_attempts += 1
@@ -397,10 +433,13 @@ def build_deep_planner_prompt(query: str, plan_context: dict[str, Any]) -> str:
         "Available primitives (pick exactly one):\n"
         + json.dumps(plan_context.get("primitives", []), indent=2)
         + "\n\nGuidance:\n"
-        "- For search primitives, use a SHORT, focused keyword or key term as the "
-        "`query` (e.g. \"vorton\"), NOT the full question.\n"
-        "- If a previous round returned little that was new, try a DIFFERENT term "
-        "or primitive rather than repeating the same search.\n"
+        "- For `keyword_search`/`hybrid_search`, use a SHORT, focused keyword or "
+        "key term as the `query` (e.g. \"vorton\"), NOT the full question.\n"
+        "- For `semantic_search` (meaning-based), prefer a fuller conceptual phrase "
+        "or the question itself — it matches meaning, not exact words, so it can "
+        "find relevant nodes that use different terminology.\n"
+        "- If keyword/hybrid search returned little that was new, try "
+        "`semantic_search` (or a different term) rather than repeating the same search.\n"
         "- Stop once you have enough to answer.\n"
         '\nReply with ONLY a JSON object, one of:\n'
         '  {"action": "stop"}\n'
@@ -535,6 +574,10 @@ def run_deep_answer(
     adapter = adapter or answer_adapter(runtime_config)
     if query_embedding is None:
         query_embedding = _build_query_embedding(runtime_config, query)
+    # Per-call embedder so `semantic_search` can embed a focused phrase (not just
+    # the original question). Same gate as the session embedding: None when hybrid
+    # is off / the adapter is mock / embedding fails.
+    embedder = (lambda text: _build_query_embedding(runtime_config, text)) if runtime_config else None
     result = run_deep_retrieval(
         db,
         query,
@@ -543,6 +586,7 @@ def run_deep_answer(
         triager=make_triager(adapter),
         query_embedding=query_embedding,
         identity=identity,
+        embedder=embedder,
     )
     answer = synthesize_answer(query, result["useful_chunks"], adapter)
     return {
