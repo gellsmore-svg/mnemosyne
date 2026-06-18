@@ -189,9 +189,9 @@ both sides rather than retrofitting.
   **Wired into both live retrieval modes** via an optional `query_embedding` on
   `search_nodes` — the agentic `search_nodes` tool and direct-mode focus selection
   (`ranked_focus_matches`) — opt-in `runtime.hybrid_search_enabled`, active only
-  with a real, non-mock embedding adapter; degrades to lexical otherwise. Still to
-  do: the `deep`-mode shortlist + making it the default once validated on a real
-  corpus.
+  with a real, non-mock embedding adapter; degrades to lexical otherwise.
+  **`runtime.hybrid_search_enabled` now defaults on** (2026-06-18) after the
+  real-corpus validation — harmless under the mock adapter, active with a real one.
 - A token estimator good enough to drive summarisation thresholds.
 - The frontier answer adapter for `synthesis_model`.
 - Concrete `coverage` heuristic (advisory).

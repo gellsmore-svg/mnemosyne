@@ -33,10 +33,11 @@ class RuntimeConfig(BaseModel):
     profile_backfill_web_max_batches: int = 10
     memory_agent_adapter: str | None = None
     retrieval_mode: str = "direct"
-    # Blend lexical + query-vector similarity in node search (ADR-020). Off by
-    # default; only takes effect with a real (non-mock) embedding adapter, since
-    # mock query-vs-node similarity is not meaningful.
-    hybrid_search_enabled: bool = False
+    # Blend lexical + query-vector similarity in node search (ADR-020). On by
+    # default as of the real-corpus validation; only takes effect with a real
+    # (non-mock) embedding adapter and degrades safely to lexical otherwise, so
+    # it is harmless under the default mock adapter.
+    hybrid_search_enabled: bool = True
     ollama_model: str = "gemma3:1b"
     memory_agent_model: str | None = None
     ollama_format: str | None = None
