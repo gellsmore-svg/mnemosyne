@@ -166,6 +166,13 @@ Bugs and questions: <https://github.com/gellsmore-svg/tirzah/issues>. Security
 issues: please report privately — see [SECURITY.md](SECURITY.md). Tirzah is an
 early local-first prototype and is not hardened for untrusted network exposure.
 
+## Knowledge bundle
+
+A machine- and human-readable knowledge map of Tirzah's concepts, modules, and CLI
+is published as an [Open Knowledge Format](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing)
+bundle under [`okf/`](okf/index.md) — markdown with YAML frontmatter, linked into a
+concept graph.
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
