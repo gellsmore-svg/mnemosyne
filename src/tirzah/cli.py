@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -779,6 +780,12 @@ def main() -> None:
     subcommands.add_parser("queue-status")
     memory_health = subcommands.add_parser("memory-health")
     memory_health.add_argument("--format", choices=["json", "text"], default="text")
+    config_status = subcommands.add_parser(
+        "config-status",
+        help="Show the resolved runtime: active config file, adapters + their "
+        "capabilities, models, embedding dims, and the Mahalath seam state.",
+    )
+    config_status.add_argument("--format", choices=["json", "text"], default="text")
     subcommands.add_parser("labels")
     subcommands.add_parser("sessions")
     embedding_smoke = subcommands.add_parser("embedding-smoke")
@@ -1303,9 +1310,30 @@ def main() -> None:
         print(json.dumps({"ok": True, "labels": label_definitions(db)}, indent=2))
         return
 
+    if args.command == "config-status":
+        from tirzah.capabilities import render_runtime_text, resolved_runtime
+
+        snapshot = resolved_runtime(config.runtime)
+        snapshot["config_source"] = {
+            "config_path": os.environ.get("TIRZAH_CONFIG") or args.config,
+            "mongo_uri": config.mongo.uri,
+            "mongo_db": config.mongo.database,
+        }
+        if args.format == "json":
+            print(json.dumps(snapshot, indent=2))
+            return
+        print(f"config: {snapshot['config_source']['config_path']}  "
+              f"(mongo {snapshot['config_source']['mongo_db']})")
+        print(render_runtime_text(snapshot))
+        return
+
     if args.command == "memory-health":
         ensure_indexes(db)
         report = memory_health_payload(db)
+        if getattr(config, "runtime", None) is not None:
+            from tirzah.capabilities import resolved_runtime
+
+            report["runtime"] = resolved_runtime(config.runtime)  # adapter capability report
         if args.format == "json":
             print(json.dumps(report, indent=2))
             return

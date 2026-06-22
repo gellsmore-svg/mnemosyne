@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confident label/exact/alias matches) — precision-grade by default.
 
 ### Added
+- **`tirzah config-status`** + an adapter **capability registry** (`tirzah/capabilities.py`):
+  reports the resolved runtime — active config file, selected adapters and their
+  capabilities (`can_embed`/`can_answer`/`uses_mock`/`requires_hoglah`/
+  `can_resolve_mpl`/…), models, embedding dims, and the Mahalath seam state, with
+  explicit warnings (mock embeddings, Mahalath off, worker required). The same
+  snapshot is folded into `memory-health`. Would have made the CBO mock-embeddings /
+  disabled-resolver situation obvious at a glance.
 - `tirzah migrate` — a consolidated, ordered, **idempotent** schema-migration
   command with a `schema_migrations` ledger (mirrors Mahalath's), gathering the
   scattered `backfill-*` one-shots; migration 1 stamps `schema_version` on legacy
