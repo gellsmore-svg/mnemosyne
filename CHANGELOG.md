@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The Mahalath seam is now configurable from the environment
+  (`MAHALATH_ENABLED` / `MAHALATH_MONGO_URI` / `MAHALATH_MONGO_DB` /
+  `MAHALATH_STRICT`), so a missing config file can no longer silently disable it.
+- `mahalath_strict` now defaults to **true** (drop fuzzy approximations; keep only
+  confident label/exact/alias matches) — precision-grade by default.
+
 ### Added
 - `tirzah migrate` — a consolidated, ordered, **idempotent** schema-migration
   command with a `schema_migrations` ledger (mirrors Mahalath's), gathering the

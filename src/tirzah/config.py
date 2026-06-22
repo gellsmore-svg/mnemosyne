@@ -59,7 +59,10 @@ class RuntimeConfig(BaseModel):
     mahalath_mongo_uri: str = "mongodb://localhost:27017"
     mahalath_mongo_db: str = "mahalath_dev"
     mahalath_language: str = "en"
-    mahalath_strict: bool = False  # drop fuzzy (partial/text) matches, keep confident hits
+    # Strict by default: drop fuzzy (partial/text) matches and keep only confident
+    # label/exact/alias hits. A loose match attaching a wrong sense is worse than no
+    # sense for precision-grade work; flip to false only to accept approximate hints.
+    mahalath_strict: bool = True
     hoglah_db_path: Path = Path("data/hoglah/jobs.sqlite3")
     hoglah_ollama_host: str = "http://localhost:11434"
     # Decoupled topology: Tirzah is a pure submitter into the shared queue and a
@@ -125,6 +128,12 @@ _ENV_OVERRIDES: dict[str, tuple[str, str]] = {
     "TIRZAH_MONGO_DB": ("mongo", "database"),
     "OLLAMA_BASE_URL": ("runtime", "ollama_base_url"),
     "OLLAMA_EXECUTABLE": ("runtime", "ollama_executable"),
+    # The Mahalath seam — so `.env` alone enables/points it (no config file needed;
+    # a missing config file can no longer silently disable semantic precision).
+    "MAHALATH_ENABLED": ("runtime", "mahalath_enabled"),
+    "MAHALATH_MONGO_URI": ("runtime", "mahalath_mongo_uri"),
+    "MAHALATH_MONGO_DB": ("runtime", "mahalath_mongo_db"),
+    "MAHALATH_STRICT": ("runtime", "mahalath_strict"),
 }
 
 
