@@ -46,6 +46,13 @@ dev = [
 profiles = [
   "fastembed>=0.7",
 ]
+# Semantic precision via Mahalath (the Tirzah->Mahalath seam, tirzah/semantic.py).
+# Mahalath must be importable in Tirzah's environment for the package-level
+# resolver: co-install it (shared venv) or `pipx inject tirzah mahalath`. Not on
+# PyPI yet — install from the local repo / git until published.
+mahalath = [
+  "mahalath>=1.1.0",
+]
 hoglah = [
   "hoglah>=0.3.0",
 ]
