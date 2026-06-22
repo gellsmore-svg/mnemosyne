@@ -776,11 +776,15 @@ def prepare_direct_answer_prompt(
     if selected_node_id:
         context = compile_context(db, selected_node_id)
         if context:
+            from tirzah.semantic import make_resolver
+
             prompt = build_prompt_envelope(
                 context,
                 query=query,
                 token_budget=config.retrieval.prompt_token_budget,
                 reserved_response_tokens=config.retrieval.reserved_response_tokens,
+                resolver=make_resolver(config.runtime),
+                semantic_strict=config.runtime.mahalath_strict,
             )
         else:
             retrieval_status = "missing_context"

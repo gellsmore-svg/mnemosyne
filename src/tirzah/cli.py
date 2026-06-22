@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import yaml
@@ -1882,6 +1883,8 @@ def main() -> None:
         if not context_result:
             print(json.dumps({"ok": False, "prompt": None}, indent=2))
             return
+        from tirzah.semantic import make_resolver
+
         envelope = build_prompt_envelope(
             context_result,
             query=args.query,
@@ -1890,7 +1893,11 @@ def main() -> None:
             reserved_response_tokens=(
                 args.reserved_response_tokens or config.retrieval.reserved_response_tokens
             ),
+            resolver=make_resolver(config.runtime),
+            semantic_strict=config.runtime.mahalath_strict,
         )
+        if envelope.get("semantic_summary"):
+            print(f"# {envelope['semantic_summary']}", file=sys.stderr)
         if args.text:
             print(envelope["prompt_text"])
         else:

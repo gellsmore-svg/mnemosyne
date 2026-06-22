@@ -1292,6 +1292,8 @@ def build_prompt_envelope(
     system_instruction: str | None = None,
     token_budget: int = 2000,
     reserved_response_tokens: int = 500,
+    resolver: Any | None = None,
+    semantic_strict: bool = False,
 ) -> dict[str, Any]:
     instruction = system_instruction or default_system_instruction()
     overhead_text = "\n".join(
@@ -1309,20 +1311,31 @@ def build_prompt_envelope(
     available_context_tokens = max(0, token_budget - reserved_response_tokens - overhead_tokens)
     char_budget = available_context_tokens * 4
     rendered = render_context_document(context, char_budget=char_budget)
-    prompt_parts = [
-        instruction,
-        "",
-        "## User Query",
-        query,
-        "",
-        "## Retrieved Context",
-        rendered["text"],
-    ]
+
+    # Semantic precision (Mahalath, optional): resolve the key terms of the query +
+    # context to MPL labels/senses and condition the answer on them. Default off
+    # (resolver=None) keeps the prompt byte-identical to before.
+    semantic_labels: list[Any] = []
+    semantic_block = ""
+    semantic_summary = ""
+    if resolver is not None:
+        from tirzah.semantic import annotate, render_prompt_block, summarize_labels
+
+        semantic_labels = annotate(query, rendered["text"], resolver, strict=semantic_strict)
+        semantic_block = render_prompt_block(semantic_labels)
+        semantic_summary = summarize_labels(semantic_labels)
+
+    prompt_parts = [instruction, "", "## User Query", query, ""]
+    if semantic_block:
+        prompt_parts += [semantic_block, ""]
+    prompt_parts += ["## Retrieved Context", rendered["text"]]
     prompt_text = "\n".join(prompt_parts).rstrip() + "\n"
     return {
         "system_instruction": instruction,
         "query": query,
         "context_text": rendered["text"],
+        "semantic": [label.to_dict() for label in semantic_labels],
+        "semantic_summary": semantic_summary,
         "prompt_text": prompt_text,
         "budget": {
             "token_budget": token_budget,

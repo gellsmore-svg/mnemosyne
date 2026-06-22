@@ -51,6 +51,15 @@ class RuntimeConfig(BaseModel):
     # non-PATH install (e.g. a WSL-mounted ollama.exe).
     ollama_executable: Path = Path("ollama")
     ollama_timeout_seconds: int = 180
+    # Semantic precision via Mahalath (the Tirzah->Mahalath seam, off by default).
+    # When enabled, retrieval resolves key terms to MPL labels/senses from Mahalath's
+    # ontology and conditions the answer on them. Fail-soft: an absent/unreachable
+    # Mahalath simply yields no labels. See tirzah/semantic.py.
+    mahalath_enabled: bool = False
+    mahalath_mongo_uri: str = "mongodb://localhost:27017"
+    mahalath_mongo_db: str = "mahalath_dev"
+    mahalath_language: str = "en"
+    mahalath_strict: bool = False  # drop fuzzy (partial/text) matches, keep confident hits
     hoglah_db_path: Path = Path("data/hoglah/jobs.sqlite3")
     hoglah_ollama_host: str = "http://localhost:11434"
     # Decoupled topology: Tirzah is a pure submitter into the shared queue and a

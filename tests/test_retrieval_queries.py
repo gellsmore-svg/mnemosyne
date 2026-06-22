@@ -1681,6 +1681,42 @@ def test_build_prompt_envelope_includes_query_budget_and_context() -> None:
     assert envelope["budget"]["estimated_total_with_reserved_response_tokens"] <= 200
 
 
+def _semantic_context():
+    return {
+        "document": {"title": "Doc", "document_id": "doc1"},
+        "focus_node_id": "node1",
+        "records": [{
+            "role": "focus", "distance": 0, "title": "A", "node_id": "node1",
+            "labels": [], "endorsement_label": "unreviewed", "provenance": {},
+            "text_preview": "the form of the law",
+        }],
+    }
+
+
+def test_build_prompt_envelope_default_has_no_semantic_block() -> None:
+    env = build_prompt_envelope(_semantic_context(), query="what is form?", token_budget=200)
+    assert env["semantic"] == [] and env["semantic_summary"] == ""
+    assert "Semantic Precision" not in env["prompt_text"]  # default off = unchanged prompt
+
+
+def test_build_prompt_envelope_with_resolver_injects_block_and_keys() -> None:
+    from tirzah.semantic import SemanticLabel
+
+    class Resolver:
+        def resolve(self, terms):
+            return [SemanticLabel(term="form", mpl_label="MPL-004",
+                                  canonical_term="form (structure)", senses=["structural"],
+                                  match_kind="exact")]
+
+    env = build_prompt_envelope(_semantic_context(), query="what is form?",
+                                token_budget=400, reserved_response_tokens=25, resolver=Resolver())
+    assert "## Semantic Precision (MPL)" in env["prompt_text"]
+    assert "[MPL-004]" in env["prompt_text"]
+    assert env["semantic"][0]["mpl_label"] == "MPL-004"
+    assert env["semantic_summary"] == "interpreted as: form→MPL-004 (structural)"
+    assert "the form of the law" in env["context_text"]  # context still present
+
+
 def test_render_context_document_uses_full_context_text() -> None:
     long_text = "A" * 350 + " full-tail"
     rendered = render_context_document(
