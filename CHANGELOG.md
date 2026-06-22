@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Web UI moved to a `tirzah[web]` extra** — `fastapi`/`uvicorn` are no longer core
+  dependencies, so library/CLI installs stay lean and never import the web stack
+  unless serving. `tirzah serve` prints a clear hint if the extra isn't installed.
+  (A precursor to splitting the UI out once the HTTP API is a versioned contract.)
 - The Mahalath seam is now configurable from the environment
   (`MAHALATH_ENABLED` / `MAHALATH_MONGO_URI` / `MAHALATH_MONGO_DB` /
   `MAHALATH_STRICT`), so a missing config file can no longer silently disable it.

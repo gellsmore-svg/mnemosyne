@@ -30,15 +30,21 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
-  "fastapi>=0.115",
   "pydantic>=2.7",
   "pymongo>=4.7",
   "pyyaml>=6.0",
-  "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
+# Web UI / HTTP API (`tirzah serve`). Optional so library/CLI installs stay lean;
+# the core never imports fastapi/uvicorn unless serving. A precursor to splitting
+# the UI out once the HTTP API is a stable, versioned contract.
+web = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+]
 dev = [
+  "tirzah[web]",   # the web TestClient tests need fastapi
   "build>=1.2",
   "httpx>=0.27",
   "pytest>=8.0",

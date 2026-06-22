@@ -707,6 +707,13 @@ def write_initial_config(
 
 
 def serve_app(host: str, port: int, reload: bool = False) -> None:
+    try:
+        import uvicorn  # noqa: F401  (also gates fastapi, imported by the app)
+        import fastapi  # noqa: F401
+    except ImportError:
+        raise SystemExit(
+            "tirzah serve needs the web extra. Install it:  pip install 'tirzah[web]'"
+        )
     import uvicorn
 
     uvicorn.run("tirzah.web.app:app", host=host, port=port, reload=reload)
