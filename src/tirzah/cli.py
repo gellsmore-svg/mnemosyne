@@ -731,6 +731,15 @@ def main() -> None:
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument("--reload", action="store_true")
     subcommands.add_parser("db-ping")
+    migrate_parser = subcommands.add_parser(
+        "migrate",
+        help="Run all pending schema migrations in order (idempotent); the "
+        "consolidated entry point for the backfill-* one-shots.",
+    )
+    migrate_parser.add_argument("--status", action="store_true",
+                                help="Show applied + pending migrations without running anything.")
+    migrate_parser.add_argument("--dry-run", action="store_true",
+                                help="List the migrations that would run, without applying them.")
     subcommands.add_parser("backfill-source-metadata")
     subcommands.add_parser("backfill-schema-metadata")
     graph_status = subcommands.add_parser("graph-status")
@@ -1148,6 +1157,14 @@ def main() -> None:
                 }
             )
         print(json.dumps({"ok": True, "updated": updated, "skipped": skipped}, indent=2))
+        return
+
+    if args.command == "migrate":
+        from tirzah import migrations
+
+        ensure_indexes(db)
+        report = migrations.status(db) if args.status else migrations.migrate(db, dry_run=args.dry_run)
+        print(json.dumps(report, indent=2, default=str))
         return
 
     if args.command == "backfill-schema-metadata":

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `tirzah migrate` — a consolidated, ordered, **idempotent** schema-migration
+  command with a `schema_migrations` ledger (mirrors Mahalath's), gathering the
+  scattered `backfill-*` one-shots; migration 1 stamps `schema_version` on legacy
+  documents/trees/nodes. Supports `--status` and `--dry-run`.
+
 ## [1.3.0] - 2026-06-22
 
 The first release after a long unversioned stretch on `main` (v1.2.0 had shipped
