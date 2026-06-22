@@ -34,7 +34,10 @@ runtime:
   ollama_think: false
   ollama_hide_thinking: true
   ollama_base_url: http://localhost:11434
-  ollama_executable: /mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe
+  # Resolved from PATH by default (portable). Override for a non-PATH install,
+  # e.g. a WSL-mounted Windows binary, or set the OLLAMA_EXECUTABLE env var:
+  #   ollama_executable: /mnt/c/Users/<you>/AppData/Local/Programs/Ollama/ollama.exe
+  ollama_executable: ollama
   ollama_timeout_seconds: 180
   # Optional Hoglah queue integration for answers AND embeddings. Install with
   # `pip install "tirzah[hoglah]"` and set answer_adapter / embedding_adapter to

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import yaml
@@ -45,7 +46,10 @@ class RuntimeConfig(BaseModel):
     ollama_think: bool | str | None = False
     ollama_hide_thinking: bool = True
     ollama_base_url: str = "http://localhost:11434"
-    ollama_executable: Path = Path("/mnt/c/Users/cello/AppData/Local/Programs/Ollama/ollama.exe")
+    # Resolved from PATH by default (portable); the HTTP path (ollama_base_url) is
+    # preferred. Override via config.yaml or the OLLAMA_EXECUTABLE env var for a
+    # non-PATH install (e.g. a WSL-mounted ollama.exe).
+    ollama_executable: Path = Path("ollama")
     ollama_timeout_seconds: int = 180
     hoglah_db_path: Path = Path("data/hoglah/jobs.sqlite3")
     hoglah_ollama_host: str = "http://localhost:11434"
@@ -104,14 +108,36 @@ class AppConfig(BaseModel):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
 
 
+# Env-var → (section, key) overrides, applied on top of the YAML (and even with
+# no config file). Keeps the shared OLLAMA_BASE_URL / MONGO settings in one place
+# so the Noa runtime can configure every sibling from a single .env.
+_ENV_OVERRIDES: dict[str, tuple[str, str]] = {
+    "TIRZAH_MONGO_URI": ("mongo", "uri"),
+    "TIRZAH_MONGO_DB": ("mongo", "database"),
+    "OLLAMA_BASE_URL": ("runtime", "ollama_base_url"),
+    "OLLAMA_EXECUTABLE": ("runtime", "ollama_executable"),
+}
+
+
+def _apply_env_overrides(data: dict) -> dict:
+    for env_var, (section, key) in _ENV_OVERRIDES.items():
+        value = os.environ.get(env_var)
+        if value:
+            data.setdefault(section, {})[key] = value
+    return data
+
+
 def load_config(path: Path | str = "config.yaml") -> AppConfig:
+    # An explicit TIRZAH_CONFIG env wins when the caller didn't pass a non-default
+    # path, so the config location need not depend on the current directory.
+    if str(path) == "config.yaml" and os.environ.get("TIRZAH_CONFIG"):
+        path = os.environ["TIRZAH_CONFIG"]
     config_path = Path(path)
     if not config_path.exists():
         example_path = Path("config.example.yaml")
-        if example_path.exists():
-            config_path = example_path
-        else:
-            return AppConfig()
+        config_path = example_path if example_path.exists() else config_path
 
-    data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    return AppConfig.model_validate(data)
+    data = {}
+    if config_path.exists():
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    return AppConfig.model_validate(_apply_env_overrides(data))
