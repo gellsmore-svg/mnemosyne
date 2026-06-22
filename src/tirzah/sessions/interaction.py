@@ -372,6 +372,8 @@ def answer_query(
         "model": answer.get("model"),
         "used_node_ids": answer["used_node_ids"],
         "budget": prompt["budget"],
+        "semantic": prompt.get("semantic", []),
+        "semantic_summary": prompt.get("semantic_summary", ""),
         "retrieval_status": retrieval_status,
         "process_run_id": process_run_id,
         "process_trace": process_trace,

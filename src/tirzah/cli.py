@@ -1920,6 +1920,8 @@ def main() -> None:
             print(json.dumps(result, indent=2))
         else:
             print(result["answer"])
+            if result.get("semantic_summary"):
+                print(f"\n[{result['semantic_summary']}]")
             print(f"\nexchange_id: {result['exchange_id']}")
         return
 

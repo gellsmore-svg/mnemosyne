@@ -607,6 +607,46 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert result["process_trace"][1]["output"]["controller_decision"]["mode"] == "direct_scaffold"
 
 
+def test_answer_query_surfaces_semantic_summary(monkeypatch) -> None:
+    """The Mahalath seam's resolved senses reach the ask result (semantic_summary)."""
+    import tirzah.semantic as semantic
+    import tirzah.sessions.interaction as interaction
+
+    class FakeAnswerAdapter:
+        def answer(self, prompt):
+            return {"adapter": "fake", "answer": "an answer", "used_node_ids": ["corpus-node"]}
+
+    class FakeResolver:
+        def resolve(self, terms):
+            if any(t.casefold() == "form" for t in terms):
+                return [semantic.SemanticLabel(term="form", mpl_label="MPL-901",
+                                               canonical_term="form", senses=["logical"],
+                                               match_kind="exact")]
+            return []
+
+    monkeypatch.setattr(interaction, "select_focus_node", lambda *_a, **_k: "corpus-node")
+    monkeypatch.setattr(interaction, "compile_context", lambda _db, node_id: {
+        "document": {"title": "Doc", "document_id": "doc1"},
+        "focus_node_id": node_id,
+        "records": [{"role": "focus", "distance": 0, "title": "A", "node_id": node_id,
+                     "labels": [], "endorsement_label": "unreviewed", "provenance": {},
+                     "text": "the form of the law", "text_preview": "the form of the law"}],
+    })
+    monkeypatch.setattr(semantic, "make_resolver", lambda _runtime: FakeResolver())
+    monkeypatch.setattr(interaction, "answer_adapter", lambda _config: FakeAnswerAdapter())
+    monkeypatch.setattr(interaction, "save_exchange", lambda *a, **k: "exchange1")
+
+    result = answer_query(
+        FakeDb(),
+        AppConfig(runtime=RuntimeConfig(answer_adapter="fake", mahalath_enabled=True)),
+        "what is form?",
+    )
+
+    assert result["ok"] is True
+    assert result["semantic_summary"] == "interpreted as: form→MPL-901 (logical)"
+    assert result["semantic"][0]["mpl_label"] == "MPL-901"
+
+
 def test_answer_query_does_not_retrieve_corpus_for_greeting(monkeypatch) -> None:
     import tirzah.sessions.interaction as interaction
 
