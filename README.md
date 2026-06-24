@@ -78,6 +78,20 @@ tirzah serve
 by default (`gemma3:1b` per `config.example.yaml`); pass `--model <name>` to
 override per request, or `--adapter mock` for an offline deterministic answer.
 
+## Recursive Cairn request planning
+
+The browser-facing `/api/ask` path is wrapped by a recursive process planner. It
+creates a bounded first-pass Cairn `PLAN`, invokes Tirzah's existing validated
+retrieval and answer pipeline, and then revises the same plan from new evidence
+or unresolved state. Each revision keeps the plan ID, parent revision, trigger,
+stopping conditions, and a complete process backbone.
+
+Plans are operational records in `recursive_plans`, not trusted graph memory, and
+they do not grant tools or side-effect authority. Python continues to enforce the
+actual tool menu, budgets, writes, and termination. Later information can revise
+a stored plan through `POST /api/plans/{plan_id}/revise`. Configure the planner
+with `runtime.recursive_planning_*`.
+
 ## Web UI
 
 ```bash

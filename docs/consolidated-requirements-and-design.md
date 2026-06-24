@@ -176,6 +176,14 @@ Required stages:
 
 The answer model should receive a complete context package, not raw internal state. The package should make the controller decision, evidence, constraints, and expected answer behaviour clear.
 
+The implemented front-end boundary now begins with a recursive Cairn planning
+wrapper (`tirzah.planning.recursive`). It creates a first-pass versioned plan,
+invokes the existing retrieval/answer pipeline, and revises the same plan from the
+resulting evidence. Revisions are bounded, persisted separately from graph memory,
+and exposed to the work-mode UI. Later information can revise a persisted plan
+through the plan revision API. Python validates the complete plan on every
+revision and retains authority over tools, side effects, budgets, and stopping.
+
 The target modular boundary is a dedicated prompt-pipeline module. The current implementation still spreads this across `sessions`, `retrieval`, and adapter calls. That is acceptable as a scaffold, but should be refactored so prompt intake, process selection, context strategy, package assembly, LLM handoff, and continuity persistence are testable as separate steps.
 
 ### Product Naming

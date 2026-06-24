@@ -66,6 +66,11 @@ from tirzah.retrieval.queries import (
 from tirzah.retrieval.trust import trust_temporal_diagnostic_for_node
 from tirzah.sessions.exchanges import recent_exchanges
 from tirzah.sessions.interaction import answer_query
+from tirzah.planning.recursive import (
+    list_plan_revisions,
+    process_frontend_request,
+    revise_saved_plan,
+)
 from tirzah.sessions.active_documents import list_active_documents
 from tirzah.sessions.continuity import session_continuity
 from tirzah.sessions.endorsements import (
@@ -93,6 +98,13 @@ class AskRequest(BaseModel):
     adapter: str | None = None
     model: str | None = None
     retrieval_mode: str | None = None
+    web_research: bool | None = None
+    recursive_planning: bool | None = None
+
+
+class RevisePlanRequest(BaseModel):
+    new_information: dict[str, Any]
+    session_id: str = "web"
 
 
 class CreateSessionRequest(BaseModel):
@@ -847,10 +859,12 @@ def create_app() -> FastAPI:
 
     @app.post("/api/ask")
     def ask(request: AskRequest) -> dict[str, Any]:
-        return answer_query(
+        return process_frontend_request(
             db,
             config,
             query=request.query,
+            executor=answer_query,
+            planning_enabled=request.recursive_planning,
             focus_node_id=request.node_id,
             session_id=request.session_id,
             project_domain_id=request.project_domain_id,
@@ -858,7 +872,29 @@ def create_app() -> FastAPI:
             answer_adapter_name=request.adapter,
             ollama_model=request.model,
             retrieval_mode=request.retrieval_mode,
+            web_research=request.web_research,
         )
+
+    @app.get("/api/plans/{plan_id}")
+    def plan_revisions(plan_id: str, limit: int = 20) -> dict[str, Any]:
+        revisions = list_plan_revisions(db, plan_id, limit=limit)
+        if not revisions:
+            raise HTTPException(status_code=404, detail=f"Unknown plan: {plan_id}")
+        return {"ok": True, "plan_id": plan_id, "revisions": revisions, "latest": revisions[-1]}
+
+    @app.post("/api/plans/{plan_id}/revise")
+    def revise_request_plan(plan_id: str, request: RevisePlanRequest) -> dict[str, Any]:
+        try:
+            plan = revise_saved_plan(
+                db,
+                config,
+                plan_id=plan_id,
+                new_information=request.new_information,
+                session_id=request.session_id,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"ok": True, "plan": plan.to_dict()}
 
     @app.get("/api/history")
     def history(

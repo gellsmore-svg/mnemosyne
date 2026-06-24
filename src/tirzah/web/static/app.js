@@ -925,6 +925,7 @@ async function ask() {
     retrieval_mode: $("retrievalMode").value || null,
   };
   $("answerText").textContent = "Thinking...";
+  $("requestPlan").textContent = "Planning...";
   $("answerMeta").innerHTML = "";
   renderRunningActivity(payload);
   const timeout = window.tirzahRuntime?.ollama_timeout_seconds;
@@ -950,6 +951,7 @@ async function ask() {
     });
     if (!data.ok) {
       $("answerText").textContent = data.message || JSON.stringify(data, null, 2);
+      $("requestPlan").textContent = data.request_plan?.cairn_text || "Planning did not complete.";
       renderActivityReport(data.activity_report, data.activity_log, data.process_trace);
       renderConsole(data.process_trace || [
         {
@@ -961,12 +963,14 @@ async function ask() {
       return;
     }
     $("answerText").textContent = data.answer;
+    $("requestPlan").textContent = data.request_plan?.cairn_text || "No request plan returned.";
     $("answerMeta").innerHTML = `<div class="muted">exchange ${html(data.exchange_id)} | ${html(data.adapter)} ${html(data.model)}</div>`;
     renderActivityReport(data.activity_report, data.activity_log, data.process_trace);
     renderConsole(data.process_trace);
     await Promise.all([loadSessions(), loadHistory(), loadActiveDocuments(), loadContinuity()]);
   } catch (error) {
     $("answerText").textContent = error.message;
+    $("requestPlan").textContent = "Planning failed before a plan was returned.";
     renderActivityReport(null, "", [
       {
         step: "request_failed",

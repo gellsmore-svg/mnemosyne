@@ -119,6 +119,53 @@ def test_health_endpoint() -> None:
     assert response.json()["ok"] is True
 
 
+
+
+def test_ask_endpoint_uses_recursive_planning_wrapper(monkeypatch) -> None:
+    client = TestClient(app)
+    captured = {}
+
+    def wrapped(_db, _config, **kwargs):
+        captured.update(kwargs)
+        return {"ok": True, "answer": "planned", "request_plan": {"revision": 2}}
+
+    monkeypatch.setattr("tirzah.web.app.process_frontend_request", wrapped)
+    response = client.post("/api/ask", json={
+        "query": "Research X", "session_id": "s1", "retrieval_mode": "agentic",
+        "recursive_planning": True, "web_research": True,
+    })
+    assert response.status_code == 200
+    assert response.json()["request_plan"]["revision"] == 2
+    assert captured["query"] == "Research X"
+    assert captured["executor"] is not None
+    assert captured["planning_enabled"] is True
+    assert captured["web_research"] is True
+
+
+
+
+def test_plan_revision_endpoints(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(
+        "tirzah.web.app.list_plan_revisions",
+        lambda _db, plan_id, limit=20: [{"plan_id": plan_id, "revision": 1, "limit": limit}],
+    )
+    response = client.get("/api/plans/plan1", params={"limit": 5})
+    assert response.status_code == 200
+    assert response.json()["latest"]["revision"] == 1
+
+    class Revised:
+        def to_dict(self):
+            return {"plan_id": "plan1", "revision": 2, "status": "stable"}
+    monkeypatch.setattr("tirzah.web.app.revise_saved_plan", lambda _db, _config, **kwargs: Revised())
+    response = client.post(
+        "/api/plans/plan1/revise",
+        json={"new_information": {"fact": "new evidence"}, "session_id": "s1"},
+    )
+    assert response.status_code == 200
+    assert response.json()["plan"]["revision"] == 2
+
+
 def test_memory_health_endpoint(monkeypatch) -> None:
     client = TestClient(app)
 
@@ -173,6 +220,7 @@ def test_homepage_defaults_to_work_mode_with_developer_toggle() -> None:
     assert 'class="answer-panel trace-panel developer-only"' in html
     assert 'id="model"' in html
     assert 'id="continuityPanel"' in html
+    assert 'id="requestPlan"' in html
     assert 'id="refreshContinuity"' in html
 
 

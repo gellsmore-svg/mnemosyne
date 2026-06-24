@@ -414,3 +414,20 @@ Web evidence is not repository memory. It is rendered into the final answer
 context as untrusted, cited material and does not produce `used_node_ids`, graph
 writes, endorsement changes, or automatic ingestion. The answer context records
 `agentic_web_context` separately from repository-backed `agentic_tool_context`.
+
+
+## Recursive request-plan wrapper
+
+The browser-facing `/api/ask` endpoint is wrapped by
+`tirzah.planning.recursive.process_frontend_request()` before entering
+`answer_query()`. The wrapper asks a local planning model for a bounded structured
+process, validates and renders it as a Cairn `PLAN`, then invokes the existing
+retrieval/answer path. The answer result becomes new information for a revision of
+the same plan. Revision identity and parentage are preserved, and every revision
+contains the complete process rather than an unchecked patch.
+
+This layer does not execute arbitrary model-authored steps. `answer_query()` and
+its validated tools remain the authorised executor. Plans are operational records
+in `recursive_plans`, not endorsed memory nodes. A later caller may submit new
+information to `/api/plans/{plan_id}/revise`; Python applies the configured step
+and revision caps and rejects unknown or exhausted plans.

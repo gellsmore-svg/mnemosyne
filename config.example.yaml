@@ -27,6 +27,13 @@ runtime:
   profile_backfill_web_max_batches: 10
   memory_agent_adapter:
   retrieval_mode: direct
+  # Versioned Cairn plan wrapper below the front end. The planner creates an
+  # initial process, then revises it from new retrieval/execution information.
+  recursive_planning_enabled: true
+  planning_adapter:
+  planning_model:
+  planning_max_revisions: 3
+  planning_max_steps: 12
   # Opt-in transient web evidence through a SearxNG JSON endpoint. For a local
   # SearxNG instance, web_allow_private_search_endpoint must be true; fetched result URLs still
   # receive scheme, redirect, size, and content-type checks.
