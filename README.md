@@ -68,6 +68,7 @@ tirzah search-nodes --query "topic of interest" --label source_chunk
 
 # Ask a question (uses the local Ollama model by default)
 tirzah ask "What does the corpus say about X?" --retrieval-mode agentic
+tirzah ask "Research the current evidence for X" --web
 
 # Or start the web UI
 tirzah serve

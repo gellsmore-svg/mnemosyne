@@ -27,6 +27,17 @@ runtime:
   profile_backfill_web_max_batches: 10
   memory_agent_adapter:
   retrieval_mode: direct
+  # Opt-in transient web evidence through a SearxNG JSON endpoint. For a local
+  # SearxNG instance, web_allow_private_search_endpoint must be true; fetched result URLs still
+  # receive scheme, redirect, size, and content-type checks.
+  web_research_enabled: false
+  web_search_base_url: http://localhost:8080
+  web_timeout_seconds: 12
+  web_max_results: 5
+  web_max_pages: 2
+  web_max_content_bytes: 500000
+  web_max_content_chars: 8000
+  web_allow_private_search_endpoint: false
   ollama_model: gemma3:1b
   memory_agent_model:
   ollama_format:

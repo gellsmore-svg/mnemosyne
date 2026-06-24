@@ -34,6 +34,16 @@ class RuntimeConfig(BaseModel):
     profile_backfill_web_max_batches: int = 10
     memory_agent_adapter: str | None = None
     retrieval_mode: str = "direct"
+    # Opt-in transient web evidence. Search uses a SearxNG JSON endpoint; results
+    # are never promoted into durable graph memory automatically.
+    web_research_enabled: bool = False
+    web_search_base_url: str = "http://localhost:8080"
+    web_timeout_seconds: float = 12.0
+    web_max_results: int = 5
+    web_max_pages: int = 2
+    web_max_content_bytes: int = 500_000
+    web_max_content_chars: int = 8_000
+    web_allow_private_search_endpoint: bool = False
     # Blend lexical + query-vector similarity in node search (ADR-020). On by
     # default as of the real-corpus validation; only takes effect with a real
     # (non-mock) embedding adapter and degrades safely to lexical otherwise, so
@@ -128,6 +138,8 @@ _ENV_OVERRIDES: dict[str, tuple[str, str]] = {
     "TIRZAH_MONGO_DB": ("mongo", "database"),
     "OLLAMA_BASE_URL": ("runtime", "ollama_base_url"),
     "OLLAMA_EXECUTABLE": ("runtime", "ollama_executable"),
+    "TIRZAH_WEB_RESEARCH_ENABLED": ("runtime", "web_research_enabled"),
+    "TIRZAH_WEB_SEARCH_BASE_URL": ("runtime", "web_search_base_url"),
     # The Mahalath seam — so `.env` alone enables/points it (no config file needed;
     # a missing config file can no longer silently disable semantic precision).
     "MAHALATH_ENABLED": ("runtime", "mahalath_enabled"),

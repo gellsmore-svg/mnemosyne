@@ -1016,6 +1016,7 @@ def main() -> None:
     ask.add_argument("--adapter", default=None)
     ask.add_argument("--model", default=None)
     ask.add_argument("--retrieval-mode", choices=["direct", "agentic", "deep"], default=None)
+    ask.add_argument("--web", action="store_true", help="allow bounded web search/fetch; non-agentic mode is promoted to agentic")
     ask.add_argument("--json", action="store_true")
 
     chat = subcommands.add_parser("chat")
@@ -1024,6 +1025,7 @@ def main() -> None:
     chat.add_argument("--adapter", default=None)
     chat.add_argument("--model", default=None)
     chat.add_argument("--retrieval-mode", choices=["direct", "agentic", "deep"], default=None)
+    chat.add_argument("--web", action="store_true", help="allow bounded web search/fetch")
 
     history = subcommands.add_parser("history")
     history.add_argument("--session-id", default=None)
@@ -1968,6 +1970,7 @@ def main() -> None:
             answer_adapter_name=args.adapter,
             ollama_model=args.model,
             retrieval_mode=args.retrieval_mode,
+            web_research=args.web or None,
         )
         if args.json or not result.get("ok"):
             print(json.dumps(result, indent=2))
@@ -1999,6 +2002,7 @@ def main() -> None:
                 answer_adapter_name=args.adapter,
                 ollama_model=args.model,
                 retrieval_mode=args.retrieval_mode,
+                web_research=args.web or None,
             )
             if not result.get("ok"):
                 print(json.dumps(result, indent=2))

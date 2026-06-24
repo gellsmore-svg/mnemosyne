@@ -399,3 +399,18 @@ The implemented interface is a structured prompt/tool protocol:
 5. Python records provenance and trace data.
 
 The LLM cannot directly execute tools, query MongoDB, mutate state, or decide provenance.
+
+
+## Transient web research
+
+When `runtime.web_research_enabled` is true, the memory-agent tool menu also
+contains `web_search` and `web_fetch`. These tools are intended for current or
+external evidence that is absent from the repository. The planner can derive
+follow-up search queries across its bounded iterations, but Python still validates
+tool names and arguments, enforces network/size/time limits, and records complete
+results in the process trace.
+
+Web evidence is not repository memory. It is rendered into the final answer
+context as untrusted, cited material and does not produce `used_node_ids`, graph
+writes, endorsement changes, or automatic ingestion. The answer context records
+`agentic_web_context` separately from repository-backed `agentic_tool_context`.
