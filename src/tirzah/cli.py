@@ -1130,6 +1130,24 @@ def main() -> None:
         return
 
     config = load_config(args.config)
+
+    if args.command == "config-status":
+        from tirzah.capabilities import render_runtime_text, resolved_runtime
+
+        snapshot = resolved_runtime(config.runtime)
+        snapshot["config_source"] = {
+            "config_path": os.environ.get("TIRZAH_CONFIG") or args.config,
+            "mongo_uri": config.mongo.uri,
+            "mongo_db": config.mongo.database,
+        }
+        if args.format == "json":
+            print(json.dumps(snapshot, indent=2))
+            return
+        print(f"config: {snapshot['config_source']['config_path']}  "
+              f"(mongo {snapshot['config_source']['mongo_db']})")
+        print(render_runtime_text(snapshot))
+        return
+
     db = get_database(config.mongo)
 
     if args.command == "db-ping":
@@ -1315,23 +1333,6 @@ def main() -> None:
     if args.command == "labels":
         ensure_indexes(db)
         print(json.dumps({"ok": True, "labels": label_definitions(db)}, indent=2))
-        return
-
-    if args.command == "config-status":
-        from tirzah.capabilities import render_runtime_text, resolved_runtime
-
-        snapshot = resolved_runtime(config.runtime)
-        snapshot["config_source"] = {
-            "config_path": os.environ.get("TIRZAH_CONFIG") or args.config,
-            "mongo_uri": config.mongo.uri,
-            "mongo_db": config.mongo.database,
-        }
-        if args.format == "json":
-            print(json.dumps(snapshot, indent=2))
-            return
-        print(f"config: {snapshot['config_source']['config_path']}  "
-              f"(mongo {snapshot['config_source']['mongo_db']})")
-        print(render_runtime_text(snapshot))
         return
 
     if args.command == "memory-health":

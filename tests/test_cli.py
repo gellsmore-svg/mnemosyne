@@ -252,6 +252,24 @@ def test_write_initial_config_refuses_existing_config(tmp_path: Path) -> None:
     assert config_path.read_text(encoding="utf-8") == "existing: true\n"
 
 
+def test_cli_config_status_does_not_connect_to_mongo(monkeypatch, capsys) -> None:
+    from tirzah.config import AppConfig
+
+    monkeypatch.setattr(sys, "argv", ["tirzah", "config-status", "--format", "json"])
+    monkeypatch.setattr("tirzah.cli.load_config", lambda _path: AppConfig())
+
+    def fail_get_database(_config):
+        raise AssertionError("config-status should not connect to Mongo")
+
+    monkeypatch.setattr("tirzah.cli.get_database", fail_get_database)
+
+    main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["config_source"]["mongo_db"] == "mnemosyne_dev"
+    assert "capabilities" in output
+
+
 def test_cli_init_does_not_connect_to_mongo(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
