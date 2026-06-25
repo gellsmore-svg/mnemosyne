@@ -20,3 +20,7 @@ data/staging/*
 .restart.md
 .restart.md.*.bak
 .session-log.md
+
+# Built Mahlah UI (install via scripts/build_ui.sh)
+src/tirzah/web/static/assets/
+src/tirzah/web/static/index.html

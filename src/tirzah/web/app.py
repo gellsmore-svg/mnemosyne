@@ -98,6 +98,19 @@ FALLBACK_KNOWN_MODELS = ["gemma4:latest", "gemma3:1b"]
 WEB_EMBEDDING_BACKFILL_MAX_BATCHES = 10
 WEB_EMBEDDING_BACKFILL_RECOMMENDED_BATCH_LIMIT = 25
 
+UI_NOT_BUILT_HTML = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Tirzah</title>
+<style>body{font-family:system-ui,sans-serif;background:#0f1117;color:#e6e8ee;
+display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+.box{max-width:560px;padding:2rem;line-height:1.6}code{background:#1d212c;padding:2px 6px;border-radius:6px}
+a{color:#7c9cff}</style></head><body><div class="box">
+<h1>Tirzah</h1><p>The web UI (Mahlah) has not been built yet.</p>
+<p>Build and install it:</p><pre><code>scripts/build_ui.sh</code></pre>
+<p>Or run the Mahlah dev server for hot reload:</p>
+<pre><code>cd ../Mahlah &amp;&amp; npm install &amp;&amp; npm run dev</code></pre>
+<p>then open <a href="http://localhost:5273">http://localhost:5273</a>. The API is live here.</p>
+</div></body></html>"""
+
 
 class AskRequest(BaseModel):
     query: str
@@ -212,12 +225,20 @@ def create_app() -> FastAPI:
     ensure_indexes(db)
 
     app = FastAPI(title="Tirzah")
+    # Single UI: the backend serves the built Mahlah front end (the old hand-rolled
+    # static UI is retired). Built assets are installed into web/static by
+    # scripts/build_ui.sh (gitignored). In dev, run Mahlah on :5273 instead.
     static_dir = Path(__file__).parent / "static"
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    assets_dir = static_dir / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
-        return (static_dir / "index.html").read_text(encoding="utf-8")
+        index_file = static_dir / "index.html"
+        if index_file.exists():
+            return index_file.read_text(encoding="utf-8")
+        return UI_NOT_BUILT_HTML
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:

@@ -319,23 +319,14 @@ def test_session_continuity_endpoint(monkeypatch) -> None:
     }
 
 
-def test_homepage_defaults_to_work_mode_with_developer_toggle() -> None:
+def test_index_serves_single_ui() -> None:
+    # The backend serves one UI (built Mahlah, or the not-built fallback) — the old
+    # hand-rolled static UI is retired.
     client = TestClient(app)
-
     response = client.get("/")
-
     assert response.status_code == 200
-    html = response.text
-    assert 'id="developerMode"' in html
-    assert 'class="tab-button secondary developer-only" data-tab="browseTab"' in html
-    assert 'class="tab-button secondary developer-only" data-tab="ingestionTab"' in html
-    assert 'class="controls developer-only"' in html
-    assert 'class="technical-report developer-only"' in html
-    assert 'class="answer-panel trace-panel developer-only"' in html
-    assert 'id="model"' in html
-    assert 'id="continuityPanel"' in html
-    assert 'id="requestPlan"' in html
-    assert 'id="refreshContinuity"' in html
+    assert "Tirzah" in response.text
+    assert '<div id="root">' in response.text or "has not been built yet" in response.text
 
 
 def test_process_inbox_activity_log_prefers_human_summary() -> None:
