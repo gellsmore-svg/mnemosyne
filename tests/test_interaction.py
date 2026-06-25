@@ -571,6 +571,41 @@ def test_inject_history_into_prompt() -> None:
     assert inject_history_into_prompt(prompt, "")["prompt_text"] == prompt["prompt_text"]
 
 
+def test_relevant_exchanges_ranks_by_cosine() -> None:
+    from datetime import datetime, timezone
+
+    from bson import ObjectId
+
+    from tirzah.sessions.exchanges import relevant_exchanges
+
+    class Coll:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def find(self, query=None):
+            query = query or {}
+            return [r for r in self.rows if all(r.get(k) == v for k, v in query.items())]
+
+    class Db:
+        def __init__(self, rows):
+            self.exchanges = Coll(rows)
+
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rows = [
+        {"_id": ObjectId(), "session_id": "s", "query": "about cats", "answer": {"answer": "cat"}, "turn_embedding": [1.0, 0.0], "created_at": now},
+        {"_id": ObjectId(), "session_id": "s", "query": "about dogs", "answer": {"answer": "dog"}, "turn_embedding": [0.0, 1.0], "created_at": now},
+        {"_id": ObjectId(), "session_id": "s", "query": "no embedding", "answer": {"answer": "x"}, "turn_embedding": None, "created_at": now},
+    ]
+    db = Db(rows)
+    out = relevant_exchanges(db, session_id="s", query_vector=[0.9, 0.1], limit=2)
+    assert out[0]["query"] == "about cats"  # closest to [0.9, 0.1]
+    assert all(o["query"] != "no embedding" for o in out)  # un-embedded turns skipped
+    excluded = out[0]["exchange_id"]
+    out2 = relevant_exchanges(db, session_id="s", query_vector=[0.9, 0.1], limit=2, exclude_exchange_ids={excluded})
+    assert all(o["exchange_id"] != excluded for o in out2)
+    assert relevant_exchanges(db, session_id="s", query_vector=None) == []  # no vector -> empty
+
+
 def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     import tirzah.sessions.interaction as interaction
 

@@ -45,6 +45,7 @@ def save_exchange(
     process_trace: list[dict[str, Any]] | None = None,
     project_domain_id: str | None = None,
     conversation_domain_id: str | None = None,
+    turn_embedding: list[float] | None = None,
 ) -> str:
     now = utc_now()
     touch_session(db, session_id)
@@ -75,6 +76,7 @@ def save_exchange(
             "active_document_ids": active_document_ids,
             "scored_node_count": 0,
             "process_trace": process_trace or [],
+            "turn_embedding": turn_embedding,
             "created_at": now,
         }
     )
@@ -177,6 +179,43 @@ def exchange_filter_query(
 
 def bounded_limit(value: int, maximum: int = 100) -> int:
     return max(1, min(maximum, int(value)))
+
+
+def relevant_exchanges(
+    db: Database,
+    *,
+    session_id: str,
+    query_vector: list[float] | None,
+    limit: int = 3,
+    exclude_exchange_ids: Any = (),
+) -> list[dict[str, Any]]:
+    """Top-K prior turns of the session most similar to ``query_vector`` (cosine).
+
+    Only turns with a stored ``turn_embedding`` are considered. Best-effort:
+    returns [] on any failure. (Phase 2 — semantic recall of earlier turns.)
+    """
+    if not query_vector:
+        return []
+    from tirzah.retrieval.queries import cosine_similarity
+
+    exclude = set(exclude_exchange_ids or ())
+    try:
+        rows = list(db.exchanges.find({"session_id": session_id}))
+    except Exception:
+        return []
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for row in rows:
+        if str(row.get("_id")) in exclude:
+            continue
+        vector = row.get("turn_embedding")
+        if not vector:
+            continue
+        try:
+            scored.append((cosine_similarity(query_vector, vector), row))
+        except Exception:
+            continue
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [serialize_exchange(row) for _, row in scored[:limit]]
 
 
 def serialize_exchange(row: dict[str, Any]) -> dict[str, Any]:

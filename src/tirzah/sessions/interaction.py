@@ -46,7 +46,7 @@ from tirzah.retrieval.trust import (
 )
 from tirzah.sessions.activity_reports import answer_activity_log, answer_activity_report
 from tirzah.sessions.active_documents import list_active_documents
-from tirzah.sessions.exchanges import recent_exchanges, save_exchange
+from tirzah.sessions.exchanges import recent_exchanges, relevant_exchanges, save_exchange
 from tirzah.web_research import WebResearchClient, WebResearchConfig, sources_to_jsonable
 
 
@@ -324,6 +324,7 @@ def answer_query(
             process_trace=process_trace,
             project_domain_id=project_domain_id,
             conversation_domain_id=conversation_domain_id,
+            turn_embedding=compute_turn_embedding(config, runtime_config, query, answer["answer"]),
         )
     except Exception as error:
         finish_answer_process_run(
@@ -482,6 +483,7 @@ def answer_query_deep(
             process_trace=process_trace,
             project_domain_id=project_domain_id,
             conversation_domain_id=conversation_domain_id,
+            turn_embedding=compute_turn_embedding(config, runtime_config, query, answer["answer"]),
         )
     except Exception as error:
         finish_answer_process_run(
@@ -678,6 +680,7 @@ def answer_query_agentic(
             process_trace=process_trace,
             project_domain_id=project_domain_id,
             conversation_domain_id=conversation_domain_id,
+            turn_embedding=compute_turn_embedding(config, runtime_config, query, answer["answer"]),
         )
     except Exception as error:
         finish_answer_process_run(
@@ -843,9 +846,16 @@ def prepare_direct_answer_prompt(
     )
     prompt = inject_controller_decision_into_prompt(prompt, controller_decision)
     # Conversational memory: give the model the prior turns of THIS session so it
-    # can resolve references and maintain continuity (direct path).
+    # can resolve references and maintain continuity (direct path). With semantic
+    # recall enabled, also surface relevant earlier turns beyond the recent window.
+    history_embedding = (
+        build_query_embedding(config.runtime, query)
+        if config.retrieval.conversation_semantic_recall
+        else None
+    )
     prompt = inject_history_into_prompt(
-        prompt, render_session_history_block(db, config, session_id=session_id)
+        prompt,
+        render_session_history_block(db, config, session_id=session_id, query_embedding=history_embedding),
     )
     retrieval_output = {
         "retrieval_status": retrieval_status,
@@ -955,8 +965,34 @@ def inject_history_into_prompt(prompt: dict[str, Any], history_block: str) -> di
     return updated
 
 
-def render_session_history_block(db: Database, config: AppConfig, *, session_id: str) -> str:
-    """Fetch recent turns for the session and render them as a prompt block.
+def render_relevant_turns(exchanges: list[dict[str, Any]], *, max_answer_chars: int) -> str:
+    """Render semantically-relevant earlier turns (Phase 2 recall section)."""
+    if not exchanges:
+        return ""
+    lines = [
+        "## Relevant Earlier in This Conversation",
+        "(Earlier turns retrieved by relevance to the current question.)",
+        "",
+    ]
+    rendered_any = False
+    for exchange in exchanges:
+        query = (exchange.get("query") or "").strip()
+        answer = (exchange.get("answer") or "").strip()
+        if len(answer) > max_answer_chars:
+            answer = answer[:max_answer_chars] + "…"
+        if query:
+            lines.append(f"User: {query}")
+            rendered_any = True
+        if answer:
+            lines.append(f"Assistant: {answer}")
+    return "\n".join(lines) if rendered_any else ""
+
+
+def render_session_history_block(
+    db: Database, config: AppConfig, *, session_id: str, query_embedding: dict[str, Any] | None = None
+) -> str:
+    """Fetch recent turns (and, if enabled, semantically-relevant earlier turns)
+    for the session and render them as a prompt block.
 
     Shared by the direct, agentic, and deep answer paths so conversational memory
     is consistent across modes.
@@ -965,14 +1001,44 @@ def render_session_history_block(db: Database, config: AppConfig, *, session_id:
     if not turns:
         return ""
     try:
-        history = recent_exchanges(db, session_id=session_id, limit=turns)
+        recent = recent_exchanges(db, session_id=session_id, limit=turns)
     except Exception:
-        return ""
-    return render_conversation_history(
-        history,
+        recent = []
+    block = render_conversation_history(
+        recent,
         max_turns=turns,
         max_answer_chars=config.retrieval.conversation_history_answer_chars,
     )
+    # Phase 2: surface relevant EARLIER turns beyond the recent window.
+    vector = (query_embedding or {}).get("vector") if isinstance(query_embedding, dict) else None
+    if config.retrieval.conversation_semantic_recall and vector:
+        recent_ids = {exchange.get("exchange_id") for exchange in recent}
+        try:
+            relevant = relevant_exchanges(
+                db,
+                session_id=session_id,
+                query_vector=vector,
+                limit=config.retrieval.conversation_semantic_recall_k,
+                exclude_exchange_ids=recent_ids,
+            )
+        except Exception:
+            relevant = []
+        relevant_block = render_relevant_turns(
+            relevant, max_answer_chars=config.retrieval.conversation_history_answer_chars
+        )
+        if relevant_block:
+            block = f"{relevant_block}\n\n{block}".strip() if block else relevant_block
+    return block
+
+
+def compute_turn_embedding(
+    config: AppConfig, runtime_config: Any, query: str, answer_text: str
+) -> list[float] | None:
+    """Embed a turn (query + answer) for semantic recall, or None when disabled."""
+    if not config.retrieval.conversation_semantic_recall:
+        return None
+    embedding = build_query_embedding(runtime_config, f"{query}\n{answer_text}")
+    return embedding.get("vector") if isinstance(embedding, dict) else None
 
 
 def direct_evidence_summary(

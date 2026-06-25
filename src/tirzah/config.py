@@ -129,6 +129,11 @@ class RetrievalConfig(BaseModel):
     # the prompt, and how much of each answer to keep.
     conversation_history_turns: int = 6
     conversation_history_answer_chars: int = 600
+    # Phase 2: also surface semantically-relevant EARLIER turns (beyond the recent
+    # window) by embedding similarity. Off by default — it embeds each turn, which
+    # adds latency; enable for long conversations with a real embedder.
+    conversation_semantic_recall: bool = False
+    conversation_semantic_recall_k: int = 3
     # Deep retrieval mode (ADR-020) — bounds for the agent loop + Python pre-rank.
     deep_max_iterations: int = 4
     deep_max_candidates: int = 50
