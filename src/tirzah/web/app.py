@@ -954,20 +954,22 @@ def create_app() -> FastAPI:
         return {"ok": True, "traceId": trace_id, "sessionId": session_id, "events": events}
 
     @app.get("/api/trace/stream")
-    def trace_stream(trace_id: str | None = None, session_id: str | None = None):
+    def trace_stream(trace_id: str | None = None, session_id: str | None = None, replay: bool = True):
         """Live process/log stream (SSE) for the process panel and dev-log window.
 
-        Linked to a trace or session; replays recent history, then streams new
-        events as they happen. Used by the main process panel and the separate
-        live dev-log window (same ids as the main app).
+        Linked to a trace or session. With ``replay=true`` (default) it first
+        replays recent history then streams new events — used by the dev-log
+        window. With ``replay=false`` it streams only new events — used by the
+        live process panel, which wants just the current request's steps.
         """
         channel = trace_id or session_id or "*"
         bus = get_bus()
 
         def event_stream():
             yield ": connected\n\n"
-            for event in list_trace_events(db, trace_id=trace_id, session_id=session_id, limit=200):
-                yield _sse_frame(event)
+            if replay:
+                for event in list_trace_events(db, trace_id=trace_id, session_id=session_id, limit=200):
+                    yield _sse_frame(event)
             with bus.subscribe(channel) as subscription:
                 while True:
                     try:
@@ -1020,8 +1022,12 @@ def create_app() -> FastAPI:
 
 
 def _sse_frame(event: dict[str, Any]) -> str:
-    """Format one trace event as a Server-Sent Events frame."""
-    return f"event: {event.get('type', 'message')}\ndata: {json.dumps(event)}\n\n"
+    """Format one trace event as a Server-Sent Events frame.
+
+    Data-only (no ``event:`` line) so a single ``EventSource.onmessage`` handler
+    receives every event regardless of type; the type lives in the JSON payload.
+    """
+    return f"data: {json.dumps(event)}\n\n"
 
 
 def safe_upload_filename(filename: str) -> str:

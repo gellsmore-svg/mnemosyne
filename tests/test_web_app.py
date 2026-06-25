@@ -244,7 +244,10 @@ def test_trace_stream_route_and_frame_format() -> None:
     from tirzah.web.app import _sse_frame
 
     frame = _sse_frame({"type": "process.started", "trace_id": "t1", "seq": 1})
-    assert frame.startswith("event: process.started\n")
+    # data-only frame: a single onmessage handler catches every event; type is in JSON
+    assert frame.startswith("data: ")
+    assert "event:" not in frame
+    assert '"type": "process.started"' in frame
     assert '"trace_id": "t1"' in frame
     assert frame.endswith("\n\n")
     assert "/api/trace/stream" in {route.path for route in app.routes}
