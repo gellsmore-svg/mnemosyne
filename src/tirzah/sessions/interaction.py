@@ -46,7 +46,7 @@ from tirzah.retrieval.trust import (
 )
 from tirzah.sessions.activity_reports import answer_activity_log, answer_activity_report
 from tirzah.sessions.active_documents import list_active_documents
-from tirzah.sessions.exchanges import save_exchange
+from tirzah.sessions.exchanges import recent_exchanges, save_exchange
 from tirzah.web_research import WebResearchClient, WebResearchConfig, sources_to_jsonable
 
 
@@ -838,6 +838,13 @@ def prepare_direct_answer_prompt(
         context_metadata=prompt["context_metadata"],
     )
     prompt = inject_controller_decision_into_prompt(prompt, controller_decision)
+    # Conversational memory: give the model the prior turns of THIS session so it
+    # can resolve references and maintain continuity (Phase 1 — direct path).
+    try:
+        history = recent_exchanges(db, session_id=session_id, limit=CONVERSATION_HISTORY_TURNS)
+    except Exception:
+        history = []
+    prompt = inject_history_into_prompt(prompt, render_conversation_history(history))
     retrieval_output = {
         "retrieval_status": retrieval_status,
         "focus_node_id": selected_node_id,
@@ -885,6 +892,63 @@ def inject_controller_decision_into_prompt(
     budget["estimated_total_with_reserved_response_tokens"] = (
         estimate_tokens(prompt_text) + reserved
     )
+    updated["budget"] = budget
+    return updated
+
+
+CONVERSATION_HISTORY_TURNS = 6
+CONVERSATION_HISTORY_ANSWER_CHARS = 600
+
+
+def render_conversation_history(
+    exchanges: list[dict[str, Any]],
+    *,
+    max_turns: int = CONVERSATION_HISTORY_TURNS,
+    max_answer_chars: int = CONVERSATION_HISTORY_ANSWER_CHARS,
+) -> str:
+    """Render recent turns of this session as a prompt block (oldest first)."""
+    if not exchanges:
+        return ""
+    turns = list(reversed(exchanges[:max_turns]))  # recent_exchanges is newest-first
+    lines = [
+        "## Conversation So Far",
+        "(Earlier turns in this conversation. Use them to resolve references like "
+        '"that"/"the previous one" and to maintain continuity.)',
+        "",
+    ]
+    rendered_any = False
+    for exchange in turns:
+        query = (exchange.get("query") or "").strip()
+        answer = exchange.get("answer")
+        if isinstance(answer, dict):
+            answer = answer.get("answer", "")
+        answer = (answer or "").strip()
+        if len(answer) > max_answer_chars:
+            answer = answer[:max_answer_chars] + "…"
+        if query:
+            lines.append(f"User: {query}")
+            rendered_any = True
+        if answer:
+            lines.append(f"Assistant: {answer}")
+    return "\n".join(lines) if rendered_any else ""
+
+
+def inject_history_into_prompt(prompt: dict[str, Any], history_block: str) -> dict[str, Any]:
+    """Insert the conversation-history block before the current user query."""
+    if not prompt or not history_block:
+        return prompt
+    prompt_text = prompt.get("prompt_text") or ""
+    section = history_block.rstrip() + "\n\n"
+    marker = "## User Query"
+    if marker in prompt_text:
+        prompt_text = prompt_text.replace(marker, section + marker, 1)
+    else:
+        prompt_text = section + prompt_text
+    updated = {**prompt, "prompt_text": prompt_text}
+    budget = {**(prompt.get("budget") or {})}
+    reserved = int(budget.get("reserved_response_tokens") or 0)
+    budget["estimated_prompt_tokens"] = estimate_tokens(prompt_text)
+    budget["estimated_total_with_reserved_response_tokens"] = estimate_tokens(prompt_text) + reserved
     updated["budget"] = budget
     return updated
 

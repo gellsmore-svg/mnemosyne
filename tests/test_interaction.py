@@ -539,6 +539,38 @@ def test_active_document_default_node_uses_active_node_without_root() -> None:
     assert active_document_default_node_id(db, str(document_id), [str(active_node_id)]) == str(active_node_id)
 
 
+def test_render_conversation_history_chronological() -> None:
+    from tirzah.sessions.interaction import render_conversation_history
+
+    # recent_exchanges returns newest-first; rendering must be oldest-first
+    exchanges = [
+        {"query": "second question", "answer": "second answer"},
+        {"query": "first question", "answer": "first answer"},
+    ]
+    block = render_conversation_history(exchanges)
+    assert "## Conversation So Far" in block
+    assert block.index("first question") < block.index("second question")
+    assert "User: first question" in block and "Assistant: first answer" in block
+
+
+def test_render_conversation_history_empty() -> None:
+    from tirzah.sessions.interaction import render_conversation_history
+
+    assert render_conversation_history([]) == ""
+
+
+def test_inject_history_into_prompt() -> None:
+    from tirzah.sessions.interaction import inject_history_into_prompt
+
+    prompt = {"prompt_text": "INSTRUCTION\n\n## User Query\nhello\n", "budget": {"reserved_response_tokens": 100}}
+    out = inject_history_into_prompt(prompt, "## Conversation So Far\nUser: hi\nAssistant: hey")
+    text = out["prompt_text"]
+    assert "## Conversation So Far" in text
+    assert text.index("Conversation So Far") < text.index("## User Query")  # before the query
+    # empty history is a no-op
+    assert inject_history_into_prompt(prompt, "")["prompt_text"] == prompt["prompt_text"]
+
+
 def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     import tirzah.sessions.interaction as interaction
 
