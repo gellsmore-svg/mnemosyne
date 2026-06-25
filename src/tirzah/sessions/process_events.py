@@ -1,0 +1,112 @@
+"""Bridge the answer pipeline's existing ``process_trace`` to structured trace events.
+
+This is the *Tirzah-specific* adapter that re-expresses the rich-but-ad-hoc
+``process_trace`` (a list of ``{step, input, output}`` dicts) as the structured,
+extensible event stream defined in :mod:`tirzah.trace`. Keeping it here leaves the
+``tirzah.trace`` spine free of Tirzah imports so it can be extracted to a shared
+library later.
+
+Design rule: events carry **lean, whitelisted** metadata only — never the prompt
+text, context payloads, or other process scaffolding. That heavy material is the
+thing we are separating out of the answer; it stays in the legacy activity fields
+and can be surfaced in the dev-log on demand, not bloated into every event.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from tirzah.sessions.activity_reports import human_step_name
+from tirzah.trace.events import EventType
+from tirzah.trace.recorder import Tracer
+
+# process_trace step name -> canonical structured event type.
+_STEP_EVENT_TYPE: dict[str, str] = {
+    "user_prompt": EventType.MESSAGE_USER_SUBMITTED,
+    "retrieval_context": EventType.CONTEXT_SELECTED,
+    "search": EventType.RETRIEVAL_MONGO_COMPLETED,
+    "memory_agent_iteration": EventType.RETRIEVAL_MONGO_COMPLETED,
+    "deep_retrieval": EventType.RETRIEVAL_MONGO_COMPLETED,
+    "answer_adapter": EventType.MODEL_RESPONSE_COMPLETED,
+    "save_exchange": EventType.LOG_PERSISTED,
+    "stop": EventType.PROCESS_COMPLETED,
+}
+
+# small, safe scalar/identifier fields worth surfacing as event metadata.
+_META_WHITELIST = (
+    "adapter",
+    "model",
+    "retrieval_mode",
+    "retrieval_status",
+    "retrieval_decision",
+    "ok",
+    "tool",
+    "plan_id",
+    "status",
+    "node_count",
+    "count",
+    "iteration",
+    "stop_reason",
+)
+
+_MAX_STR = 200
+
+
+def _compact_meta(step: dict[str, Any]) -> dict[str, Any]:
+    """Pull a bounded, whitelisted set of small fields from a trace step."""
+    meta: dict[str, Any] = {}
+    for source in (step.get("input"), step.get("output")):
+        if not isinstance(source, dict):
+            continue
+        for key in _META_WHITELIST:
+            if key in source and key not in meta:
+                value = source[key]
+                if isinstance(value, str) and len(value) > _MAX_STR:
+                    value = value[:_MAX_STR] + "…"
+                if isinstance(value, (str, int, float, bool)) or value is None:
+                    meta[key] = value
+        # derive a count of included/returned items without dumping them
+        for list_key in ("included_nodes", "tool_results", "results", "candidates"):
+            items = source.get(list_key)
+            if isinstance(items, list) and "result_count" not in meta:
+                meta["result_count"] = len(items)
+    return meta
+
+
+def _status_for(step: dict[str, Any], name: str | None) -> str:
+    output = step.get("output")
+    if name == "invalid_plan":
+        return "failed"
+    if isinstance(output, dict) and output.get("ok") is False:
+        return "failed"
+    return "ok"
+
+
+def emit_process_trace_events(
+    tracer: Tracer,
+    process_trace: list[dict[str, Any]] | None,
+    *,
+    skip_steps: tuple[str, ...] = ("user_prompt",),
+) -> None:
+    """Emit one structured event per process_trace step through ``tracer``.
+
+    ``user_prompt`` is skipped by default because the web boundary emits
+    ``message.user.submitted`` itself (with the live trace id) before the pipeline
+    runs.
+    """
+    for step in process_trace or []:
+        name = step.get("step")
+        if name in skip_steps:
+            continue
+        event_type = _STEP_EVENT_TYPE.get(name or "", "process.step")
+        summary = human_step_name(name) or (name or "step")
+        status = _status_for(step, name)
+        severity = "error" if status == "failed" else "info"
+        tracer.emit(
+            event_type,
+            status=status,
+            summary=summary,
+            severity=severity,
+            step=name,
+            **_compact_meta(step),
+        )

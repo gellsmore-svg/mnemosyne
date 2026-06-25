@@ -1363,22 +1363,9 @@ def build_prompt_envelope_without_context(
     reserved_response_tokens: int = 500,
 ) -> dict[str, Any]:
     instruction = system_instruction or default_no_context_system_instruction()
-    context_text = "\n".join(
-        [
-            "# Tirzah Context",
-            "",
-            "## Runtime Facts",
-            "- Mongo context lookup: ran",
-            "- Matching Mongo context used: no",
-            "- Submitted prompt available: yes",
-            "",
-            "No retrieved Mongo context matched this request.",
-            "",
-            "## Submitted Prompt",
-            query,
-            "",
-        ]
-    )
+    # No process scaffolding in the prompt: the retrieval status now lives in the
+    # trace/process channel, not in the text handed to the answer model.
+    context_text = "No stored memory matched this request; answer from general knowledge where you can.\n"
     prompt_text = "\n".join(
         [
             instruction,
@@ -1419,22 +1406,20 @@ def build_prompt_envelope_without_context(
 
 def default_system_instruction() -> str:
     return (
-        "Use the retrieved Tirzah context to answer the user query. "
-        "Prefer explicitly endorsed material when present, preserve provenance, "
-        "and say when the retrieved context is insufficient."
+        "You are Tirzah, a helpful conversational assistant. Answer the user's question "
+        "naturally using the retrieved context where relevant, cite sources when useful, and "
+        "say briefly if the context is insufficient. Write a clean conversational answer — do "
+        "not describe your retrieval process or internal steps."
     )
 
 
 def default_no_context_system_instruction() -> str:
     return (
-        "Answer the user query directly and transparently. No retrieved Mongo context matched this "
-        "request, but the submitted prompt is still available. Treat the Runtime Facts as the "
-        "source of truth about what happened in this request. If you discuss behind-the-scenes "
-        "operation or context use, include this exact runtime fact: 'For this request, Mongo "
-        "lookup ran but no matching Mongo context was used.' Then explain the visible Tirzah "
-        "process in plain language: prompt intake, context lookup, tool or adapter calls, and "
-        "answer generation. Do not withhold useful general answers solely because no matching "
-        "context was retrieved."
+        "You are Tirzah, a helpful conversational assistant. No stored memory matched this "
+        "request, so answer the user's question directly and naturally from general knowledge. "
+        "Only if relevant, briefly note that nothing specific was found in memory. Write a clean "
+        "conversational answer — do not describe your internal process or include runtime "
+        "boilerplate."
     )
 
 

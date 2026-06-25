@@ -584,7 +584,10 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     assert result["activity_log"].startswith("Answer Activity Log")
     assert "Context construction:" in result["activity_log"]
     assert "Evidence summary: 0 repository node(s) included." not in result["activity_log"]
-    assert "plain prompt" in captured["prompt"]["context_text"]
+    # the query is in the prompt's User Query section, not echoed into the context
+    # block (the no-context "Submitted Prompt" scaffolding was removed)
+    assert "plain prompt" in captured["prompt"]["prompt_text"]
+    assert "No stored memory matched this request" in captured["prompt"]["context_text"]
     assert "## Controller Decision" in captured["prompt"]["prompt_text"]
     assert "- Action: skip_weak_or_missing_repository_context" in captured["prompt"]["prompt_text"]
     assert captured["prompt"]["context_metadata"]["evidence_summary"] == {
@@ -603,7 +606,7 @@ def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
         "retrieval_context",
         "answer_adapter",
     ]
-    assert "plain prompt" in result["process_trace"][1]["output"]["context_text"]
+    assert "No stored memory matched this request" in result["process_trace"][1]["output"]["context_text"]
     assert result["process_trace"][1]["output"]["controller_decision"]["mode"] == "direct_scaffold"
 
 

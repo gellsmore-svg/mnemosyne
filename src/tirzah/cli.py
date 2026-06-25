@@ -93,6 +93,7 @@ from tirzah.sessions.endorsements import (
     update_node_endorsement,
 )
 from tirzah.sessions.interaction import answer_query
+from tirzah.sessions.run import run_traced_interaction
 from tirzah.sessions.output_ingestion import (
     list_output_ingestion_jobs,
     process_next_output_ingestion,
@@ -1961,12 +1962,15 @@ def main() -> None:
 
     if args.command == "ask":
         ensure_indexes(db)
-        result = answer_query(
+        result = run_traced_interaction(
             db,
             config,
             query=args.query,
-            focus_node_id=args.node_id,
             session_id=args.session_id,
+            executor=answer_query,
+            planning_enabled=False,
+            source="tirzah-cli",
+            focus_node_id=args.node_id,
             answer_adapter_name=args.adapter,
             ollama_model=args.model,
             retrieval_mode=args.retrieval_mode,
@@ -1993,12 +1997,15 @@ def main() -> None:
                 continue
             if query in {"/exit", "/quit"}:
                 break
-            result = answer_query(
+            result = run_traced_interaction(
                 db,
                 config,
                 query=query,
-                focus_node_id=args.node_id,
                 session_id=args.session_id,
+                executor=answer_query,
+                planning_enabled=False,
+                source="tirzah-cli",
+                focus_node_id=args.node_id,
                 answer_adapter_name=args.adapter,
                 ollama_model=args.model,
                 retrieval_mode=args.retrieval_mode,

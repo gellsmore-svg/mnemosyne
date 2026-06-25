@@ -129,7 +129,7 @@ def test_ask_endpoint_uses_recursive_planning_wrapper(monkeypatch) -> None:
         captured.update(kwargs)
         return {"ok": True, "answer": "planned", "request_plan": {"revision": 2}}
 
-    monkeypatch.setattr("tirzah.web.app.process_frontend_request", wrapped)
+    monkeypatch.setattr("tirzah.sessions.run.process_frontend_request", wrapped)
     response = client.post("/api/ask", json={
         "query": "Research X", "session_id": "s1", "retrieval_mode": "agentic",
         "recursive_planning": True, "web_research": True,
@@ -142,6 +142,112 @@ def test_ask_endpoint_uses_recursive_planning_wrapper(monkeypatch) -> None:
     assert captured["web_research"] is True
 
 
+
+
+def test_ask_endpoint_returns_three_channel_contract(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def wrapped(_db, _config, **kwargs):
+        return {
+            "ok": True,
+            "answer": "A clean conversational answer.",
+            "session_id": "s1",
+            "answer_adapter": "mock",
+            "answer_model": "gemma",
+            "process_trace": [
+                {"step": "user_prompt", "input": {"query": "Q"}, "output": {}},
+                {"step": "retrieval_context", "input": {}, "output": {"node_count": 3}},
+                {"step": "answer_adapter", "input": {"adapter": "mock", "model": "gemma"}, "output": {"ok": True}},
+            ],
+        }
+
+    monkeypatch.setattr("tirzah.sessions.run.process_frontend_request", wrapped)
+    response = client.post("/api/ask", json={"query": "Q", "session_id": "s1"})
+    assert response.status_code == 200
+    body = response.json()
+
+    # answer channel stays a clean string; ids present
+    assert body["answer"] == "A clean conversational answer."
+    assert body["traceId"].startswith("trace_")
+    assert body["sessionId"] == "s1"
+    assert body["messageId"].startswith("msg_")
+    assert body["requestId"].startswith("req_")
+
+    # process channel: structured events, separate from the answer
+    types = [e["type"] for e in body["processEvents"]]
+    assert "message.user.submitted" in types  # bookend emitted at the boundary
+    assert "process.started" in types
+    assert "context.selected" in types  # translated from retrieval_context
+    assert "model.response.completed" in types  # translated from answer_adapter
+    assert "answer.finalized" in types and "process.completed" in types
+    # the user_prompt step is not duplicated (boundary emits message.user.submitted)
+    assert types.count("message.user.submitted") == 1
+    # the final answer is logged on exactly the answer.finalized event
+    finalized = next(e for e in body["processEvents"] if e["type"] == "answer.finalized")
+    assert finalized["metadata"]["answer"] == "A clean conversational answer."
+    # events carry the same trace id and are monotonically sequenced
+    assert {e["trace_id"] for e in body["processEvents"]} == {body["traceId"]}
+    assert [e["seq"] for e in body["processEvents"]] == sorted(e["seq"] for e in body["processEvents"])
+
+
+def test_feedback_endpoint_captures_against_trace() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/feedback",
+        json={
+            "text": "the answer leaked process scaffolding into the chat",
+            "session_id": "s1",
+            "trace_id": "trace_abc",
+            "kind": "bug",
+            "source": "claude",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["feedbackId"].startswith("fb_")
+    assert body["traceId"] == "trace_abc"  # tied to the current trace
+    assert body["feedback"]["text"].startswith("the answer leaked")
+    assert body["feedback"]["kind"] == "bug"
+    assert body["feedback"]["source"] == "claude"
+    assert body["feedback"]["status"] == "open"
+
+
+def test_feedback_list_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(
+        "tirzah.web.app.list_feedback",
+        lambda _db, **kwargs: [{"feedback_id": "fb_1", "text": "x", "session_id": kwargs.get("session_id")}],
+    )
+    response = client.get("/api/feedback?session_id=s1")
+    assert response.status_code == 200
+    assert response.json()["feedback"][0]["feedback_id"] == "fb_1"
+
+
+def test_trace_events_endpoint_replays(monkeypatch) -> None:
+    client = TestClient(app)
+    sample = [{"type": "process.started", "trace_id": "t1", "seq": 1}]
+    monkeypatch.setattr("tirzah.web.app.list_trace_events", lambda _db, **kwargs: sample)
+    response = client.get("/api/trace/events?trace_id=t1")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["traceId"] == "t1"
+    assert body["events"] == sample
+
+
+def test_trace_stream_route_and_frame_format() -> None:
+    # Avoid consuming the live (blocking) stream in-process; verify the route is
+    # wired and the SSE frame format is correct. Live delivery is covered by the
+    # TraceBus publish/subscribe unit tests.
+    from tirzah.web.app import _sse_frame
+
+    frame = _sse_frame({"type": "process.started", "trace_id": "t1", "seq": 1})
+    assert frame.startswith("event: process.started\n")
+    assert '"trace_id": "t1"' in frame
+    assert frame.endswith("\n\n")
+    assert "/api/trace/stream" in {route.path for route in app.routes}
 
 
 def test_plan_revision_endpoints(monkeypatch) -> None:

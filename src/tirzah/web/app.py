@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
+from queue import Empty as QueueEmpty
 from math import ceil
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -66,9 +68,17 @@ from tirzah.retrieval.queries import (
 from tirzah.retrieval.trust import trust_temporal_diagnostic_for_node
 from tirzah.sessions.exchanges import recent_exchanges
 from tirzah.sessions.interaction import answer_query
+from tirzah.sessions.run import run_traced_interaction
+from tirzah.trace import (
+    EventType,
+    Tracer,
+    get_bus,
+    list_feedback,
+    list_trace_events,
+    record_feedback,
+)
 from tirzah.planning.recursive import (
     list_plan_revisions,
-    process_frontend_request,
     revise_saved_plan,
 )
 from tirzah.sessions.active_documents import list_active_documents
@@ -100,6 +110,16 @@ class AskRequest(BaseModel):
     retrieval_mode: str | None = None
     web_research: bool | None = None
     recursive_planning: bool | None = None
+
+
+class FeedbackRequest(BaseModel):
+    text: str
+    session_id: str = "web"
+    trace_id: str | None = None
+    message_id: str | None = None
+    source: str = "user"
+    kind: str | None = None  # e.g. bug | ui | reasoning | idea
+    context: dict[str, Any] | None = None  # references to the current answer/process/log
 
 
 class RevisePlanRequest(BaseModel):
@@ -859,14 +879,16 @@ def create_app() -> FastAPI:
 
     @app.post("/api/ask")
     def ask(request: AskRequest) -> dict[str, Any]:
-        return process_frontend_request(
+        # One mechanism: web, CLI ask, and CLI chat all route through
+        # run_traced_interaction, producing the same 3-channel contract + trace.
+        return run_traced_interaction(
             db,
             config,
             query=request.query,
+            session_id=request.session_id,
             executor=answer_query,
             planning_enabled=request.recursive_planning,
             focus_node_id=request.node_id,
-            session_id=request.session_id,
             project_domain_id=request.project_domain_id,
             conversation_domain_id=request.conversation_domain_id,
             answer_adapter_name=request.adapter,
@@ -920,7 +942,86 @@ def create_app() -> FastAPI:
     def continuity(session_id: str = "default", limit: int = 5) -> dict[str, Any]:
         return {"ok": True, **session_continuity(db, session_id=session_id, limit=limit)}
 
+    # --- Trace / process channel (separate from the answer) -----------------
+    @app.get("/api/trace/events")
+    def trace_events(
+        trace_id: str | None = None,
+        session_id: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Replay persisted process events for a trace/session (dev-log initial load / poll)."""
+        events = list_trace_events(db, trace_id=trace_id, session_id=session_id, limit=limit)
+        return {"ok": True, "traceId": trace_id, "sessionId": session_id, "events": events}
+
+    @app.get("/api/trace/stream")
+    def trace_stream(trace_id: str | None = None, session_id: str | None = None):
+        """Live process/log stream (SSE) for the process panel and dev-log window.
+
+        Linked to a trace or session; replays recent history, then streams new
+        events as they happen. Used by the main process panel and the separate
+        live dev-log window (same ids as the main app).
+        """
+        channel = trace_id or session_id or "*"
+        bus = get_bus()
+
+        def event_stream():
+            yield ": connected\n\n"
+            for event in list_trace_events(db, trace_id=trace_id, session_id=session_id, limit=200):
+                yield _sse_frame(event)
+            with bus.subscribe(channel) as subscription:
+                while True:
+                    try:
+                        event = subscription.get(timeout=15)
+                        yield _sse_frame(event.to_dict())
+                    except QueueEmpty:
+                        yield ": keepalive\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    # --- Feedback (free-text brain-dump tied to the current trace) ----------
+    @app.post("/api/feedback")
+    def submit_feedback(request: FeedbackRequest) -> dict[str, Any]:
+        """Capture developer/AI feedback against the current session/trace.
+
+        Stored as a structured ``feedback`` record AND mirrored into the trace
+        stream as a ``feedback.submitted`` event, without disrupting the chat.
+        """
+        record = record_feedback(
+            db,
+            text=request.text,
+            session_id=request.session_id,
+            trace_id=request.trace_id,
+            message_id=request.message_id,
+            source=request.source,
+            kind=request.kind,
+            context=request.context,
+        )
+        tracer = Tracer(
+            trace_id=request.trace_id,
+            session_id=request.session_id,
+            db=db,
+            source="feedback",
+            message_id=request.message_id,
+        )
+        tracer.emit(
+            EventType.FEEDBACK_SUBMITTED,
+            summary=(request.text[:120] + "…") if len(request.text) > 120 else request.text,
+            feedback_id=record["feedback_id"],
+            author=request.source,
+            kind=request.kind,
+        )
+        return {"ok": True, "feedbackId": record["feedback_id"], "traceId": tracer.trace_id, "feedback": record}
+
+    @app.get("/api/feedback")
+    def feedback_list(session_id: str | None = None, trace_id: str | None = None, limit: int = 100) -> dict[str, Any]:
+        return {"ok": True, "feedback": list_feedback(db, session_id=session_id, trace_id=trace_id, limit=limit)}
+
     return app
+
+
+def _sse_frame(event: dict[str, Any]) -> str:
+    """Format one trace event as a Server-Sent Events frame."""
+    return f"event: {event.get('type', 'message')}\ndata: {json.dumps(event)}\n\n"
 
 
 def safe_upload_filename(filename: str) -> str:

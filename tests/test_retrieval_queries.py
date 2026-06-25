@@ -1747,11 +1747,15 @@ def test_build_prompt_envelope_without_context_uses_no_context_instruction() -> 
     envelope = build_prompt_envelope_without_context("What is stored?")
 
     assert envelope["system_instruction"] == default_no_context_system_instruction()
-    assert "No retrieved Mongo context matched this request." in envelope["prompt_text"]
-    assert "- Matching Mongo context used: no" in envelope["prompt_text"]
-    assert "Treat the Runtime Facts as the source of truth" in envelope["prompt_text"]
-    assert "For this request, Mongo lookup ran but no matching Mongo context was used." in envelope["prompt_text"]
-    assert "Do not withhold useful general answers" in envelope["prompt_text"]
+    # the instruction is clean + conversational and forbids process narration
+    instruction = envelope["system_instruction"]
+    assert "conversational assistant" in instruction
+    assert "do not describe your internal process" in instruction.lower()
+    # the prompt no longer dumps runtime-facts / process scaffolding into the model
+    assert "Runtime Facts" not in envelope["prompt_text"]
+    assert "Mongo lookup ran" not in envelope["prompt_text"]
+    assert "behind-the-scenes" not in envelope["prompt_text"]
+    assert "No stored memory matched this request" in envelope["prompt_text"]
     assert envelope["context_metadata"]["included"] == []
 
 
