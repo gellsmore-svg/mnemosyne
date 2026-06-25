@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
@@ -324,8 +325,8 @@ def answer_query(
             process_trace=process_trace,
             project_domain_id=project_domain_id,
             conversation_domain_id=conversation_domain_id,
-            turn_embedding=compute_turn_embedding(config, runtime_config, query, answer["answer"]),
         )
+        schedule_turn_embedding(db, config, runtime_config, exchange_id, query, answer["answer"])
     except Exception as error:
         finish_answer_process_run(
             db,
@@ -483,8 +484,8 @@ def answer_query_deep(
             process_trace=process_trace,
             project_domain_id=project_domain_id,
             conversation_domain_id=conversation_domain_id,
-            turn_embedding=compute_turn_embedding(config, runtime_config, query, answer["answer"]),
         )
+        schedule_turn_embedding(db, config, runtime_config, exchange_id, query, answer["answer"])
     except Exception as error:
         finish_answer_process_run(
             db,
@@ -680,8 +681,8 @@ def answer_query_agentic(
             process_trace=process_trace,
             project_domain_id=project_domain_id,
             conversation_domain_id=conversation_domain_id,
-            turn_embedding=compute_turn_embedding(config, runtime_config, query, answer["answer"]),
         )
+        schedule_turn_embedding(db, config, runtime_config, exchange_id, query, answer["answer"])
     except Exception as error:
         finish_answer_process_run(
             db,
@@ -1031,14 +1032,44 @@ def render_session_history_block(
     return block
 
 
-def compute_turn_embedding(
-    config: AppConfig, runtime_config: Any, query: str, answer_text: str
-) -> list[float] | None:
-    """Embed a turn (query + answer) for semantic recall, or None when disabled."""
-    if not config.retrieval.conversation_semantic_recall:
-        return None
-    embedding = build_query_embedding(runtime_config, f"{query}\n{answer_text}")
-    return embedding.get("vector") if isinstance(embedding, dict) else None
+_TURN_EMBED_EXECUTOR: ThreadPoolExecutor | None = None
+
+
+def _turn_embed_executor() -> ThreadPoolExecutor:
+    """Lazy, small, shared pool for off-hot-path turn embedding."""
+    global _TURN_EMBED_EXECUTOR
+    if _TURN_EMBED_EXECUTOR is None:
+        _TURN_EMBED_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="turn-embed")
+    return _TURN_EMBED_EXECUTOR
+
+
+def _embed_and_backfill(db: Database, runtime_config: Any, exchange_id: str, text: str) -> None:
+    """Embed one turn and backfill its turn_embedding (best-effort, background)."""
+    try:
+        embedding = build_query_embedding(runtime_config, text)
+        vector = embedding.get("vector") if isinstance(embedding, dict) else None
+        if vector:
+            db.exchanges.update_one({"_id": ObjectId(exchange_id)}, {"$set": {"turn_embedding": vector}})
+    except Exception:
+        pass
+
+
+def schedule_turn_embedding(
+    db: Database, config: AppConfig, runtime_config: Any, exchange_id: str, query: str, answer_text: str
+) -> None:
+    """Embed a turn for semantic recall OFF the request hot path.
+
+    When semantic recall is enabled, the turn is saved immediately (without the
+    embedding) and the embedding is computed in a background thread and backfilled,
+    so the response is never delayed by the (slow) embedder. No-op when recall is
+    disabled or the embedder is unavailable.
+    """
+    if not config.retrieval.conversation_semantic_recall or not exchange_id:
+        return
+    try:
+        _turn_embed_executor().submit(_embed_and_backfill, db, runtime_config, exchange_id, f"{query}\n{answer_text}")
+    except Exception:
+        pass
 
 
 def direct_evidence_summary(
