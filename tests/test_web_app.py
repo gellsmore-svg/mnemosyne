@@ -156,7 +156,8 @@ def test_ask_endpoint_returns_three_channel_contract(monkeypatch) -> None:
             "answer_model": "gemma",
             "process_trace": [
                 {"step": "user_prompt", "input": {"query": "Q"}, "output": {}},
-                {"step": "retrieval_context", "input": {}, "output": {"node_count": 3}},
+                # output.status collides with emit()'s `status` kwarg — must be namespaced
+                {"step": "retrieval_context", "input": {}, "output": {"node_count": 3, "status": "stable"}},
                 {"step": "answer_adapter", "input": {"adapter": "mock", "model": "gemma"}, "output": {"ok": True}},
             ],
         }
@@ -185,6 +186,10 @@ def test_ask_endpoint_returns_three_channel_contract(monkeypatch) -> None:
     # the final answer is logged on exactly the answer.finalized event
     finalized = next(e for e in body["processEvents"] if e["type"] == "answer.finalized")
     assert finalized["metadata"]["answer"] == "A clean conversational answer."
+    # a step's own status is namespaced so it doesn't collide with the event status
+    context_event = next(e for e in body["processEvents"] if e["type"] == "context.selected")
+    assert context_event["status"] == "ok"
+    assert context_event["metadata"]["step_status"] == "stable"
     # events carry the same trace id and are monotonically sequenced
     assert {e["trace_id"] for e in body["processEvents"]} == {body["traceId"]}
     assert [e["seq"] for e in body["processEvents"]] == sorted(e["seq"] for e in body["processEvents"])

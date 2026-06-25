@@ -102,11 +102,17 @@ def emit_process_trace_events(
         summary = human_step_name(name) or (name or "step")
         status = _status_for(step, name)
         severity = "error" if status == "failed" else "info"
+        metadata = _compact_meta(step)
+        # A trace step's own fields (e.g. output.status) must not collide with
+        # emit()'s reserved keyword arguments; namespace any that would.
+        for reserved in ("type", "status", "summary", "severity", "message_id", "step"):
+            if reserved in metadata:
+                metadata[f"step_{reserved}"] = metadata.pop(reserved)
         tracer.emit(
             event_type,
             status=status,
             summary=summary,
             severity=severity,
             step=name,
-            **_compact_meta(step),
+            **metadata,
         )
