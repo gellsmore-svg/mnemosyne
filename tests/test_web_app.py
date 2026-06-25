@@ -230,6 +230,17 @@ def test_feedback_list_endpoint(monkeypatch) -> None:
     assert response.json()["feedback"][0]["feedback_id"] == "fb_1"
 
 
+def test_trace_sessions_endpoint(monkeypatch) -> None:
+    client = TestClient(app)
+    sample = [{"session_id": "s1", "event_count": 8, "sources": ["tirzah"], "trace_count": 2}]
+    monkeypatch.setattr("tirzah.web.app.list_trace_sessions", lambda _db, **kwargs: sample)
+    response = client.get("/api/trace/sessions")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["sessions"] == sample
+
+
 def test_trace_events_endpoint_replays(monkeypatch) -> None:
     client = TestClient(app)
     sample = [{"type": "process.started", "trace_id": "t1", "seq": 1}]

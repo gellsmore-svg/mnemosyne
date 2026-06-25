@@ -75,6 +75,7 @@ from tirzah.trace import (
     get_bus,
     list_feedback,
     list_trace_events,
+    list_trace_sessions,
     record_feedback,
 )
 from tirzah.planning.recursive import (
@@ -964,6 +965,11 @@ def create_app() -> FastAPI:
         return {"ok": True, **session_continuity(db, session_id=session_id, limit=limit)}
 
     # --- Trace / process channel (separate from the answer) -----------------
+    @app.get("/api/trace/sessions")
+    def trace_sessions(limit: int = 200) -> dict[str, Any]:
+        """List sessions in the trace store (for the log browser / Mizpah)."""
+        return {"ok": True, "sessions": list_trace_sessions(db, limit=limit)}
+
     @app.get("/api/trace/events")
     def trace_events(
         trace_id: str | None = None,

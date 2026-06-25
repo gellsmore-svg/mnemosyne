@@ -122,6 +122,27 @@ def test_subscribe_unsubscribes_on_exit():
     assert bus.subscriber_count() == 0
 
 
+def test_list_trace_sessions_summarises():
+    from tirzah.trace import EventType, Tracer, list_trace_sessions
+
+    db = FakeDb()
+    t1 = Tracer(trace_id="trace_a", session_id="s1", db=db, source="tirzah")
+    t1.emit(EventType.MESSAGE_USER_SUBMITTED, query="what is x?")
+    t1.completed(EventType.ANSWER_FINALIZED, answer="x is a thing")
+    t2 = Tracer(trace_id="trace_b", session_id="s1", db=db, source="tirzah-cli")
+    t2.emit(EventType.MESSAGE_USER_SUBMITTED, query="follow up")
+    Tracer(trace_id="trace_c", session_id="s2", db=db).emit(EventType.PROCESS_STARTED)
+
+    sessions = list_trace_sessions(db)
+    by_id = {s["session_id"]: s for s in sessions}
+    assert set(by_id) == {"s1", "s2"}
+    assert by_id["s1"]["trace_count"] == 2  # two requests in the session
+    assert by_id["s1"]["event_count"] == 3
+    assert sorted(by_id["s1"]["sources"]) == ["tirzah", "tirzah-cli"]
+    assert by_id["s1"]["first_query"] == "what is x?"
+    assert by_id["s1"]["last_answer_preview"] == "x is a thing"
+
+
 def test_record_and_list_feedback():
     from tirzah.trace import list_feedback, record_feedback
 

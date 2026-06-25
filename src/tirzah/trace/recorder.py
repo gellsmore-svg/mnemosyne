@@ -59,6 +59,74 @@ def list_trace_events(
     return rows
 
 
+def list_trace_sessions(db: Any, *, limit: int = 200) -> list[dict[str, Any]]:
+    """Summarise distinct sessions in the trace store (for the log browser).
+
+    One row per ``session_id`` with its sources, event/request counts, time span,
+    the first user query, and a preview of the last answer. Aggregates in Python
+    over ``find`` so it works against the in-memory test fakes too; fine for now,
+    can move to a Mongo aggregation when the log grows.
+    """
+    if db is None:
+        return []
+    try:
+        rows = list(db[TRACE_EVENTS_COLLECTION].find({}, {"_id": 0}))
+    except Exception:
+        return []
+    sessions: dict[str, dict[str, Any]] = {}
+    for event in rows:
+        session_id = event.get("session_id")
+        if not session_id:
+            continue
+        summary = sessions.setdefault(
+            session_id,
+            {
+                "session_id": session_id,
+                "event_count": 0,
+                "_sources": set(),
+                "_traces": set(),
+                "started_at": None,
+                "updated_at": None,
+                "first_query": None,
+                "last_answer_preview": None,
+            },
+        )
+        summary["event_count"] += 1
+        if event.get("source"):
+            summary["_sources"].add(event["source"])
+        if event.get("trace_id"):
+            summary["_traces"].add(event["trace_id"])
+        timestamp = event.get("timestamp")
+        if timestamp:
+            if summary["started_at"] is None or timestamp < summary["started_at"]:
+                summary["started_at"] = timestamp
+            if summary["updated_at"] is None or timestamp > summary["updated_at"]:
+                summary["updated_at"] = timestamp
+        metadata = event.get("metadata") or {}
+        if event.get("type") == "message.user.submitted" and summary["first_query"] is None:
+            summary["first_query"] = metadata.get("query")
+        if event.get("type") == "answer.finalized":
+            answer = metadata.get("answer")
+            if isinstance(answer, str):
+                summary["last_answer_preview"] = answer[:160]
+    result = []
+    for summary in sessions.values():
+        result.append(
+            {
+                "session_id": summary["session_id"],
+                "event_count": summary["event_count"],
+                "sources": sorted(summary["_sources"]),
+                "trace_count": len(summary["_traces"]),
+                "started_at": summary["started_at"],
+                "updated_at": summary["updated_at"],
+                "first_query": summary["first_query"],
+                "last_answer_preview": summary["last_answer_preview"],
+            }
+        )
+    result.sort(key=lambda row: row.get("updated_at") or "", reverse=True)
+    return result[:limit]
+
+
 class Tracer:
     """Emits structured trace events for a single request lifecycle."""
 

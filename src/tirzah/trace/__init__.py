@@ -26,6 +26,7 @@ from tirzah.trace.recorder import (
     TRACE_EVENTS_COLLECTION,
     Tracer,
     list_trace_events,
+    list_trace_sessions,
     record_event,
 )
 
@@ -39,6 +40,7 @@ __all__ = [
     "FEEDBACK_COLLECTION",
     "get_bus",
     "list_trace_events",
+    "list_trace_sessions",
     "record_event",
     "record_feedback",
     "list_feedback",
