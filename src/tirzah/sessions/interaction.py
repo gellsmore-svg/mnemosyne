@@ -403,7 +403,8 @@ def answer_query_deep(
     identity = first_active_agent_identity(db) if session_id else None
     try:
         deep_result = run_deep_answer(
-            db, query, config=config, runtime_config=runtime_config, identity=identity
+            db, query, config=config, runtime_config=runtime_config, identity=identity,
+            history_block=render_session_history_block(db, config, session_id=session_id),
         )
     except Exception as error:
         finish_answer_process_run(
@@ -574,6 +575,9 @@ def answer_query_agentic(
             reserved_response_tokens=config.retrieval.reserved_response_tokens,
             proposed_controller_decision=final_controller_decision_from_trace(process_trace),
             context_proposal=final_context_proposal_from_trace(process_trace),
+        )
+        prompt = inject_history_into_prompt(
+            prompt, render_session_history_block(db, config, session_id=session_id)
         )
     except Exception as error:
         finish_answer_process_run(
@@ -839,12 +843,10 @@ def prepare_direct_answer_prompt(
     )
     prompt = inject_controller_decision_into_prompt(prompt, controller_decision)
     # Conversational memory: give the model the prior turns of THIS session so it
-    # can resolve references and maintain continuity (Phase 1 — direct path).
-    try:
-        history = recent_exchanges(db, session_id=session_id, limit=CONVERSATION_HISTORY_TURNS)
-    except Exception:
-        history = []
-    prompt = inject_history_into_prompt(prompt, render_conversation_history(history))
+    # can resolve references and maintain continuity (direct path).
+    prompt = inject_history_into_prompt(
+        prompt, render_session_history_block(db, config, session_id=session_id)
+    )
     retrieval_output = {
         "retrieval_status": retrieval_status,
         "focus_node_id": selected_node_id,
@@ -951,6 +953,26 @@ def inject_history_into_prompt(prompt: dict[str, Any], history_block: str) -> di
     budget["estimated_total_with_reserved_response_tokens"] = estimate_tokens(prompt_text) + reserved
     updated["budget"] = budget
     return updated
+
+
+def render_session_history_block(db: Database, config: AppConfig, *, session_id: str) -> str:
+    """Fetch recent turns for the session and render them as a prompt block.
+
+    Shared by the direct, agentic, and deep answer paths so conversational memory
+    is consistent across modes.
+    """
+    turns = config.retrieval.conversation_history_turns
+    if not turns:
+        return ""
+    try:
+        history = recent_exchanges(db, session_id=session_id, limit=turns)
+    except Exception:
+        return ""
+    return render_conversation_history(
+        history,
+        max_turns=turns,
+        max_answer_chars=config.retrieval.conversation_history_answer_chars,
+    )
 
 
 def direct_evidence_summary(

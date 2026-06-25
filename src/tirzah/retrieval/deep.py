@@ -520,12 +520,17 @@ def make_triager(adapter: Any):
 # --------------------------------------------------------------------------- #
 
 
-def synthesize_answer(query: str, useful_chunks: list[dict[str, Any]], adapter: Any) -> str:
+def synthesize_answer(
+    query: str, useful_chunks: list[dict[str, Any]], adapter: Any, history_block: str = ""
+) -> str:
     """Write the final answer from the kept chunks (the useful-chunks bucket).
-    Reads the chunk text, cites node ids, and is told to flag insufficiency."""
+    Reads the chunk text, cites node ids, and is told to flag insufficiency.
+    ``history_block`` (optional) threads prior conversation turns for continuity."""
+    prefix = (history_block.rstrip() + "\n\n") if history_block else ""
     if not useful_chunks:
         prompt = (
-            "Answer the question. If there is no relevant information available, say so plainly.\n\n"
+            prefix
+            + "Answer the question. If there is no relevant information available, say so plainly.\n\n"
             f"Question: {query}\n"
         )
     else:
@@ -535,7 +540,8 @@ def synthesize_answer(query: str, useful_chunks: list[dict[str, Any]], adapter: 
             title = chunk.get("title") or ""
             blocks.append(f"[{node_identity(chunk)}] {title}\n{text}".strip())
         prompt = (
-            "Answer the question using ONLY the context below. Cite the [node_id] sources you "
+            prefix
+            + "Answer the question using ONLY the context below. Cite the [node_id] sources you "
             "use. If the context is insufficient, say so plainly.\n\n"
             f"Context:\n{chr(10).join(blocks)}\n\nQuestion: {query}\n"
         )
@@ -567,10 +573,12 @@ def run_deep_answer(
     identity: dict[str, Any] | None = None,
     adapter: Any = None,
     query_embedding: dict[str, Any] | None = None,
+    history_block: str = "",
 ) -> dict[str, Any]:
     """The full deep retrieval-and-answer flow: build the LLM seams from the
     answer adapter, run the orchestrator loop, then synthesise over the kept
-    chunks. `adapter` / `query_embedding` are injectable for testing."""
+    chunks. `adapter` / `query_embedding` are injectable for testing.
+    `history_block` threads prior conversation turns into the synthesis."""
     adapter = adapter or answer_adapter(runtime_config)
     if query_embedding is None:
         query_embedding = _build_query_embedding(runtime_config, query)
@@ -588,7 +596,7 @@ def run_deep_answer(
         identity=identity,
         embedder=embedder,
     )
-    answer = synthesize_answer(query, result["useful_chunks"], adapter)
+    answer = synthesize_answer(query, result["useful_chunks"], adapter, history_block=history_block)
     return {
         "answer": answer,
         "useful_chunks": result["useful_chunks"],

@@ -115,6 +115,8 @@ class OllamaHttpAnswerAdapter:
             "prompt": prompt["prompt_text"],
             "stream": False,
         }
+        if getattr(self.config, "ollama_num_ctx", 0):
+            request_body["options"] = {"num_ctx": self.config.ollama_num_ctx}
         if self.config.ollama_format:
             request_body["format"] = self.config.ollama_format
         think_value = ollama_think_http_value(self.config.ollama_think)

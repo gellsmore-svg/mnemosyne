@@ -67,6 +67,10 @@ class RuntimeConfig(BaseModel):
     # non-PATH install (e.g. a WSL-mounted ollama.exe).
     ollama_executable: Path = Path("ollama")
     ollama_timeout_seconds: int = 180
+    # Context window for the HTTP adapter. Must be large enough to hold the
+    # conversation history + retrieved context, or Ollama silently truncates the
+    # start of the prompt (dropping history). 0 = leave Ollama's default.
+    ollama_num_ctx: int = 8192
     # Semantic precision via Mahalath (the Tirzah->Mahalath seam, off by default).
     # When enabled, retrieval resolves key terms to MPL labels/senses from Mahalath's
     # ontology and conditions the answer on them. Fail-soft: an absent/unreachable
@@ -121,6 +125,10 @@ class RetrievalConfig(BaseModel):
     prompt_token_budget: int = 2000
     reserved_response_tokens: int = 500
     memory_agent_max_iterations: int = 4
+    # Conversational memory: how many prior turns of the session to thread into
+    # the prompt, and how much of each answer to keep.
+    conversation_history_turns: int = 6
+    conversation_history_answer_chars: int = 600
     # Deep retrieval mode (ADR-020) — bounds for the agent loop + Python pre-rank.
     deep_max_iterations: int = 4
     deep_max_candidates: int = 50
