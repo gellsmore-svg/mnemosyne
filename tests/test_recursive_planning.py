@@ -71,6 +71,13 @@ def test_malformed_planner_gets_bounded_fallback_plan():
     assert "planner fallback" in plan.revision_reason
 
 
+def test_planner_with_no_valid_steps_falls_back_not_raises():
+    # A parseable plan with zero valid steps must not 500 the request.
+    plan = create_initial_plan("Do the work", planner=lambda _prompt: json.dumps({"objective": "x", "steps": []}), max_steps=2)
+    assert len(plan.steps) >= 1  # fell back to a bounded plan
+    assert "planner fallback" in plan.revision_reason
+
+
 def test_recursive_revision_preserves_lineage_and_stops_when_stable():
     answers = iter([
         payload(decision="revise", action="Gather initial evidence"),

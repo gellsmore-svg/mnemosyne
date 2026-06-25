@@ -125,12 +125,13 @@ def create_initial_plan(request: str, *, planner: PlannerFn, max_steps: int = 12
     plan_id = f"plan_{uuid4().hex}"
     try:
         payload = parse_plan_payload(planner(build_initial_plan_prompt(request, max_steps)))
+        return plan_from_payload(
+            payload, plan_id=plan_id, revision=1, parent_revision=None,
+            request=request, trigger="initial_request", max_steps=max_steps,
+        )
     except Exception as error:
+        # Includes a parseable plan with no valid steps — fall back, don't 500.
         return fallback_plan(request, plan_id=plan_id, reason=f"planner fallback: {error}", max_steps=max_steps)
-    return plan_from_payload(
-        payload, plan_id=plan_id, revision=1, parent_revision=None,
-        request=request, trigger="initial_request", max_steps=max_steps,
-    )
 
 
 def revise_plan(
@@ -140,9 +141,17 @@ def revise_plan(
     planner: PlannerFn,
     max_steps: int = 12,
 ) -> CairnPlan:
+    revision = plan.revision + 1
+    trigger = compact_trigger(new_information)
     try:
         payload = parse_plan_payload(planner(build_revision_prompt(plan, new_information, max_steps)))
+        return plan_from_payload(
+            payload, plan_id=plan.plan_id, revision=revision,
+            parent_revision=plan.revision, request=plan.request,
+            trigger=trigger, max_steps=max_steps,
+        )
     except Exception as error:
+        # Keep the prior plan stable rather than failing the whole request.
         payload = {
             "objective": plan.objective,
             "status": "stable",
@@ -152,11 +161,14 @@ def revise_plan(
             "revision_decision": "stable",
             "revision_reason": f"revision planner fallback: {error}",
         }
-    return plan_from_payload(
-        payload, plan_id=plan.plan_id, revision=plan.revision + 1,
-        parent_revision=plan.revision, request=plan.request,
-        trigger=compact_trigger(new_information), max_steps=max_steps,
-    )
+        try:
+            return plan_from_payload(
+                payload, plan_id=plan.plan_id, revision=revision,
+                parent_revision=plan.revision, request=plan.request,
+                trigger=trigger, max_steps=max_steps,
+            )
+        except Exception:
+            return fallback_plan(plan.request, plan_id=plan.plan_id, reason=f"revision fallback: {error}", max_steps=max_steps)
 
 
 def revise_plan_recursively(
