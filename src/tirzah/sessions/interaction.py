@@ -47,7 +47,12 @@ from tirzah.retrieval.trust import (
 )
 from tirzah.sessions.activity_reports import answer_activity_log, answer_activity_report
 from tirzah.sessions.active_documents import list_active_documents
-from tirzah.sessions.exchanges import recent_exchanges, relevant_exchanges, save_exchange
+from tirzah.sessions.exchanges import (
+    pending_turn_embeddings,
+    recent_exchanges,
+    relevant_exchanges,
+    save_exchange,
+)
 from tirzah.web_research import WebResearchClient, WebResearchConfig, sources_to_jsonable
 
 
@@ -1052,6 +1057,29 @@ def _embed_and_backfill(db: Database, runtime_config: Any, exchange_id: str, tex
             db.exchanges.update_one({"_id": ObjectId(exchange_id)}, {"$set": {"turn_embedding": vector}})
     except Exception:
         pass
+
+
+def backfill_turn_embeddings(db: Database, config: AppConfig, runtime_config: Any, *, limit: int = 200) -> int:
+    """Durably embed any turns missing a turn_embedding (restart-safe catch-up).
+
+    The pending state lives in Mongo (exchanges with a null turn_embedding), so this
+    survives restarts and process death: anything the in-process executor missed is
+    embedded here. Runs on serve startup and via `tirzah backfill-turn-embeddings`.
+    Best-effort; no-op when semantic recall is disabled.
+    """
+    if not config.retrieval.conversation_semantic_recall:
+        return 0
+    embedded = 0
+    for item in pending_turn_embeddings(db, limit=limit):
+        try:
+            embedding = build_query_embedding(runtime_config, f"{item['query']}\n{item['answer']}")
+            vector = embedding.get("vector") if isinstance(embedding, dict) else None
+            if vector:
+                db.exchanges.update_one({"_id": ObjectId(item["exchange_id"])}, {"$set": {"turn_embedding": vector}})
+                embedded += 1
+        except Exception:
+            continue
+    return embedded
 
 
 def schedule_turn_embedding(

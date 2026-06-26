@@ -758,6 +758,8 @@ def main() -> None:
     structural_edges.add_argument("--limit", type=int, default=None)
     embedding_backfill = subcommands.add_parser("backfill-embeddings")
     add_profile_backfill_arguments(embedding_backfill)
+    turn_embedding_backfill = subcommands.add_parser("backfill-turn-embeddings")
+    turn_embedding_backfill.add_argument("--limit", type=int, default=1000)
     profile_backfill = subcommands.add_parser("backfill-profiles")
     add_profile_backfill_arguments(profile_backfill)
     embedding_jobs = subcommands.add_parser("embedding-backfill-jobs")
@@ -1156,6 +1158,13 @@ def main() -> None:
     if args.command == "db-ping":
         ensure_indexes(db)
         print(json.dumps({"ok": True, "database": config.mongo.database}))
+        return
+
+    if args.command == "backfill-turn-embeddings":
+        from tirzah.sessions.interaction import backfill_turn_embeddings
+
+        embedded = backfill_turn_embeddings(db, config, config.runtime, limit=args.limit)
+        print(json.dumps({"ok": True, "embedded": embedded}))
         return
 
     if args.command == "backfill-source-metadata":

@@ -181,6 +181,29 @@ def bounded_limit(value: int, maximum: int = 100) -> int:
     return max(1, min(maximum, int(value)))
 
 
+def pending_turn_embeddings(db: Database, *, limit: int = 200) -> list[dict[str, Any]]:
+    """Exchanges missing a turn_embedding — the durable pending-embedding queue.
+
+    The null/absent ``turn_embedding`` field IS the persistent pending state, so it
+    survives process restarts. Newest first (most likely to be recalled).
+    """
+    try:
+        rows = list(
+            db.exchanges.find({"turn_embedding": None}).sort("created_at", -1).limit(bounded_limit(limit))
+        )
+    except Exception:
+        return []
+    pending = []
+    for row in rows:
+        query = row.get("query")
+        answer = row.get("answer")
+        if isinstance(answer, dict):
+            answer = answer.get("answer")
+        if query:
+            pending.append({"exchange_id": str(row["_id"]), "query": query, "answer": answer or ""})
+    return pending
+
+
 def relevant_exchanges(
     db: Database,
     *,

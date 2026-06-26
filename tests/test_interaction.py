@@ -606,6 +606,57 @@ def test_relevant_exchanges_ranks_by_cosine() -> None:
     assert relevant_exchanges(db, session_id="s", query_vector=None) == []  # no vector -> empty
 
 
+def test_backfill_turn_embeddings(monkeypatch) -> None:
+    from bson import ObjectId
+
+    import tirzah.sessions.interaction as interaction
+    from tirzah.config import AppConfig
+
+    updated: list = []
+
+    class Cursor:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def sort(self, *args, **kwargs):
+            return self
+
+        def limit(self, n):
+            return self._rows[:n]
+
+    class Coll:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def find(self, query=None):
+            query = query or {}
+            return Cursor([r for r in self.rows if all(r.get(k) == v for k, v in query.items())])
+
+        def update_one(self, query, update):
+            updated.append((query, update))
+
+    class Db:
+        def __init__(self, rows):
+            self.exchanges = Coll(rows)
+
+    rows = [
+        {"_id": ObjectId(), "query": "q1", "answer": {"answer": "a1"}, "turn_embedding": None, "created_at": None},
+        {"_id": ObjectId(), "query": "q2", "answer": {"answer": "a2"}, "turn_embedding": [1.0], "created_at": None},
+    ]
+    db = Db(rows)
+    monkeypatch.setattr(interaction, "build_query_embedding", lambda _rc, _text: {"vector": [0.1, 0.2]})
+
+    config = AppConfig()
+    config.retrieval.conversation_semantic_recall = True
+    embedded = interaction.backfill_turn_embeddings(db, config, config.runtime, limit=10)
+    assert embedded == 1  # only the un-embedded turn
+    assert len(updated) == 1
+    assert updated[0][1] == {"$set": {"turn_embedding": [0.1, 0.2]}}
+
+    config.retrieval.conversation_semantic_recall = False
+    assert interaction.backfill_turn_embeddings(db, config, config.runtime) == 0  # no-op when disabled
+
+
 def test_answer_query_uses_prompt_without_focus_node(monkeypatch) -> None:
     import tirzah.sessions.interaction as interaction
 
