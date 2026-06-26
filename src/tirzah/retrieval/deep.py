@@ -324,6 +324,7 @@ def run_deep_retrieval(
     config: Any,
     planner,
     triager,
+    scorer=None,
     query_embedding: dict[str, Any] | None = None,
     identity: dict[str, Any] | None = None,
     embedder=None,
@@ -346,6 +347,9 @@ def run_deep_retrieval(
     trace: list[dict[str, Any]] = []
     invalid_attempts = 0
     hard_cap = 2 * session.max_iterations + 2
+    score_history: list[float] = []
+    last_sufficiency: dict[str, Any] | None = None
+    scoring_on = scorer is not None and getattr(rc, "deep_sufficiency_scoring", False)
 
     for _ in range(hard_cap):
         plan_context = {
@@ -355,6 +359,7 @@ def run_deep_retrieval(
             "seen_count": len(session.exclusion_ids),
             "primitives": allowed_primitive_specs(),
             "rounds": session.round_log,
+            "sufficiency": last_sufficiency,  # dynamic planning: target the gaps
         }
         decision = planner(plan_context) or {}
         if decision.get("action") == "stop":
@@ -386,6 +391,28 @@ def run_deep_retrieval(
         session.record_round(new_count=len(new), total_count=len(candidates))
         trace.append({"step": "search", "primitive": name, "new": len(new), "kept": len(kept)})
 
+        # Phase 4: score context sufficiency and stop when confident or plateaued.
+        if scoring_on:
+            sufficiency = scorer(query, session.useful_chunks, session.round_log) or {}
+            value = _clamp_score(sufficiency.get("context_sufficiency_score"))
+            sufficiency["context_sufficiency_score"] = value
+            score_history.append(value)
+            last_sufficiency = sufficiency
+            trace.append({
+                "step": "sufficiency",
+                "recursion": session.iterations,
+                "context_sufficiency_score": value,
+                "remaining_uncertainty": sufficiency.get("remaining_uncertainty", []),
+            })
+            if value >= rc.deep_sufficiency_stop:
+                trace.append({"step": "stop", "reason": "sufficiency_high"})
+                break
+            if value >= rc.deep_sufficiency_plateau_floor and detect_plateau(
+                score_history, rc.deep_plateau_passes, rc.deep_plateau_epsilon
+            ):
+                trace.append({"step": "stop", "reason": "sufficiency_plateau"})
+                break
+
         stop, reason = session.should_stop()
         if stop:
             trace.append({"step": "stop", "reason": reason})
@@ -395,6 +422,8 @@ def run_deep_retrieval(
         "useful_chunks": session.useful_chunks,
         "rounds": session.round_log,
         "trace": trace,
+        "sufficiency": last_sufficiency,
+        "sufficiency_history": score_history,
     }
 
 
@@ -515,6 +544,92 @@ def make_triager(adapter: Any):
 
 
 # --------------------------------------------------------------------------- #
+# Phase 4: Context Sufficiency Score — drives recursive stopping + dynamic planning.
+# --------------------------------------------------------------------------- #
+
+SUFFICIENCY_COMPONENTS = (
+    "relevance",
+    "coverage",
+    "focus",
+    "continuity",
+    "process_fit",
+    "decision_completeness",
+)
+
+
+def _clamp_score(value: Any) -> float:
+    try:
+        return max(0.0, min(10.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def heuristic_sufficiency(useful_chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Deterministic fallback score. Grows with the useful-chunks bucket but caps
+    below the hard stop (9.0) so it never claims certainty on its own."""
+    count = len(useful_chunks)
+    score = min(8.5, 3.5 + 1.0 * count)
+    return {
+        "context_sufficiency_score": round(score, 1),
+        "remaining_uncertainty": [] if count else ["no relevant context retrieved yet"],
+        "source": "heuristic",
+    }
+
+
+def build_sufficiency_prompt(query: str, useful_chunks: list[dict[str, Any]]) -> str:
+    blocks = []
+    for chunk in useful_chunks[:12]:
+        title = chunk.get("title") or ""
+        text = (chunk.get("text") or chunk.get("text_preview") or "")[:300]
+        blocks.append(f"[{node_identity(chunk)}] {title}\n{text}".strip())
+    context = "\n\n".join(blocks) if blocks else "(no context retrieved yet)"
+    return (
+        "Rate how SUFFICIENT the retrieved context is to answer the question well, 0-10. "
+        'Return ONLY JSON: {"context_sufficiency_score": <0-10>, "relevance": <0-10>, '
+        '"coverage": <0-10>, "focus": <0-10>, "continuity": <0-10>, "process_fit": <0-10>, '
+        '"decision_completeness": <0-10>, "remaining_uncertainty": ["..."]}. '
+        "Score high only if the context actually answers the question; list what is still "
+        "missing in remaining_uncertainty.\n\n"
+        f"Question: {query}\n\nRetrieved context:\n{context}\n"
+    )
+
+
+def parse_sufficiency(text: str) -> dict[str, Any]:
+    payload = _extract_json(text)
+    if not isinstance(payload, dict):
+        raise ValueError("sufficiency score is not a JSON object")
+    score: dict[str, Any] = {"context_sufficiency_score": _clamp_score(payload.get("context_sufficiency_score"))}
+    for component in SUFFICIENCY_COMPONENTS:
+        if component in payload:
+            score[component] = _clamp_score(payload[component])
+    uncertainty = payload.get("remaining_uncertainty")
+    score["remaining_uncertainty"] = (
+        [str(item) for item in uncertainty][:8] if isinstance(uncertainty, list) else []
+    )
+    score["source"] = "llm"
+    return score
+
+
+def make_scorer(adapter: Any):
+    """Wrap an answer adapter into a scorer(query, useful_chunks, rounds) -> score."""
+
+    def scorer(query: str, useful_chunks: list[dict[str, Any]], rounds: list[dict[str, Any]]) -> dict[str, Any]:
+        try:
+            return parse_sufficiency(_adapter_answer(adapter, build_sufficiency_prompt(query, useful_chunks)))
+        except Exception:
+            return heuristic_sufficiency(useful_chunks)
+
+    return scorer
+
+
+def detect_plateau(history: list[float], passes: int, epsilon: float) -> bool:
+    """True when the score has improved by <= epsilon over the last `passes` passes."""
+    if passes <= 0 or len(history) <= passes:
+        return False
+    return (history[-1] - history[-1 - passes]) <= epsilon
+
+
+# --------------------------------------------------------------------------- #
 # Synthesis + the full deep flow (retrieve -> synthesise). Self-contained so
 # `deep.py` takes no dependency on the interaction layer (which will call this).
 # --------------------------------------------------------------------------- #
@@ -592,6 +707,7 @@ def run_deep_answer(
         config=config,
         planner=make_planner(adapter),
         triager=make_triager(adapter),
+        scorer=make_scorer(adapter) if getattr(config.retrieval, "deep_sufficiency_scoring", False) else None,
         query_embedding=query_embedding,
         identity=identity,
         embedder=embedder,
@@ -602,4 +718,6 @@ def run_deep_answer(
         "useful_chunks": result["useful_chunks"],
         "rounds": result["rounds"],
         "trace": result["trace"],
+        "sufficiency": result.get("sufficiency"),
+        "sufficiency_history": result.get("sufficiency_history", []),
     }

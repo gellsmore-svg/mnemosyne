@@ -139,6 +139,12 @@ class RetrievalConfig(BaseModel):
     deep_max_candidates: int = 50
     deep_shortlist_size: int = 12
     deep_page_size: int = 5
+    # Phase 4: recursive Context Sufficiency Score driving the deep loop.
+    deep_sufficiency_scoring: bool = True
+    deep_sufficiency_stop: float = 9.0  # stop when sufficiency reaches this
+    deep_sufficiency_plateau_floor: float = 8.0  # stop at/above this if plateaued
+    deep_plateau_passes: int = 3
+    deep_plateau_epsilon: float = 0.2
 
 
 class AppConfig(BaseModel):

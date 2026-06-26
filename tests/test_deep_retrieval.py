@@ -242,6 +242,82 @@ def test_deep_loop_bounded_invalid_plans() -> None:
     assert out["useful_chunks"] == []
 
 
+# --- Phase 4: Context Sufficiency Score -------------------------------------
+def _cfg_score(max_it=9, stop=9.0, floor=8.0, passes=3, eps=0.2):
+    return SimpleNamespace(
+        retrieval=SimpleNamespace(
+            deep_max_iterations=max_it,
+            deep_shortlist_size=12,
+            deep_page_size=5,
+            deep_sufficiency_scoring=True,
+            deep_sufficiency_stop=stop,
+            deep_sufficiency_plateau_floor=floor,
+            deep_plateau_passes=passes,
+            deep_plateau_epsilon=eps,
+        )
+    )
+
+
+def test_detect_plateau() -> None:
+    from tirzah.retrieval.deep import detect_plateau
+
+    assert detect_plateau([8.0, 8.1], 3, 0.2) is False  # too short
+    assert detect_plateau([7.9, 8.3, 8.4, 8.4], 3, 0.2) is False  # 8.4-7.9=0.5 still improving
+    assert detect_plateau([7.9, 8.3, 8.4, 8.4, 8.4], 3, 0.2) is True  # 8.4-8.3=0.1 plateaued
+
+
+def test_deep_loop_stops_on_high_sufficiency(monkeypatch) -> None:
+    counter = {"n": 0}
+
+    def fake_run(db, name, args, *, query_embedding=None, identity=None, embedder=None):
+        counter["n"] += 1
+        return [{"node_id": f"n{counter['n']}"}]
+
+    monkeypatch.setattr(deep, "run_primitive", fake_run)
+    out = run_deep_retrieval(
+        None, "q", config=_cfg_score(),
+        planner=lambda ctx: {"primitive": "keyword_search", "args": {"query": "q"}},
+        triager=lambda q, p: p,
+        scorer=lambda q, chunks, rounds: {"context_sufficiency_score": 9.5},
+    )
+    assert out["trace"][-1]["reason"] == "sufficiency_high"
+    assert out["sufficiency"]["context_sufficiency_score"] == 9.5
+    assert any(t["step"] == "sufficiency" for t in out["trace"])
+
+
+def test_deep_loop_stops_on_sufficiency_plateau(monkeypatch) -> None:
+    counter = {"n": 0}
+
+    def fake_run(db, name, args, *, query_embedding=None, identity=None, embedder=None):
+        counter["n"] += 1
+        return [{"node_id": f"n{counter['n']}"}]
+
+    monkeypatch.setattr(deep, "run_primitive", fake_run)
+    scores = iter([7.9, 8.3, 8.4, 8.4, 8.4, 8.4])
+    out = run_deep_retrieval(
+        None, "q", config=_cfg_score(max_it=20),
+        planner=lambda ctx: {"primitive": "keyword_search", "args": {"query": "q"}},
+        triager=lambda q, p: p,
+        scorer=lambda q, chunks, rounds: {"context_sufficiency_score": next(scores, 8.4)},
+    )
+    assert out["trace"][-1]["reason"] == "sufficiency_plateau"
+    assert out["sufficiency_history"][:5] == [7.9, 8.3, 8.4, 8.4, 8.4]
+
+
+def test_heuristic_and_parse_sufficiency() -> None:
+    from tirzah.retrieval.deep import heuristic_sufficiency, parse_sufficiency
+
+    assert (
+        heuristic_sufficiency([])["context_sufficiency_score"]
+        < heuristic_sufficiency([{}, {}])["context_sufficiency_score"]
+    )
+    assert heuristic_sufficiency([{}] * 100)["context_sufficiency_score"] <= 8.5  # capped below the hard stop
+    parsed = parse_sufficiency('{"context_sufficiency_score": 8.3, "relevance": 9.5, "remaining_uncertainty": ["x"]}')
+    assert parsed["context_sufficiency_score"] == 8.3 and parsed["relevance"] == 9.5
+    assert parsed["remaining_uncertainty"] == ["x"]
+    assert parse_sufficiency('{"context_sufficiency_score": 15}')["context_sufficiency_score"] == 10.0  # clamped
+
+
 import json as _json
 
 from tirzah.retrieval.deep import (
