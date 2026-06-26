@@ -1019,6 +1019,45 @@ def render_relevant_chunks(chunks: list[dict[str, Any]]) -> str:
     return "\n".join(lines) if rendered_any else ""
 
 
+def render_taxonomy_context(chunks: list[dict[str, Any]]) -> str:
+    """Render prior decisions / assumptions / constraints / open questions (Phase 5)."""
+    lines = [
+        "## Decisions, Constraints & Open Questions",
+        "(Relevant prior decisions, assumptions, constraints, and unresolved items.)",
+        "",
+    ]
+    rendered_any = False
+    for chunk in chunks:
+        text = (chunk.get("text") or "").strip()
+        if text:
+            lines.append(f"- ({chunk.get('kind') or 'note'}) {text}")
+            rendered_any = True
+    return "\n".join(lines) if rendered_any else ""
+
+
+def render_planning_context(db: Database, config: AppConfig, session_id: str | None, query: str | None) -> str:
+    """Relevant prior decisions/constraints/open items to make planning context-aware."""
+    if not config.retrieval.conversation_chunking or not query or not session_id:
+        return ""
+    embedding = build_query_embedding(config.runtime, query)
+    vector = embedding.get("vector") if isinstance(embedding, dict) else None
+    if not vector:
+        return ""
+    from tirzah.sessions.chunks import TAXONOMY_KINDS, relevant_chunks
+
+    try:
+        chunks = relevant_chunks(
+            db,
+            session_id=session_id,
+            query_vector=vector,
+            limit=config.retrieval.conversation_semantic_recall_k,
+            kinds=TAXONOMY_KINDS,
+        )
+    except Exception:
+        return ""
+    return render_taxonomy_context(chunks)
+
+
 def render_session_history_block(
     db: Database, config: AppConfig, *, session_id: str, query: str | None = None
 ) -> str:
@@ -1076,6 +1115,19 @@ def render_session_history_block(
                 chunk_block = render_relevant_chunks(chunks)
                 if chunk_block:
                     sections.append(chunk_block)
+                # Phase 5: surface the decisions/constraints/open-questions taxonomy.
+                from tirzah.sessions.chunks import TAXONOMY_KINDS, relevant_chunks as _relevant_chunks
+
+                try:
+                    taxonomy = _relevant_chunks(
+                        db, session_id=session_id, query_vector=vector, limit=k,
+                        exclude_exchange_ids=recent_ids, kinds=TAXONOMY_KINDS,
+                    )
+                except Exception:
+                    taxonomy = []
+                taxonomy_block = render_taxonomy_context(taxonomy)
+                if taxonomy_block:
+                    sections.append(taxonomy_block)
             if block:
                 sections.append(block)
             block = "\n\n".join(section for section in sections if section)

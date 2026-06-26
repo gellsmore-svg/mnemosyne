@@ -119,6 +119,16 @@ def test_relevant_chunks_ranks_by_cosine() -> None:
     assert relevant_chunks(db, session_id="s", query_vector=None) == []
 
 
+def test_relevant_chunks_kind_filter() -> None:
+    db = FakeDb()
+    store_chunks(db, exchange_id=str(ObjectId()), session_id="s", chunks=[
+        {"kind": "topic", "text": "t", "embedding": [1.0, 0.0]},
+        {"kind": "decision", "text": "use http", "embedding": [0.9, 0.1]},
+    ])
+    out = relevant_chunks(db, session_id="s", query_vector=[1.0, 0.0], limit=5, kinds=("decision",))
+    assert [c["kind"] for c in out] == ["decision"]  # taxonomy-filtered retrieval
+
+
 def test_link_chunk_similarities() -> None:
     db = FakeDb()
     # an existing chunk in the session

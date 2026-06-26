@@ -19,7 +19,21 @@ from pymongo.database import Database
 
 CHUNK_COLLECTION = "conversation_chunks"
 CHUNK_REL_COLLECTION = "chunk_relationships"
-CHUNK_KINDS = ("topic", "intent", "domain", "requirement", "entity", "decision")
+CHUNK_KINDS = (
+    "topic",
+    "intent",
+    "domain",
+    "requirement",
+    "entity",
+    "decision",
+    "process",
+    "unresolved",
+    "assumption",
+    "constraint",
+)
+# The process/decision/unresolved taxonomy (Phase 5): what was decided, assumed,
+# constrained, planned, and what is still open.
+TAXONOMY_KINDS = ("decision", "assumption", "constraint", "process", "unresolved")
 _MAX_CHUNKS = 12
 _MAX_TEXT = 240
 
@@ -41,8 +55,11 @@ def _extract_json(text: str) -> Any:
 def build_chunk_prompt(query: str, answer: str) -> str:
     return (
         "Decompose this conversation turn into a few SEMANTIC CHUNKS. Each chunk has a "
-        "kind (one of: topic, intent, domain, requirement, entity, decision) and a short "
-        'text. Return ONLY JSON: {"chunks": [{"kind": "topic", "text": "..."}, ...]}. '
+        "kind (one of: topic, intent, domain, requirement, entity, decision, process, "
+        "unresolved, assumption, constraint) and a short text. Use 'decision' for choices "
+        "made, 'unresolved' for open questions / deferred work, 'assumption' and "
+        "'constraint' where relevant, 'process' for plan/next-step statements. "
+        'Return ONLY JSON: {"chunks": [{"kind": "topic", "text": "..."}, ...]}. '
         "Keep chunks atomic and concise.\n\n"
         f"User: {query}\nAssistant: {answer}\n"
     )
@@ -132,17 +149,19 @@ def relevant_chunks(
     query_vector: list[float] | None,
     limit: int = 5,
     exclude_exchange_ids: Any = (),
+    kinds: Any = None,
 ) -> list[dict[str, Any]]:
     """Top-K chunks of the session most similar to ``query_vector`` (cosine).
 
     Finer-grained recall than whole turns. Only chunks with an embedding count.
-    Best-effort.
+    ``kinds`` optionally restricts to specific taxonomy kinds. Best-effort.
     """
     if not query_vector:
         return []
     from tirzah.retrieval.queries import cosine_similarity
 
     exclude = set(exclude_exchange_ids or ())
+    kind_filter = set(kinds) if kinds else None
     try:
         rows = list(db[CHUNK_COLLECTION].find({"session_id": session_id}))
     except Exception:
@@ -150,6 +169,8 @@ def relevant_chunks(
     scored: list[tuple[float, dict[str, Any]]] = []
     for row in rows:
         if row.get("exchange_id") in exclude:
+            continue
+        if kind_filter and row.get("kind") not in kind_filter:
             continue
         vector = row.get("embedding")
         if not vector:

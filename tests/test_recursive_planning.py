@@ -63,6 +63,20 @@ def test_initial_plan_is_versioned_cairn():
     assert all(step.status == "pending" for step in plan.steps)
 
 
+def test_create_initial_plan_threads_context():
+    # Phase 5: prior decisions/open-questions context reaches the plan prompt.
+    captured = {}
+
+    def planner(prompt):
+        captured["prompt"] = prompt
+        return payload()
+
+    create_initial_plan("Do X", planner=planner, context="## Decisions\n- (decision) use http")
+    assert "## Decisions" in captured["prompt"]
+    assert "use http" in captured["prompt"]
+    assert "Do X" in captured["prompt"]
+
+
 def test_malformed_planner_gets_bounded_fallback_plan():
     plan = create_initial_plan("Do the work", planner=lambda _prompt: "not json", max_steps=2)
     assert plan.revision_decision == "revise"

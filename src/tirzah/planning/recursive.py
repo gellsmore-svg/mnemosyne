@@ -86,8 +86,8 @@ def make_planner(runtime: RuntimeConfig) -> PlannerFn:
     return plan
 
 
-def build_initial_plan_prompt(request: str, max_steps: int) -> str:
-    return "\n".join([
+def build_initial_plan_prompt(request: str, max_steps: int, context: str = "") -> str:
+    lines = [
         "You are Tirzah's process planner immediately below the front end.",
         "Create a first-pass plan for the request. Do not answer or execute the request.",
         "Represent a Cairn PROCESS as strict JSON. Python will validate and execute it.",
@@ -98,9 +98,12 @@ def build_initial_plan_prompt(request: str, max_steps: int) -> str:
         "status is active; revision_decision is revise unless the request is already complete or blocked.",
         "Do not claim tools were executed. Do not grant tools or side effects not stated by the request/runtime.",
         "",
-        "User request:",
-        request,
-    ])
+    ]
+    if context:
+        # Phase 5: make planning context-aware with prior decisions/constraints/open items.
+        lines += [context, ""]
+    lines += ["User request:", request]
+    return "\n".join(lines)
 
 
 def build_revision_prompt(plan: CairnPlan, new_information: dict[str, Any], max_steps: int) -> str:
@@ -121,10 +124,10 @@ def build_revision_prompt(plan: CairnPlan, new_information: dict[str, Any], max_
     ])
 
 
-def create_initial_plan(request: str, *, planner: PlannerFn, max_steps: int = 12) -> CairnPlan:
+def create_initial_plan(request: str, *, planner: PlannerFn, max_steps: int = 12, context: str = "") -> CairnPlan:
     plan_id = f"plan_{uuid4().hex}"
     try:
-        payload = parse_plan_payload(planner(build_initial_plan_prompt(request, max_steps)))
+        payload = parse_plan_payload(planner(build_initial_plan_prompt(request, max_steps, context)))
         return plan_from_payload(
             payload, plan_id=plan_id, revision=1, parent_revision=None,
             request=request, trigger="initial_request", max_steps=max_steps,
@@ -204,8 +207,16 @@ def process_frontend_request(
     if not enabled:
         return executor(db, config, query=query, **answer_kwargs)
     planner = planner or make_planner(config.runtime)
+    # Phase 5: make planning context-aware with relevant prior decisions/open items.
+    planning_context = ""
+    try:
+        from tirzah.sessions.interaction import render_planning_context
+
+        planning_context = render_planning_context(db, config, answer_kwargs.get("session_id"), query)
+    except Exception:
+        planning_context = ""
     initial = create_initial_plan(
-        query, planner=planner, max_steps=config.runtime.planning_max_steps,
+        query, planner=planner, max_steps=config.runtime.planning_max_steps, context=planning_context,
     )
     save_plan_revision(db, initial, session_id=answer_kwargs.get("session_id", "web"))
     result = executor(db, config, query=query, **answer_kwargs)
