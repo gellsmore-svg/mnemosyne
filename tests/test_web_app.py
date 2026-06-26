@@ -195,6 +195,44 @@ def test_ask_endpoint_returns_three_channel_contract(monkeypatch) -> None:
     sufficiency_event = next(e for e in body["processEvents"] if e["type"] == "context.sufficiency")
     assert sufficiency_event["metadata"]["context_sufficiency_score"] == 8.4
     assert sufficiency_event["summary"] == "Score Context Sufficiency"
+
+
+def test_ask_events_conform_to_galeed_trace_contract(monkeypatch) -> None:
+    # Executable seam contract: every trace event Tirzah emits must satisfy Galeed's
+    # contract — a registered event type, the current schema_version, and the
+    # correlation ids that let a trace be stitched across repos.
+    import galeed
+
+    client = TestClient(app)
+
+    def wrapped(_db, _config, **kwargs):
+        return {
+            "ok": True,
+            "answer": "ans",
+            "session_id": "sX",
+            "answer_adapter": "mock",
+            "answer_model": "gemma",
+            "process_trace": [
+                {"step": "retrieval_context", "input": {}, "output": {"node_count": 2, "status": "stable"}},
+                {"step": "sufficiency", "input": {}, "output": {"context_sufficiency_score": 7.0}},
+                {"step": "answer_adapter", "input": {"adapter": "mock"}, "output": {"ok": True}},
+            ],
+        }
+
+    monkeypatch.setattr("tirzah.sessions.run.process_frontend_request", wrapped)
+    body = client.post("/api/ask", json={"query": "Q", "session_id": "sX"}).json()
+    events = body["processEvents"]
+    assert events, "expected emitted trace events"
+
+    for event in events:
+        # 1. no ad-hoc event strings — every type is in Galeed's vocabulary
+        assert event["type"] in galeed.KNOWN_EVENT_TYPES, f"unregistered event type: {event['type']}"
+        # 2. every event is stamped with the current schema version
+        assert event["schema_version"] == galeed.SCHEMA_VERSION
+        # 3. correlation ids tie each event back to the response envelope
+        ids = galeed.correlation_ids(event)
+        assert ids["trace_id"] == body["traceId"]
+        assert ids["session_id"] == body["sessionId"]
     # events carry the same trace id and are monotonically sequenced
     assert {e["trace_id"] for e in body["processEvents"]} == {body["traceId"]}
     assert [e["seq"] for e in body["processEvents"]] == sorted(e["seq"] for e in body["processEvents"])

@@ -77,6 +77,19 @@ def test_create_initial_plan_threads_context():
     assert "Do X" in captured["prompt"]
 
 
+def test_tirzah_plan_conforms_to_cairn_grammar():
+    # Executable seam contract (review P1-001): the recursive planner's output must
+    # satisfy Cairn's machine-readable plan conformance, so Tirzah cannot drift into
+    # a local dialect of the grammar.
+    import cairn
+
+    plan = create_initial_plan("Do the thing", planner=lambda _p: payload())
+    assert cairn.validate_plan(plan.to_dict()) == []
+    # a completed-status revision must stay conformant too
+    done = create_initial_plan("Finish it", planner=lambda _p: payload(decision="complete", status="complete"))
+    assert cairn.validate_plan(done.to_dict()) == []
+
+
 def test_malformed_planner_gets_bounded_fallback_plan():
     plan = create_initial_plan("Do the work", planner=lambda _prompt: "not json", max_steps=2)
     assert plan.revision_decision == "revise"
