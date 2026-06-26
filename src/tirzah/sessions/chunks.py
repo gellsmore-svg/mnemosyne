@@ -18,6 +18,7 @@ from bson import ObjectId
 from pymongo.database import Database
 
 CHUNK_COLLECTION = "conversation_chunks"
+CHUNK_REL_COLLECTION = "chunk_relationships"
 CHUNK_KINDS = ("topic", "intent", "domain", "requirement", "entity", "decision")
 _MAX_CHUNKS = 12
 _MAX_TEXT = 240
@@ -93,8 +94,12 @@ def make_chunker(adapter: Any):
     return chunker
 
 
-def store_chunks(db: Database, *, exchange_id: str, session_id: str, chunks: list[dict[str, Any]]) -> int:
-    """Persist chunks for a turn and mark the exchange chunked (best-effort)."""
+def store_chunks(db: Database, *, exchange_id: str, session_id: str, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Persist chunks for a turn and mark the exchange chunked (best-effort).
+
+    Each chunk may carry an ``embedding`` (for chunk-level retrieval). Returns the
+    stored rows (with chunk_id) so the caller can link relationships.
+    """
     now = datetime.now(timezone.utc)
     rows = [
         {
@@ -103,20 +108,116 @@ def store_chunks(db: Database, *, exchange_id: str, session_id: str, chunks: lis
             "session_id": session_id,
             "kind": chunk["kind"],
             "text": chunk["text"],
+            "embedding": chunk.get("embedding"),
             "created_at": now,
         }
         for chunk in chunks
     ]
     if rows:
         try:
-            db[CHUNK_COLLECTION].insert_many(rows)
+            db[CHUNK_COLLECTION].insert_many([dict(row) for row in rows])
         except Exception:
             pass
     try:
         db.exchanges.update_one({"_id": ObjectId(exchange_id)}, {"$set": {"chunked": True}})
     except Exception:
         pass
-    return len(rows)
+    return rows
+
+
+def relevant_chunks(
+    db: Database,
+    *,
+    session_id: str,
+    query_vector: list[float] | None,
+    limit: int = 5,
+    exclude_exchange_ids: Any = (),
+) -> list[dict[str, Any]]:
+    """Top-K chunks of the session most similar to ``query_vector`` (cosine).
+
+    Finer-grained recall than whole turns. Only chunks with an embedding count.
+    Best-effort.
+    """
+    if not query_vector:
+        return []
+    from tirzah.retrieval.queries import cosine_similarity
+
+    exclude = set(exclude_exchange_ids or ())
+    try:
+        rows = list(db[CHUNK_COLLECTION].find({"session_id": session_id}))
+    except Exception:
+        return []
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for row in rows:
+        if row.get("exchange_id") in exclude:
+            continue
+        vector = row.get("embedding")
+        if not vector:
+            continue
+        try:
+            scored.append((cosine_similarity(query_vector, vector), row))
+        except Exception:
+            continue
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [
+        {"kind": row.get("kind"), "text": row.get("text"), "exchange_id": row.get("exchange_id")}
+        for _, row in scored[:limit]
+    ]
+
+
+def link_chunk_similarities(
+    db: Database, new_rows: list[dict[str, Any]], *, session_id: str, k: int = 3, threshold: float = 0.6
+) -> int:
+    """Create similar_to relationships from each new chunk to existing session chunks.
+
+    Embedding-cosine similarity (cheap, deterministic). The richer LLM relationships
+    (extends/clarifies/contradicts) are a later slice. Best-effort.
+    """
+    embedded_new = [row for row in new_rows if row.get("embedding")]
+    if not embedded_new:
+        return 0
+    from tirzah.retrieval.queries import cosine_similarity
+
+    try:
+        existing = [
+            row
+            for row in db[CHUNK_COLLECTION].find({"session_id": session_id})
+            if row.get("embedding")
+        ]
+    except Exception:
+        return 0
+    new_ids = {row["chunk_id"] for row in embedded_new}
+    now = datetime.now(timezone.utc)
+    edges: list[dict[str, Any]] = []
+    for row in embedded_new:
+        scored = []
+        for other in existing:
+            if other.get("chunk_id") in new_ids:
+                continue  # don't link to this turn's own new chunks
+            try:
+                score = cosine_similarity(row["embedding"], other["embedding"])
+            except Exception:
+                continue
+            if score >= threshold:
+                scored.append((score, other))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        for score, other in scored[:k]:
+            edges.append(
+                {
+                    "kind": "similar_to",
+                    "source_chunk_id": row["chunk_id"],
+                    "target_chunk_id": other["chunk_id"],
+                    "session_id": session_id,
+                    "score": round(float(score), 4),
+                    "created_at": now,
+                }
+            )
+    if edges:
+        try:
+            db[CHUNK_REL_COLLECTION].insert_many(edges)
+        except Exception:
+            pass
+    return len(edges)
 
 
 def pending_chunk_exchanges(db: Database, *, limit: int = 200) -> list[dict[str, Any]]:

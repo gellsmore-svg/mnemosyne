@@ -1007,6 +1007,18 @@ def render_relevant_turns(exchanges: list[dict[str, Any]], *, max_answer_chars: 
     return "\n".join(lines) if rendered_any else ""
 
 
+def render_relevant_chunks(chunks: list[dict[str, Any]]) -> str:
+    """Render semantically-relevant memory fragments (Phase 3 chunk recall)."""
+    lines = ["## Relevant Memory Fragments", "(Earlier points from this conversation, by relevance.)", ""]
+    rendered_any = False
+    for chunk in chunks:
+        text = (chunk.get("text") or "").strip()
+        if text:
+            lines.append(f"- ({chunk.get('kind') or 'topic'}) {text}")
+            rendered_any = True
+    return "\n".join(lines) if rendered_any else ""
+
+
 def render_session_history_block(
     db: Database, config: AppConfig, *, session_id: str, query: str | None = None
 ) -> str:
@@ -1029,27 +1041,44 @@ def render_session_history_block(
         max_turns=turns,
         max_answer_chars=config.retrieval.conversation_history_answer_chars,
     )
-    # Phase 2: surface relevant EARLIER turns beyond the recent window.
-    if config.retrieval.conversation_semantic_recall and query:
+    # Phase 2/3: surface relevant EARLIER turns and memory fragments beyond the
+    # recent window. The query embedding is shared by both retrievals.
+    do_recall = config.retrieval.conversation_semantic_recall
+    do_chunks = config.retrieval.conversation_chunking
+    if (do_recall or do_chunks) and query:
         embedding = build_query_embedding(config.runtime, query)
         vector = embedding.get("vector") if isinstance(embedding, dict) else None
         if vector:
             recent_ids = {exchange.get("exchange_id") for exchange in recent}
-            try:
-                relevant = relevant_exchanges(
-                    db,
-                    session_id=session_id,
-                    query_vector=vector,
-                    limit=config.retrieval.conversation_semantic_recall_k,
-                    exclude_exchange_ids=recent_ids,
+            k = config.retrieval.conversation_semantic_recall_k
+            sections: list[str] = []
+            if do_recall:
+                try:
+                    relevant = relevant_exchanges(
+                        db, session_id=session_id, query_vector=vector, limit=k, exclude_exchange_ids=recent_ids
+                    )
+                except Exception:
+                    relevant = []
+                turns_block = render_relevant_turns(
+                    relevant, max_answer_chars=config.retrieval.conversation_history_answer_chars
                 )
-            except Exception:
-                relevant = []
-            relevant_block = render_relevant_turns(
-                relevant, max_answer_chars=config.retrieval.conversation_history_answer_chars
-            )
-            if relevant_block:
-                block = f"{relevant_block}\n\n{block}".strip() if block else relevant_block
+                if turns_block:
+                    sections.append(turns_block)
+            if do_chunks:
+                from tirzah.sessions.chunks import relevant_chunks
+
+                try:
+                    chunks = relevant_chunks(
+                        db, session_id=session_id, query_vector=vector, limit=k, exclude_exchange_ids=recent_ids
+                    )
+                except Exception:
+                    chunks = []
+                chunk_block = render_relevant_chunks(chunks)
+                if chunk_block:
+                    sections.append(chunk_block)
+            if block:
+                sections.append(block)
+            block = "\n\n".join(section for section in sections if section)
     return block
 
 
@@ -1116,13 +1145,24 @@ def schedule_turn_embedding(
         pass
 
 
+def _chunk_one(db: Database, chunker: Any, runtime_config: Any, exchange_id: str, session_id: str, query: str, answer_text: str) -> None:
+    """Chunk one turn, embed each chunk, store, and link similar chunks."""
+    from tirzah.sessions.chunks import link_chunk_similarities, store_chunks
+
+    chunks = chunker(query, answer_text)
+    for chunk in chunks:
+        embedding = build_query_embedding(runtime_config, chunk["text"])
+        chunk["embedding"] = embedding.get("vector") if isinstance(embedding, dict) else None
+    rows = store_chunks(db, exchange_id=exchange_id, session_id=session_id, chunks=chunks)
+    link_chunk_similarities(db, rows, session_id=session_id)
+
+
 def _chunk_and_store(db: Database, runtime_config: Any, exchange_id: str, session_id: str, query: str, answer_text: str) -> None:
     """Decompose a turn into semantic chunks and store them (background, best-effort)."""
     try:
-        from tirzah.sessions.chunks import make_chunker, store_chunks
+        from tirzah.sessions.chunks import make_chunker
 
-        chunks = make_chunker(answer_adapter(runtime_config))(query, answer_text)
-        store_chunks(db, exchange_id=exchange_id, session_id=session_id, chunks=chunks)
+        _chunk_one(db, make_chunker(answer_adapter(runtime_config)), runtime_config, exchange_id, session_id, query, answer_text)
     except Exception:
         pass
 
@@ -1143,14 +1183,13 @@ def backfill_chunks(db: Database, config: AppConfig, runtime_config: Any, *, lim
     """Durably chunk any turns not yet chunked (restart-safe catch-up)."""
     if not config.retrieval.conversation_chunking:
         return 0
-    from tirzah.sessions.chunks import make_chunker, pending_chunk_exchanges, store_chunks
+    from tirzah.sessions.chunks import make_chunker, pending_chunk_exchanges
 
     chunker = make_chunker(answer_adapter(runtime_config))
     chunked = 0
     for item in pending_chunk_exchanges(db, limit=limit):
         try:
-            chunks = chunker(item["query"], item["answer"])
-            store_chunks(db, exchange_id=item["exchange_id"], session_id=item.get("session_id") or "", chunks=chunks)
+            _chunk_one(db, chunker, runtime_config, item["exchange_id"], item.get("session_id") or "", item["query"], item["answer"])
             chunked += 1
         except Exception:
             continue

@@ -6,10 +6,13 @@ import pytest
 from bson import ObjectId
 
 from tirzah.sessions.chunks import (
+    CHUNK_REL_COLLECTION,
     heuristic_chunks,
+    link_chunk_similarities,
     list_chunks,
     parse_chunks,
     pending_chunk_exchanges,
+    relevant_chunks,
     store_chunks,
 )
 
@@ -90,8 +93,8 @@ def test_store_and_query_chunks() -> None:
     oid = ObjectId()
     db.exchanges.rows.append({"_id": oid, "session_id": "s1", "query": "q", "answer": {"answer": "a"}})
 
-    n = store_chunks(db, exchange_id=str(oid), session_id="s1", chunks=[{"kind": "topic", "text": "X"}])
-    assert n == 1
+    rows = store_chunks(db, exchange_id=str(oid), session_id="s1", chunks=[{"kind": "topic", "text": "X"}])
+    assert len(rows) == 1 and rows[0]["chunk_id"].startswith("chunk_")
     assert db.exchanges.rows[0]["chunked"] is True  # exchange marked chunked
     assert list_chunks(db, session_id="s1")[0]["text"] == "X"
 
@@ -101,3 +104,28 @@ def test_store_and_query_chunks() -> None:
     db.exchanges.rows.append({"_id": ObjectId(), "session_id": "s2", "query": "q2", "answer": {"answer": "a2"}})
     pending = pending_chunk_exchanges(db)
     assert len(pending) == 1 and pending[0]["session_id"] == "s2"
+
+
+def test_relevant_chunks_ranks_by_cosine() -> None:
+    db = FakeDb()
+    store_chunks(db, exchange_id=str(ObjectId()), session_id="s", chunks=[
+        {"kind": "topic", "text": "cats", "embedding": [1.0, 0.0]},
+        {"kind": "topic", "text": "dogs", "embedding": [0.0, 1.0]},
+        {"kind": "topic", "text": "no-embed"},  # skipped (no embedding)
+    ])
+    out = relevant_chunks(db, session_id="s", query_vector=[0.9, 0.1], limit=2)
+    assert out[0]["text"] == "cats"
+    assert all(o["text"] != "no-embed" for o in out)
+    assert relevant_chunks(db, session_id="s", query_vector=None) == []
+
+
+def test_link_chunk_similarities() -> None:
+    db = FakeDb()
+    # an existing chunk in the session
+    store_chunks(db, exchange_id=str(ObjectId()), session_id="s", chunks=[{"kind": "topic", "text": "cats", "embedding": [1.0, 0.0]}])
+    # a new, very similar chunk
+    new_rows = store_chunks(db, exchange_id=str(ObjectId()), session_id="s", chunks=[{"kind": "topic", "text": "felines", "embedding": [0.99, 0.01]}])
+    edges = link_chunk_similarities(db, new_rows, session_id="s", k=3, threshold=0.6)
+    assert edges == 1
+    rel = db[CHUNK_REL_COLLECTION].rows[0]
+    assert rel["kind"] == "similar_to" and rel["source_chunk_id"] == new_rows[0]["chunk_id"]
