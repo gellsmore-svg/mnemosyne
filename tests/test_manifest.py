@@ -35,6 +35,22 @@ def test_planner_tool_hint_derives_from_manifest_and_enablement():
     assert "coherence_check" in hint and "counter-framework" in hint
 
 
+def test_specialist_capability_federates_from_milcah_when_present(monkeypatch):
+    import tirzah.manifest as tm
+    from keturah import capability
+
+    # Milcah absent here -> local fallback is used (still conformant + planner-tagged)
+    local = tm._specialist_capability()
+    assert local.name == "coherence_check" and "planner" in local.tags
+
+    # Simulate Milcah present: its manifest owns the declaration -> Tirzah advertises it
+    federated = capability("coherence_check", "Milcah's own description.", tags=["specialist", "coherence"])
+    monkeypatch.setattr(tm, "_milcah_coherence_capability", lambda: federated)
+    got = tm._specialist_capability()
+    assert got.description == "Milcah's own description."  # sourced from Milcah
+    assert "planner" in got.tags  # Tirzah ensures it's planner-callable
+
+
 def test_capabilities_endpoint_full_and_mcp():
     client = TestClient(app)
 

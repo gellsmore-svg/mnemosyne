@@ -22,7 +22,31 @@ def _tirzah_version() -> str:
         return "0.0.0+source"
 
 
+def _milcah_coherence_capability():
+    """The coherence_check capability from Milcah's OWN manifest, or None if absent.
+
+    Federated discovery: when Milcah is installed it owns the canonical declaration;
+    Tirzah advertises that rather than its local mirror. Lazy + fail-soft.
+    """
+    try:
+        from milcah.manifest import build_manifest as _milcah_manifest
+
+        for cap in _milcah_manifest().capabilities:
+            if cap.name == "coherence_check":
+                return cap
+    except Exception:
+        return None
+    return None
+
+
 def _specialist_capability():
+    federated = _milcah_coherence_capability()
+    if federated is not None:
+        if "planner" not in federated.tags:
+            federated.tags = [*federated.tags, "planner"]
+        return federated
+
+    # Local fallback: the mirror Tirzah keeps so the seam works without Milcah installed.
     from tirzah.coherence import RESULT_FIELDS, SPECIALIST_MODES
 
     return capability(
