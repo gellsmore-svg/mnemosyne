@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
@@ -331,7 +330,7 @@ def answer_query(
             project_domain_id=project_domain_id,
             conversation_domain_id=conversation_domain_id,
         )
-        schedule_turn_embedding(db, config, runtime_config, exchange_id, query, answer["answer"])
+        schedule_turn_embedding(db, config, runtime_config, exchange_id, session_id, query, answer["answer"])
         schedule_chunking(db, config, runtime_config, exchange_id, session_id, query, answer["answer"])
     except Exception as error:
         finish_answer_process_run(
@@ -506,7 +505,7 @@ def answer_query_deep(
             project_domain_id=project_domain_id,
             conversation_domain_id=conversation_domain_id,
         )
-        schedule_turn_embedding(db, config, runtime_config, exchange_id, query, answer["answer"])
+        schedule_turn_embedding(db, config, runtime_config, exchange_id, session_id, query, answer["answer"])
         schedule_chunking(db, config, runtime_config, exchange_id, session_id, query, answer["answer"])
     except Exception as error:
         finish_answer_process_run(
@@ -704,7 +703,7 @@ def answer_query_agentic(
             project_domain_id=project_domain_id,
             conversation_domain_id=conversation_domain_id,
         )
-        schedule_turn_embedding(db, config, runtime_config, exchange_id, query, answer["answer"])
+        schedule_turn_embedding(db, config, runtime_config, exchange_id, session_id, query, answer["answer"])
         schedule_chunking(db, config, runtime_config, exchange_id, session_id, query, answer["answer"])
     except Exception as error:
         finish_answer_process_run(
@@ -1134,17 +1133,6 @@ def render_session_history_block(
     return block
 
 
-_TURN_EMBED_EXECUTOR: ThreadPoolExecutor | None = None
-
-
-def _turn_embed_executor() -> ThreadPoolExecutor:
-    """Lazy, small, shared pool for off-hot-path turn embedding."""
-    global _TURN_EMBED_EXECUTOR
-    if _TURN_EMBED_EXECUTOR is None:
-        _TURN_EMBED_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="turn-embed")
-    return _TURN_EMBED_EXECUTOR
-
-
 def _embed_and_backfill(db: Database, runtime_config: Any, exchange_id: str, text: str) -> None:
     """Embed one turn and backfill its turn_embedding (best-effort, background)."""
     try:
@@ -1180,19 +1168,23 @@ def backfill_turn_embeddings(db: Database, config: AppConfig, runtime_config: An
 
 
 def schedule_turn_embedding(
-    db: Database, config: AppConfig, runtime_config: Any, exchange_id: str, query: str, answer_text: str
+    db: Database, config: AppConfig, runtime_config: Any, exchange_id: str, session_id: str, query: str, answer_text: str
 ) -> None:
     """Embed a turn for semantic recall OFF the request hot path.
 
-    When semantic recall is enabled, the turn is saved immediately (without the
-    embedding) and the embedding is computed in a background thread and backfilled,
-    so the response is never delayed by the (slow) embedder. No-op when recall is
-    disabled or the embedder is unavailable.
+    Queued on Hoglah's session-priority queue (keyed by session_id) at the
+    memory-completion priority, so the response is never delayed by the (slow)
+    embedder and a session's tasks run in order. No-op when recall is disabled.
     """
     if not config.retrieval.conversation_semantic_recall or not exchange_id:
         return
+    from tirzah.sessions.background import PRIORITY_MEMORY_COMPLETION, get_background_queue
+
     try:
-        _turn_embed_executor().submit(_embed_and_backfill, db, runtime_config, exchange_id, f"{query}\n{answer_text}")
+        get_background_queue().submit(
+            _embed_and_backfill, db, runtime_config, exchange_id, f"{query}\n{answer_text}",
+            priority=PRIORITY_MEMORY_COMPLETION, key=session_id,
+        )
     except Exception:
         pass
 
@@ -1222,11 +1214,20 @@ def _chunk_and_store(db: Database, runtime_config: Any, exchange_id: str, sessio
 def schedule_chunking(
     db: Database, config: AppConfig, runtime_config: Any, exchange_id: str, session_id: str, query: str, answer_text: str
 ) -> None:
-    """Decompose a turn into semantic chunks OFF the request hot path (Phase 3)."""
+    """Decompose a turn into semantic chunks OFF the request hot path (Phase 3).
+
+    Queued on Hoglah's session-priority queue below memory-completion, so a turn's
+    embedding runs before its chunking (same session_id key = serial, in order).
+    """
     if not config.retrieval.conversation_chunking or not exchange_id:
         return
+    from tirzah.sessions.background import PRIORITY_CHUNKING, get_background_queue
+
     try:
-        _turn_embed_executor().submit(_chunk_and_store, db, runtime_config, exchange_id, session_id, query, answer_text)
+        get_background_queue().submit(
+            _chunk_and_store, db, runtime_config, exchange_id, session_id, query, answer_text,
+            priority=PRIORITY_CHUNKING, key=session_id,
+        )
     except Exception:
         pass
 

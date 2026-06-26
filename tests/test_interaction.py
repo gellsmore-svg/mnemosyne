@@ -606,6 +606,29 @@ def test_relevant_exchanges_ranks_by_cosine() -> None:
     assert relevant_exchanges(db, session_id="s", query_vector=None) == []  # no vector -> empty
 
 
+def test_background_scheduling_uses_priority_queue(monkeypatch) -> None:
+    import tirzah.sessions.background as background
+    import tirzah.sessions.interaction as interaction
+    from tirzah.config import AppConfig
+
+    captured: list[dict] = []
+
+    class FakeQueue:
+        def submit(self, fn, *args, priority=None, key=None, **kwargs):
+            captured.append({"fn": fn.__name__, "priority": priority, "key": key})
+
+    monkeypatch.setattr(background, "get_background_queue", lambda: FakeQueue())
+    config = AppConfig()
+    config.retrieval.conversation_semantic_recall = True
+    config.retrieval.conversation_chunking = True
+
+    interaction.schedule_turn_embedding(None, config, config.runtime, "exid", "sess1", "q", "a")
+    interaction.schedule_chunking(None, config, config.runtime, "exid", "sess1", "q", "a")
+
+    assert captured[0] == {"fn": "_embed_and_backfill", "priority": 2, "key": "sess1"}  # memory completion
+    assert captured[1] == {"fn": "_chunk_and_store", "priority": 3, "key": "sess1"}  # chunking, same session key
+
+
 def test_backfill_turn_embeddings(monkeypatch) -> None:
     from bson import ObjectId
 
