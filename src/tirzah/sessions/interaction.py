@@ -411,7 +411,7 @@ def answer_query_deep(
     try:
         deep_result = run_deep_answer(
             db, query, config=config, runtime_config=runtime_config, identity=identity,
-            history_block=render_session_history_block(db, config, session_id=session_id),
+            history_block=render_session_history_block(db, config, session_id=session_id, query=query),
         )
     except Exception as error:
         finish_answer_process_run(
@@ -585,7 +585,7 @@ def answer_query_agentic(
             context_proposal=final_context_proposal_from_trace(process_trace),
         )
         prompt = inject_history_into_prompt(
-            prompt, render_session_history_block(db, config, session_id=session_id)
+            prompt, render_session_history_block(db, config, session_id=session_id, query=query)
         )
     except Exception as error:
         finish_answer_process_run(
@@ -852,16 +852,11 @@ def prepare_direct_answer_prompt(
     )
     prompt = inject_controller_decision_into_prompt(prompt, controller_decision)
     # Conversational memory: give the model the prior turns of THIS session so it
-    # can resolve references and maintain continuity (direct path). With semantic
-    # recall enabled, also surface relevant earlier turns beyond the recent window.
-    history_embedding = (
-        build_query_embedding(config.runtime, query)
-        if config.retrieval.conversation_semantic_recall
-        else None
-    )
+    # can resolve references and maintain continuity. With semantic recall enabled,
+    # also surface relevant earlier turns beyond the recent window.
     prompt = inject_history_into_prompt(
         prompt,
-        render_session_history_block(db, config, session_id=session_id, query_embedding=history_embedding),
+        render_session_history_block(db, config, session_id=session_id, query=query),
     )
     retrieval_output = {
         "retrieval_status": retrieval_status,
@@ -995,13 +990,14 @@ def render_relevant_turns(exchanges: list[dict[str, Any]], *, max_answer_chars: 
 
 
 def render_session_history_block(
-    db: Database, config: AppConfig, *, session_id: str, query_embedding: dict[str, Any] | None = None
+    db: Database, config: AppConfig, *, session_id: str, query: str | None = None
 ) -> str:
-    """Fetch recent turns (and, if enabled, semantically-relevant earlier turns)
-    for the session and render them as a prompt block.
+    """Fetch recent turns (and, if recall is enabled, semantically-relevant earlier
+    turns) for the session and render them as a prompt block.
 
-    Shared by the direct, agentic, and deep answer paths so conversational memory
-    is consistent across modes.
+    Shared by the direct, agentic, and deep answer paths so conversational memory is
+    consistent across modes. ``query`` (the current question) drives semantic recall;
+    its embedding is computed here so callers just pass the text.
     """
     turns = config.retrieval.conversation_history_turns
     if not turns:
@@ -1016,24 +1012,26 @@ def render_session_history_block(
         max_answer_chars=config.retrieval.conversation_history_answer_chars,
     )
     # Phase 2: surface relevant EARLIER turns beyond the recent window.
-    vector = (query_embedding or {}).get("vector") if isinstance(query_embedding, dict) else None
-    if config.retrieval.conversation_semantic_recall and vector:
-        recent_ids = {exchange.get("exchange_id") for exchange in recent}
-        try:
-            relevant = relevant_exchanges(
-                db,
-                session_id=session_id,
-                query_vector=vector,
-                limit=config.retrieval.conversation_semantic_recall_k,
-                exclude_exchange_ids=recent_ids,
+    if config.retrieval.conversation_semantic_recall and query:
+        embedding = build_query_embedding(config.runtime, query)
+        vector = embedding.get("vector") if isinstance(embedding, dict) else None
+        if vector:
+            recent_ids = {exchange.get("exchange_id") for exchange in recent}
+            try:
+                relevant = relevant_exchanges(
+                    db,
+                    session_id=session_id,
+                    query_vector=vector,
+                    limit=config.retrieval.conversation_semantic_recall_k,
+                    exclude_exchange_ids=recent_ids,
+                )
+            except Exception:
+                relevant = []
+            relevant_block = render_relevant_turns(
+                relevant, max_answer_chars=config.retrieval.conversation_history_answer_chars
             )
-        except Exception:
-            relevant = []
-        relevant_block = render_relevant_turns(
-            relevant, max_answer_chars=config.retrieval.conversation_history_answer_chars
-        )
-        if relevant_block:
-            block = f"{relevant_block}\n\n{block}".strip() if block else relevant_block
+            if relevant_block:
+                block = f"{relevant_block}\n\n{block}".strip() if block else relevant_block
     return block
 
 
