@@ -134,6 +134,9 @@ class RetrievalConfig(BaseModel):
     # adds latency; enable for long conversations with a real embedder.
     conversation_semantic_recall: bool = False
     conversation_semantic_recall_k: int = 3
+    # Phase 3: decompose turns into typed semantic chunks (topic/intent/domain/...).
+    # Off by default — it runs an extra LLM call per turn (async + durable when on).
+    conversation_chunking: bool = False
     # Deep retrieval mode (ADR-020) — bounds for the agent loop + Python pre-rank.
     deep_max_iterations: int = 4
     deep_max_candidates: int = 50

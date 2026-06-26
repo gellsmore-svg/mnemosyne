@@ -1,0 +1,156 @@
+"""Semantic chunking of conversation turns (Phase 3).
+
+Decomposes a turn (user prompt + assistant answer) into typed semantic chunks
+(topic / intent / domain / requirement / entity / decision) for finer-grained
+memory. Best-effort, runs async + durable like turn embedding, gated by
+``conversation_chunking``. Relationship mapping and chunk-level retrieval are the
+next slices; this establishes the extraction + storage foundation.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from typing import Any
+from uuid import uuid4
+
+from bson import ObjectId
+from pymongo.database import Database
+
+CHUNK_COLLECTION = "conversation_chunks"
+CHUNK_KINDS = ("topic", "intent", "domain", "requirement", "entity", "decision")
+_MAX_CHUNKS = 12
+_MAX_TEXT = 240
+
+
+def _extract_json(text: str) -> Any:
+    if not isinstance(text, str):
+        return None
+    for open_ch, close_ch in (("{", "}"), ("[", "]")):
+        start = text.find(open_ch)
+        end = text.rfind(close_ch)
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(text[start : end + 1])
+            except Exception:
+                continue
+    return None
+
+
+def build_chunk_prompt(query: str, answer: str) -> str:
+    return (
+        "Decompose this conversation turn into a few SEMANTIC CHUNKS. Each chunk has a "
+        "kind (one of: topic, intent, domain, requirement, entity, decision) and a short "
+        'text. Return ONLY JSON: {"chunks": [{"kind": "topic", "text": "..."}, ...]}. '
+        "Keep chunks atomic and concise.\n\n"
+        f"User: {query}\nAssistant: {answer}\n"
+    )
+
+
+def parse_chunks(text: str) -> list[dict[str, Any]]:
+    """Parse the chunker's JSON output into validated {kind, text} chunks."""
+    payload = _extract_json(text)
+    if isinstance(payload, dict):
+        items = payload.get("chunks")
+    elif isinstance(payload, list):
+        items = payload
+    else:
+        items = None
+    if not isinstance(items, list):
+        raise ValueError("chunker did not return a chunk list")
+    chunks: list[dict[str, Any]] = []
+    for item in items[:_MAX_CHUNKS]:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "topic").strip().lower()
+        if kind not in CHUNK_KINDS:
+            kind = "topic"
+        body = str(item.get("text") or "").strip()[:_MAX_TEXT]
+        if body:
+            chunks.append({"kind": kind, "text": body})
+    if not chunks:
+        raise ValueError("no valid chunks parsed")
+    return chunks
+
+
+def heuristic_chunks(query: str, answer: str) -> list[dict[str, Any]]:
+    """Deterministic fallback: the user's question as a single topic chunk."""
+    text = (query or "").strip()[:_MAX_TEXT]
+    return [{"kind": "topic", "text": text}] if text else []
+
+
+def make_chunker(adapter: Any):
+    """Wrap an answer adapter into a chunker(query, answer) -> chunks."""
+
+    def chunker(query: str, answer: str) -> list[dict[str, Any]]:
+        try:
+            result = adapter.answer({"prompt_text": build_chunk_prompt(query, answer)})
+            text = result.get("answer", "") if isinstance(result, dict) else str(result)
+            return parse_chunks(text)
+        except Exception:
+            return heuristic_chunks(query, answer)
+
+    return chunker
+
+
+def store_chunks(db: Database, *, exchange_id: str, session_id: str, chunks: list[dict[str, Any]]) -> int:
+    """Persist chunks for a turn and mark the exchange chunked (best-effort)."""
+    now = datetime.now(timezone.utc)
+    rows = [
+        {
+            "chunk_id": f"chunk_{uuid4().hex}",
+            "exchange_id": exchange_id,
+            "session_id": session_id,
+            "kind": chunk["kind"],
+            "text": chunk["text"],
+            "created_at": now,
+        }
+        for chunk in chunks
+    ]
+    if rows:
+        try:
+            db[CHUNK_COLLECTION].insert_many(rows)
+        except Exception:
+            pass
+    try:
+        db.exchanges.update_one({"_id": ObjectId(exchange_id)}, {"$set": {"chunked": True}})
+    except Exception:
+        pass
+    return len(rows)
+
+
+def pending_chunk_exchanges(db: Database, *, limit: int = 200) -> list[dict[str, Any]]:
+    """Exchanges not yet chunked — the durable pending-chunking queue."""
+    capped = max(1, min(int(limit), 1000))
+    try:
+        rows = list(db.exchanges.find({"chunked": {"$ne": True}}).sort("created_at", -1).limit(capped))
+    except Exception:
+        return []
+    pending = []
+    for row in rows:
+        query = row.get("query")
+        answer = row.get("answer")
+        if isinstance(answer, dict):
+            answer = answer.get("answer")
+        if query:
+            pending.append(
+                {
+                    "exchange_id": str(row["_id"]),
+                    "session_id": row.get("session_id"),
+                    "query": query,
+                    "answer": answer or "",
+                }
+            )
+    return pending
+
+
+def list_chunks(db: Database, *, session_id: str | None = None, exchange_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    query: dict[str, Any] = {}
+    if session_id:
+        query["session_id"] = session_id
+    if exchange_id:
+        query["exchange_id"] = exchange_id
+    try:
+        return list(db[CHUNK_COLLECTION].find(query, {"_id": 0}).limit(max(1, int(limit))))
+    except Exception:
+        return []

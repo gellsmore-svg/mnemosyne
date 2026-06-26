@@ -68,7 +68,7 @@ from tirzah.retrieval.queries import (
 )
 from tirzah.retrieval.trust import trust_temporal_diagnostic_for_node
 from tirzah.sessions.exchanges import recent_exchanges
-from tirzah.sessions.interaction import answer_query, backfill_turn_embeddings
+from tirzah.sessions.interaction import answer_query, backfill_chunks, backfill_turn_embeddings
 from tirzah.sessions.run import run_traced_interaction
 from tirzah.trace import (
     EventType,
@@ -233,14 +233,20 @@ def create_app() -> FastAPI:
         # Restart-safe catch-up: embed any turns the in-process executor missed.
         # Runs on real serve startup (not on plain TestClient import). No-op if
         # recall is off. Background + best-effort.
-        if not config.retrieval.conversation_semantic_recall:
-            return
-        threading.Thread(
-            target=backfill_turn_embeddings,
-            args=(db, config, config.runtime),
-            kwargs={"limit": 1000},
-            daemon=True,
-        ).start()
+        if config.retrieval.conversation_semantic_recall:
+            threading.Thread(
+                target=backfill_turn_embeddings,
+                args=(db, config, config.runtime),
+                kwargs={"limit": 1000},
+                daemon=True,
+            ).start()
+        if config.retrieval.conversation_chunking:
+            threading.Thread(
+                target=backfill_chunks,
+                args=(db, config, config.runtime),
+                kwargs={"limit": 50},  # chunking is a slow LLM call; modest per-startup catch-up
+                daemon=True,
+            ).start()
     # Single UI: the backend serves the built Mahlah front end (the old hand-rolled
     # static UI is retired). Built assets are installed into web/static by
     # scripts/build_ui.sh (gitignored). In dev, run Mahlah on :5273 instead.

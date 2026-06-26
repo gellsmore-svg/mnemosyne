@@ -760,6 +760,8 @@ def main() -> None:
     add_profile_backfill_arguments(embedding_backfill)
     turn_embedding_backfill = subcommands.add_parser("backfill-turn-embeddings")
     turn_embedding_backfill.add_argument("--limit", type=int, default=1000)
+    chunk_backfill = subcommands.add_parser("backfill-chunks")
+    chunk_backfill.add_argument("--limit", type=int, default=1000)
     profile_backfill = subcommands.add_parser("backfill-profiles")
     add_profile_backfill_arguments(profile_backfill)
     embedding_jobs = subcommands.add_parser("embedding-backfill-jobs")
@@ -1165,6 +1167,13 @@ def main() -> None:
 
         embedded = backfill_turn_embeddings(db, config, config.runtime, limit=args.limit)
         print(json.dumps({"ok": True, "embedded": embedded}))
+        return
+
+    if args.command == "backfill-chunks":
+        from tirzah.sessions.interaction import backfill_chunks
+
+        chunked = backfill_chunks(db, config, config.runtime, limit=args.limit)
+        print(json.dumps({"ok": True, "chunked": chunked}))
         return
 
     if args.command == "backfill-source-metadata":

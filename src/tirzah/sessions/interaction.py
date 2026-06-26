@@ -332,6 +332,7 @@ def answer_query(
             conversation_domain_id=conversation_domain_id,
         )
         schedule_turn_embedding(db, config, runtime_config, exchange_id, query, answer["answer"])
+        schedule_chunking(db, config, runtime_config, exchange_id, session_id, query, answer["answer"])
     except Exception as error:
         finish_answer_process_run(
             db,
@@ -506,6 +507,7 @@ def answer_query_deep(
             conversation_domain_id=conversation_domain_id,
         )
         schedule_turn_embedding(db, config, runtime_config, exchange_id, query, answer["answer"])
+        schedule_chunking(db, config, runtime_config, exchange_id, session_id, query, answer["answer"])
     except Exception as error:
         finish_answer_process_run(
             db,
@@ -703,6 +705,7 @@ def answer_query_agentic(
             conversation_domain_id=conversation_domain_id,
         )
         schedule_turn_embedding(db, config, runtime_config, exchange_id, query, answer["answer"])
+        schedule_chunking(db, config, runtime_config, exchange_id, session_id, query, answer["answer"])
     except Exception as error:
         finish_answer_process_run(
             db,
@@ -1111,6 +1114,47 @@ def schedule_turn_embedding(
         _turn_embed_executor().submit(_embed_and_backfill, db, runtime_config, exchange_id, f"{query}\n{answer_text}")
     except Exception:
         pass
+
+
+def _chunk_and_store(db: Database, runtime_config: Any, exchange_id: str, session_id: str, query: str, answer_text: str) -> None:
+    """Decompose a turn into semantic chunks and store them (background, best-effort)."""
+    try:
+        from tirzah.sessions.chunks import make_chunker, store_chunks
+
+        chunks = make_chunker(answer_adapter(runtime_config))(query, answer_text)
+        store_chunks(db, exchange_id=exchange_id, session_id=session_id, chunks=chunks)
+    except Exception:
+        pass
+
+
+def schedule_chunking(
+    db: Database, config: AppConfig, runtime_config: Any, exchange_id: str, session_id: str, query: str, answer_text: str
+) -> None:
+    """Decompose a turn into semantic chunks OFF the request hot path (Phase 3)."""
+    if not config.retrieval.conversation_chunking or not exchange_id:
+        return
+    try:
+        _turn_embed_executor().submit(_chunk_and_store, db, runtime_config, exchange_id, session_id, query, answer_text)
+    except Exception:
+        pass
+
+
+def backfill_chunks(db: Database, config: AppConfig, runtime_config: Any, *, limit: int = 200) -> int:
+    """Durably chunk any turns not yet chunked (restart-safe catch-up)."""
+    if not config.retrieval.conversation_chunking:
+        return 0
+    from tirzah.sessions.chunks import make_chunker, pending_chunk_exchanges, store_chunks
+
+    chunker = make_chunker(answer_adapter(runtime_config))
+    chunked = 0
+    for item in pending_chunk_exchanges(db, limit=limit):
+        try:
+            chunks = chunker(item["query"], item["answer"])
+            store_chunks(db, exchange_id=item["exchange_id"], session_id=item.get("session_id") or "", chunks=chunks)
+            chunked += 1
+        except Exception:
+            continue
+    return chunked
 
 
 def direct_evidence_summary(
