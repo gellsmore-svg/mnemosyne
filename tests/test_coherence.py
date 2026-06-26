@@ -1,11 +1,55 @@
+from types import SimpleNamespace
+
 from tirzah.coherence import (
     CANONICAL_REQUEST,
     CANONICAL_RESULT,
+    MilcahClient,
     SpecialistRequest,
     SpecialistResult,
+    make_client,
     validate_specialist_request,
     validate_specialist_result,
 )
+
+
+def _fake_orchestration():
+    return SimpleNamespace(
+        reasoning=SimpleNamespace(units=[SimpleNamespace(type="claim", text="X holds under A")]),
+        challenge=SimpleNamespace(
+            objections=[SimpleNamespace(text="A fails when Y")],
+            counter_frameworks=[SimpleNamespace(title="Rival R")],
+        ),
+        metrics=SimpleNamespace(global_coherence=0.72),
+        roles={"proposer": "gemma"},
+        trace=[{"step": "expand"}],
+    )
+
+
+def test_make_client_gated_by_config():
+    assert make_client(SimpleNamespace(milcah_enabled=False)) is None
+    client = make_client(SimpleNamespace(milcah_enabled=True, milcah_model="gemma"))
+    assert isinstance(client, MilcahClient) and client.model == "gemma"
+
+
+def test_live_client_runs_pipeline_and_adapts():
+    # Inject a fake Milcah pipeline (the real one drives ingest->extract->orchestrate).
+    client = MilcahClient(pipeline=lambda _req: _fake_orchestration())
+    result = client.run(SpecialistRequest(query="Is it coherent?"))
+    assert validate_specialist_result(result) == []
+    assert result.claims == ["X holds under A"]
+    assert result.objections == ["A fails when Y"]
+    assert result.evidence == ["Rival R"]
+    assert result.confidence == 0.72
+
+
+def test_live_client_is_fail_soft():
+    # pipeline error -> blocked, conformant
+    boom = MilcahClient(pipeline=lambda _req: (_ for _ in ()).throw(RuntimeError("milcah down")))
+    blocked = boom.run(SpecialistRequest(query="q"))
+    assert validate_specialist_result(blocked) == [] and blocked.terminal_reason == "blocked"
+    # empty pipeline -> insufficient_evidence
+    empty = MilcahClient(pipeline=lambda _req: None).run(SpecialistRequest(query="q"))
+    assert empty.terminal_reason == "insufficient_evidence"
 
 
 def test_canonical_fixtures_conform():

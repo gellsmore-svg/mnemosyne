@@ -79,6 +79,10 @@ class RuntimeConfig(BaseModel):
     mahalath_mongo_uri: str = "mongodb://localhost:27017"
     mahalath_mongo_db: str = "mahalath_dev"
     mahalath_language: str = "en"
+    # Milcah specialist seam (coherence/research). Off + degrades to no-op when Milcah
+    # is absent, mirroring the Mahalath resolver.
+    milcah_enabled: bool = False
+    milcah_model: str = ""
     # Strict by default: drop fuzzy (partial/text) matches and keep only confident
     # label/exact/alias hits. A loose match attaching a wrong sense is worse than no
     # sense for precision-grade work; flip to false only to accept approximate hints.
@@ -175,6 +179,8 @@ _ENV_OVERRIDES: dict[str, tuple[str, str]] = {
     "MAHALATH_MONGO_URI": ("runtime", "mahalath_mongo_uri"),
     "MAHALATH_MONGO_DB": ("runtime", "mahalath_mongo_db"),
     "MAHALATH_STRICT": ("runtime", "mahalath_strict"),
+    "MILCAH_ENABLED": ("runtime", "milcah_enabled"),
+    "MILCAH_MODEL": ("runtime", "milcah_model"),
 }
 
 

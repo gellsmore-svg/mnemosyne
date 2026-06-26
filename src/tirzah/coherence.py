@@ -15,7 +15,7 @@ client binding is a follow-up gated by ``config.milcah_enabled``.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 # A specialist call is either a coherence pressure-test or counter-framework research.
 SPECIALIST_MODES = frozenset({"coherence", "research"})
@@ -122,3 +122,94 @@ CANONICAL_RESULT: dict[str, Any] = {
     "terminal_reason": "converged",
     "trace_metadata": {"trace_id": "trace_abc", "iterations": 3},
 }
+
+
+# --- live Milcah binding ---------------------------------------------------
+# Mirrors tirzah.semantic's MahalathResolver/make_resolver: a real client gated by
+# config, lazily importing Milcah, fail-soft when Milcah is absent or errors. The
+# pipeline/adapter seams are injectable so the wiring is testable without Milcah.
+def _text(unit: Any) -> str:
+    return getattr(unit, "text", "") or ""
+
+
+def _local_adapt(orchestration: Any) -> SpecialistResult:
+    """Duck-typed OrchestrationResult -> SpecialistResult (fallback when milcah.contract
+    is unavailable, e.g. in tests). Kept in sync with milcah.contract's adapter."""
+    reasoning = getattr(orchestration, "reasoning", None)
+    units = list(getattr(reasoning, "units", []) or [])
+    claims = [_text(u) for u in units if str(getattr(u, "type", "")) == "claim" and _text(u)]
+    challenge = getattr(orchestration, "challenge", None)
+    objections = [_text(o) for o in getattr(challenge, "objections", []) or [] if _text(o)]
+    counter = getattr(challenge, "counter_frameworks", []) or []
+    evidence = [getattr(cf, "title", "") or getattr(cf, "name", "") or _text(cf) or str(cf) for cf in counter]
+    metrics = getattr(orchestration, "metrics", None)
+    try:
+        confidence = max(0.0, min(1.0, float(getattr(metrics, "global_coherence", 0.0) or 0.0)))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    trace = list(getattr(orchestration, "trace", []) or [])
+    return SpecialistResult(
+        claims=claims,
+        objections=objections,
+        evidence=[e for e in evidence if e],
+        citations=[],
+        confidence=confidence,
+        terminal_reason="converged",
+        trace_metadata={"trace_steps": len(trace), "roles": dict(getattr(orchestration, "roles", {}) or {})},
+    )
+
+
+def _adapt_orchestration(orchestration: Any) -> SpecialistResult:
+    """Prefer Milcah's authoritative adapter; fall back to the local one."""
+    try:
+        from milcah.contract import specialist_result_from_orchestration
+
+        return SpecialistResult(**specialist_result_from_orchestration(orchestration).to_dict())
+    except Exception:
+        return _local_adapt(orchestration)
+
+
+def _default_pipeline(request: SpecialistRequest, *, model: str = "") -> Any:
+    """Drive Milcah end to end: ingest the framework text, extract units, orchestrate."""
+    from milcah.extraction import RuleBasedExtractor, extract
+    from milcah.ingestion import ingest_text
+    from milcah.orchestration import OrchestrationConfig, orchestrate
+
+    text = request.context or request.query
+    framework = ingest_text(text, title=(request.query[:80] or "framework"))
+    units = extract(framework, RuleBasedExtractor())
+    config = OrchestrationConfig(default_model=model) if model else None
+    return orchestrate(framework, units, config=config)
+
+
+@dataclass
+class MilcahClient:
+    """Live Tirzah->Milcah specialist client. Runs Milcah's coherence pipeline and
+    adapts the result to :class:`SpecialistResult`. ``pipeline``/``adapt`` are
+    injectable (tests); defaults drive Milcah over Hoglah. Fail-soft."""
+
+    model: str = ""
+    pipeline: Callable[[SpecialistRequest], Any] | None = None
+    adapt: Callable[[Any], SpecialistResult] | None = None
+
+    def run(self, request: SpecialistRequest) -> SpecialistResult:
+        pipeline = self.pipeline or (lambda req: _default_pipeline(req, model=self.model))
+        adapt = self.adapt or _adapt_orchestration
+        try:
+            orchestration = pipeline(request)
+        except Exception:
+            return SpecialistResult(terminal_reason="blocked")
+        if orchestration is None:
+            return SpecialistResult(terminal_reason="insufficient_evidence")
+        try:
+            return adapt(orchestration)
+        except Exception:
+            return SpecialistResult(terminal_reason="blocked")
+
+
+def make_client(config: Any) -> "CoherenceClient | None":
+    """A live Milcah client when ``config.milcah_enabled``; else None (no-op seam),
+    mirroring :func:`tirzah.semantic.make_resolver`."""
+    if not getattr(config, "milcah_enabled", False):
+        return None
+    return MilcahClient(model=getattr(config, "milcah_model", "") or "")
