@@ -51,6 +51,27 @@ def test_specialist_capability_federates_from_milcah_when_present(monkeypatch):
     assert "planner" in got.tags  # Tirzah ensures it's planner-callable
 
 
+def test_family_registry_aggregates_importable_siblings():
+    from tirzah.manifest import family_registry
+
+    reg = family_registry()
+    products = reg.products()
+    assert "tirzah" in products
+    # cairn + hoglah are installed in Tirzah's venv, so they self-describe into the registry
+    assert "cairn" in products and "hoglah" in products
+
+
+def test_registry_endpoint_full_and_mcp():
+    client = TestClient(app)
+    full = client.get("/api/registry").json()
+    assert "tirzah" in full["products"]
+
+    mcp = client.get("/api/registry", params={"format": "mcp"}).json()
+    names = [t["name"] for t in mcp["tools"]]
+    assert any(n.startswith("tirzah.") for n in names)  # namespaced across products
+    assert all("." in n for n in names)
+
+
 def test_capabilities_endpoint_full_and_mcp():
     client = TestClient(app)
 

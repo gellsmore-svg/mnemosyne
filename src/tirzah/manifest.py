@@ -10,9 +10,13 @@ the validated contract never drift. Exposed at ``GET /api/capabilities`` (add
 
 from __future__ import annotations
 
+import importlib
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 
-from keturah import Manifest, capability, manifest
+from keturah import Manifest, Registry, capability, manifest
+
+# Sibling products whose manifests Tirzah aggregates into the family registry.
+_SIBLING_PACKAGES = ("milcah", "mahalath", "cairn", "hoglah")
 
 
 def _tirzah_version() -> str:
@@ -126,6 +130,22 @@ def render_planner_tool_hint(runtime: object) -> str:
     ]
     lines += [f"- {cap.name}: {cap.description}" for cap in tools]
     return "\n".join(lines)
+
+
+def family_registry() -> Registry:
+    """Aggregate Tirzah's manifest + any importable sibling manifests (fail-soft).
+
+    Whatever sibling is installed in this environment self-describes into one
+    federated view — the single call that returns every family tool an LLM can use.
+    """
+    registry = Registry([build_manifest()])
+    for package in _SIBLING_PACKAGES:
+        try:
+            module = importlib.import_module(f"{package}.manifest")
+            registry.add(module.build_manifest())
+        except Exception:
+            continue
+    return registry
 
 
 def build_manifest() -> Manifest:

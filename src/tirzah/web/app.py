@@ -280,6 +280,15 @@ def create_app() -> FastAPI:
         built = build_manifest()
         return built.to_mcp() if format == "mcp" else built.to_dict()
 
+    @app.get("/api/registry")
+    def registry(format: str = "full") -> dict[str, Any]:
+        # Federated view: Tirzah + every importable sibling manifest. ?format=mcp for
+        # the union as MCP tools/list (tool names namespaced product.tool).
+        from tirzah.manifest import family_registry
+
+        reg = family_registry()
+        return reg.to_mcp() if format == "mcp" else reg.to_dict()
+
     @app.get("/api/runtime")
     def runtime() -> dict[str, Any]:
         discovered_models = ollama_model_rows(config.runtime)
