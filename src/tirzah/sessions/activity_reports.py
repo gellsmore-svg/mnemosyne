@@ -341,6 +341,7 @@ def human_step_name(step: str | None) -> str:
         "save_exchange": "Persist Exchange",
         "sufficiency": "Score Context Sufficiency",
         "deep_retrieval": "Deep Retrieval",
+        "specialist_coherence": "Specialist Coherence Call",
     }.get(step or "", str(step or "Unknown Step"))
 
 

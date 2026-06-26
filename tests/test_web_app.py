@@ -159,6 +159,8 @@ def test_ask_endpoint_returns_three_channel_contract(monkeypatch) -> None:
                 # output.status collides with emit()'s `status` kwarg — must be namespaced
                 {"step": "retrieval_context", "input": {}, "output": {"node_count": 3, "status": "stable"}},
                 {"step": "sufficiency", "input": {}, "output": {"context_sufficiency_score": 8.4, "recursion": 2}},
+                {"step": "specialist_coherence", "input": {"mode": "coherence"},
+                 "output": {"claims": 1, "objections": 2, "confidence": 0.6, "terminal_reason": "converged"}},
                 {"step": "answer_adapter", "input": {"adapter": "mock", "model": "gemma"}, "output": {"ok": True}},
             ],
         }
@@ -195,6 +197,11 @@ def test_ask_endpoint_returns_three_channel_contract(monkeypatch) -> None:
     sufficiency_event = next(e for e in body["processEvents"] if e["type"] == "context.sufficiency")
     assert sufficiency_event["metadata"]["context_sufficiency_score"] == 8.4
     assert sufficiency_event["summary"] == "Score Context Sufficiency"
+    # specialist (Milcah) call surfaces as its own event
+    specialist_event = next(e for e in body["processEvents"] if e["type"] == "specialist.completed")
+    assert specialist_event["metadata"]["confidence"] == 0.6
+    assert specialist_event["metadata"]["terminal_reason"] == "converged"
+    assert specialist_event["summary"] == "Specialist Coherence Call"
 
 
 def test_ask_events_conform_to_galeed_trace_contract(monkeypatch) -> None:

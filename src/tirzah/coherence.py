@@ -213,3 +213,51 @@ def make_client(config: Any) -> "CoherenceClient | None":
     if not getattr(config, "milcah_enabled", False):
         return None
     return MilcahClient(model=getattr(config, "milcah_model", "") or "")
+
+
+# --- planner trigger -------------------------------------------------------
+# A plan step requests a specialist call by naming one of these in allowed_tools.
+COHERENCE_TOOLS = frozenset({"coherence_check", "coherence", "milcah", "specialist"})
+RESEARCH_TOOLS = frozenset({"counter_framework", "research_specialist", "milcah_research"})
+SPECIALIST_TOOLS = COHERENCE_TOOLS | RESEARCH_TOOLS
+
+
+def _step_tools(step: Any) -> set[str]:
+    tools = step.get("allowed_tools") if isinstance(step, dict) else getattr(step, "allowed_tools", None)
+    return {str(t) for t in (tools or [])}
+
+
+def detect_specialist_call(plan: Any) -> tuple[str, Any] | None:
+    """If a plan step requests a specialist tool, return (mode, step); else None.
+
+    Research tools win over coherence when both appear on the same step. The planner
+    only emits these when told the tool is available (see process_frontend_request).
+    """
+    steps = plan.get("steps") if isinstance(plan, dict) else getattr(plan, "steps", None)
+    for step in steps or []:
+        tools = _step_tools(step)
+        if tools & RESEARCH_TOOLS:
+            return ("research", step)
+        if tools & COHERENCE_TOOLS:
+            return ("coherence", step)
+    return None
+
+
+def run_planned_specialist(
+    plan: Any, query: str, *, client: "CoherenceClient | None", session_id: str | None = None
+) -> tuple[str | None, SpecialistResult | None]:
+    """Run a specialist call iff the plan derived one. Returns (mode, result):
+
+    - (None, None): the plan did not request a specialist.
+    - (mode, None): it did, but no client is available (Milcah disabled/absent).
+    - (mode, result): the specialist ran.
+    """
+    detected = detect_specialist_call(plan)
+    if detected is None:
+        return (None, None)
+    mode, step = detected
+    if client is None:
+        return (mode, None)
+    action = step.get("action") if isinstance(step, dict) else getattr(step, "action", "")
+    request = SpecialistRequest(query=query, mode=mode, context=action or "", session_id=session_id)
+    return (mode, client.run(request))

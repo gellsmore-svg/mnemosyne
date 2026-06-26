@@ -215,6 +215,13 @@ def process_frontend_request(
         planning_context = render_planning_context(db, config, answer_kwargs.get("session_id"), query)
     except Exception:
         planning_context = ""
+    if getattr(config.runtime, "milcah_enabled", False):
+        # Let the planner request a specialist call when the request warrants it.
+        planning_context = (
+            planning_context
+            + "\n\n## Available specialist tool\n- coherence_check (Milcah): name it in a step's "
+            "allowed_tools when the request needs coherence pressure-testing or counter-framework research."
+        ).strip()
     initial = create_initial_plan(
         query, planner=planner, max_steps=config.runtime.planning_max_steps, context=planning_context,
     )
@@ -242,6 +249,29 @@ def process_frontend_request(
         for revision in revisions
     ]
     result["process_trace"] = plan_trace[:1] + (result.get("process_trace") or []) + plan_trace[1:]
+    # Trigger: if the plan derived a specialist (coherence/research) need, invoke Milcah.
+    try:
+        from tirzah.coherence import make_client, run_planned_specialist
+
+        mode, specialist = run_planned_specialist(
+            initial, query, client=make_client(config.runtime), session_id=answer_kwargs.get("session_id")
+        )
+        if mode is not None and specialist is not None:
+            result["specialist"] = specialist.to_dict()
+            result["process_trace"].append(
+                {
+                    "step": "specialist_coherence",
+                    "input": {"mode": mode, "query": query},
+                    "output": {
+                        "claims": len(specialist.claims),
+                        "objections": len(specialist.objections),
+                        "confidence": specialist.confidence,
+                        "terminal_reason": specialist.terminal_reason,
+                    },
+                }
+            )
+    except Exception:
+        pass
     result["request_plan"] = revisions[-1].to_dict()
     result["plan_revisions"] = [revision.to_dict() for revision in revisions]
     if result.get("activity_report"):

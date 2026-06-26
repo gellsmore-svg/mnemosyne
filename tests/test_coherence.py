@@ -6,10 +6,47 @@ from tirzah.coherence import (
     MilcahClient,
     SpecialistRequest,
     SpecialistResult,
+    detect_specialist_call,
     make_client,
+    run_planned_specialist,
     validate_specialist_request,
     validate_specialist_result,
 )
+
+
+def _plan(*tool_lists):
+    return SimpleNamespace(
+        steps=[SimpleNamespace(action=f"step {i}", allowed_tools=list(t)) for i, t in enumerate(tool_lists)]
+    )
+
+
+class _StubClient:
+    def __init__(self):
+        self.calls = []
+
+    def run(self, request):
+        self.calls.append(request)
+        return SpecialistResult(claims=["c"], confidence=0.5, terminal_reason="converged")
+
+
+def test_detect_specialist_call():
+    assert detect_specialist_call(_plan(["retrieval"])) is None
+    assert detect_specialist_call(_plan(["retrieval"], ["coherence_check"]))[0] == "coherence"
+    # research wins when both present on a step
+    assert detect_specialist_call(_plan(["coherence", "counter_framework"]))[0] == "research"
+
+
+def test_run_planned_specialist_paths():
+    # no specialist step -> (None, None)
+    assert run_planned_specialist(_plan(["retrieval"]), "q", client=_StubClient()) == (None, None)
+    # planned but no client -> (mode, None)
+    assert run_planned_specialist(_plan(["coherence"]), "q", client=None) == ("coherence", None)
+    # planned + client -> runs with the right mode/query
+    stub = _StubClient()
+    mode, result = run_planned_specialist(_plan(["coherence_check"]), "is it coherent?", client=stub, session_id="s1")
+    assert mode == "coherence" and result.claims == ["c"]
+    assert stub.calls[0].query == "is it coherent?" and stub.calls[0].mode == "coherence"
+    assert stub.calls[0].session_id == "s1"
 
 
 def _fake_orchestration():
