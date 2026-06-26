@@ -272,6 +272,14 @@ def create_app() -> FastAPI:
     def memory_health() -> dict[str, Any]:
         return memory_health_payload(db)
 
+    @app.get("/api/capabilities")
+    def capabilities(format: str = "full") -> dict[str, Any]:
+        # Keturah manifest of Tirzah's LLM-consumable interfaces; ?format=mcp for MCP.
+        from tirzah.manifest import build_manifest
+
+        built = build_manifest()
+        return built.to_mcp() if format == "mcp" else built.to_dict()
+
     @app.get("/api/runtime")
     def runtime() -> dict[str, Any]:
         discovered_models = ollama_model_rows(config.runtime)
