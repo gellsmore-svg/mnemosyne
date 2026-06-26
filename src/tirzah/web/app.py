@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 import threading
+from contextlib import asynccontextmanager
 from queue import Empty as QueueEmpty
 from math import ceil
 from pathlib import Path
@@ -226,13 +227,11 @@ def create_app() -> FastAPI:
     db = get_database(config.mongo)
     ensure_indexes(db)
 
-    app = FastAPI(title="Tirzah")
-
-    @app.on_event("startup")
-    def _durable_turn_embedding_backfill() -> None:
-        # Restart-safe catch-up: embed any turns the in-process executor missed.
-        # Runs on real serve startup (not on plain TestClient import). No-op if
-        # recall is off. Background + best-effort.
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        # Restart-safe catch-up: embed/chunk any turns the in-process queue missed.
+        # Runs on real serve startup (not on plain TestClient import). No-op if the
+        # respective feature is off. Background + best-effort.
         if config.retrieval.conversation_semantic_recall:
             threading.Thread(
                 target=backfill_turn_embeddings,
@@ -247,6 +246,9 @@ def create_app() -> FastAPI:
                 kwargs={"limit": 50},  # chunking is a slow LLM call; modest per-startup catch-up
                 daemon=True,
             ).start()
+        yield
+
+    app = FastAPI(title="Tirzah", lifespan=lifespan)
     # Single UI: the backend serves the built Mahlah front end (the old hand-rolled
     # static UI is retired). Built assets are installed into web/static by
     # scripts/build_ui.sh (gitignored). In dev, run Mahlah on :5273 instead.
