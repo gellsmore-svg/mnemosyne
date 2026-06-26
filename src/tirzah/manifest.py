@@ -41,7 +41,7 @@ def _specialist_capability():
             "required": ["query"],
         },
         output_schema={"type": "object", "properties": {field: {} for field in RESULT_FIELDS}},
-        tags=["specialist", "milcah"],
+        tags=["specialist", "milcah", "planner"],
     )
 
 
@@ -68,6 +68,40 @@ def _semantic_capability():
         },
         tags=["semantic", "mahalath"],
     )
+
+
+# Planner-callable tools (tagged "planner") and the runtime flag that enables each.
+# A tool with no entry here is always available.
+_PLANNER_TOOL_ENABLED = {"coherence_check": "milcah_enabled"}
+
+
+def planner_tools(runtime: object) -> list:
+    """The manifest's planner-callable tool capabilities that are enabled right now."""
+    enabled = []
+    for cap in build_manifest().capabilities:
+        if cap.kind != "tool" or "planner" not in cap.tags:
+            continue
+        flag = _PLANNER_TOOL_ENABLED.get(cap.name)
+        if flag is None or getattr(runtime, flag, False):
+            enabled.append(cap)
+    return enabled
+
+
+def render_planner_tool_hint(runtime: object) -> str:
+    """Tell the planner which specialist tools it may name in a step's allowed_tools.
+
+    Sourced from the Keturah manifest (single source of truth) rather than a hardcoded
+    string, so adding a planner tool to the manifest makes it available automatically.
+    """
+    tools = planner_tools(runtime)
+    if not tools:
+        return ""
+    lines = [
+        "## Available specialist tools",
+        "(Name one in a step's allowed_tools when the request warrants it.)",
+    ]
+    lines += [f"- {cap.name}: {cap.description}" for cap in tools]
+    return "\n".join(lines)
 
 
 def build_manifest() -> Manifest:

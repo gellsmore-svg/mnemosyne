@@ -215,13 +215,16 @@ def process_frontend_request(
         planning_context = render_planning_context(db, config, answer_kwargs.get("session_id"), query)
     except Exception:
         planning_context = ""
-    if getattr(config.runtime, "milcah_enabled", False):
-        # Let the planner request a specialist call when the request warrants it.
-        planning_context = (
-            planning_context
-            + "\n\n## Available specialist tool\n- coherence_check (Milcah): name it in a step's "
-            "allowed_tools when the request needs coherence pressure-testing or counter-framework research."
-        ).strip()
+    # Advertise enabled specialist tools to the planner, sourced from the Keturah
+    # manifest (single source of truth) rather than a hardcoded string.
+    try:
+        from tirzah.manifest import render_planner_tool_hint
+
+        tool_hint = render_planner_tool_hint(config.runtime)
+        if tool_hint:
+            planning_context = (planning_context + "\n\n" + tool_hint).strip()
+    except Exception:
+        pass
     initial = create_initial_plan(
         query, planner=planner, max_steps=config.runtime.planning_max_steps, context=planning_context,
     )

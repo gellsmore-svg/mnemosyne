@@ -19,6 +19,22 @@ def test_tirzah_manifest_is_conformant_and_built_from_contracts():
     assert set(coherence.input_schema["properties"]["mode"]["enum"]) == set(SPECIALIST_MODES)
 
 
+def test_planner_tool_hint_derives_from_manifest_and_enablement():
+    from types import SimpleNamespace
+
+    from tirzah.manifest import planner_tools, render_planner_tool_hint
+
+    # disabled -> no tools advertised
+    assert render_planner_tool_hint(SimpleNamespace(milcah_enabled=False)) == ""
+    assert planner_tools(SimpleNamespace(milcah_enabled=False)) == []
+
+    # enabled -> coherence_check is advertised, with its description from the manifest
+    runtime = SimpleNamespace(milcah_enabled=True)
+    assert [c.name for c in planner_tools(runtime)] == ["coherence_check"]
+    hint = render_planner_tool_hint(runtime)
+    assert "coherence_check" in hint and "counter-framework" in hint
+
+
 def test_capabilities_endpoint_full_and_mcp():
     client = TestClient(app)
 
