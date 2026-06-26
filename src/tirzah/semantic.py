@@ -53,6 +53,41 @@ def is_strong(label: "SemanticLabel") -> bool:
     return label.match_kind in STRONG_MATCH_KINDS
 
 
+# --- Tirzah <-> Mahalath seam contract -------------------------------------
+# The fields Tirzah requires of a resolved label, and of the Mahalath
+# `search_terms` match it is mapped from. Encoded so a contract test fails if
+# either side drifts (e.g. Mahalath renames a match attribute).
+SEMANTIC_LABEL_FIELDS: tuple[str, ...] = ("term", "mpl_label", "canonical_term", "senses", "match_kind", "is_stale")
+MAHALATH_MATCH_ATTRS: tuple[str, ...] = ("mpl_label", "canonical_term", "frames", "match_kind", "is_stale")
+
+
+def match_to_label(term: str, match: Any) -> SemanticLabel:
+    """Map a Mahalath ``search_terms`` match onto a :class:`SemanticLabel`.
+
+    This is the literal field contract Tirzah depends on Mahalath to provide;
+    keeping it one function makes the seam unit-testable without Mahalath installed.
+    """
+    return SemanticLabel(
+        term=term,
+        mpl_label=match.mpl_label,
+        canonical_term=match.canonical_term,
+        senses=list(match.frames),
+        match_kind=match.match_kind,
+        is_stale=match.is_stale,
+    )
+
+
+def validate_semantic_label(label: Any) -> list[str]:
+    """Return conformance errors for a resolver's label (empty list = conformant)."""
+    data = label.to_dict() if isinstance(label, SemanticLabel) else label
+    if not isinstance(data, dict):
+        return ["semantic label must be an object"]
+    errors = [f"missing field: {f}" for f in SEMANTIC_LABEL_FIELDS if f not in data]
+    if "senses" in data and not isinstance(data["senses"], list):
+        errors.append("senses must be a list")
+    return errors
+
+
 class TermResolver(Protocol):
     """Resolve human terms to ontology matches. Implemented by `MahalathResolver`
     (real) and trivially faked in tests."""
@@ -184,15 +219,7 @@ class MahalathResolver:
                 matches = search_terms(db, [term], filters=Filters(language=self.language), limit=1)
                 if not matches:
                     continue
-                m = matches[0]
-                out.append(SemanticLabel(
-                    term=term,
-                    mpl_label=m.mpl_label,
-                    canonical_term=m.canonical_term,
-                    senses=list(m.frames),
-                    match_kind=m.match_kind,
-                    is_stale=m.is_stale,
-                ))
+                out.append(match_to_label(term, matches[0]))
             return out
         except Exception:
             return []  # store unreachable / schema drift — fail soft

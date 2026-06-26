@@ -1,12 +1,36 @@
+from types import SimpleNamespace
+
 from tirzah.semantic import (
+    MAHALATH_MATCH_ATTRS,
     MahalathResolver,
     SemanticLabel,
     annotate,
     extract_candidate_terms,
     make_resolver,
+    match_to_label,
     render_prompt_block,
     summarize_labels,
+    validate_semantic_label,
 )
+
+
+def test_mahalath_match_maps_to_conformant_label():
+    # Seam contract: Tirzah depends on exactly these Mahalath match attributes.
+    match = SimpleNamespace(
+        mpl_label="MPL:dog", canonical_term="dog", frames=["animal", "pet"],
+        match_kind="exact", is_stale=False,
+    )
+    label = match_to_label("dogs", match)
+    assert validate_semantic_label(label) == []
+    assert label.mpl_label == "MPL:dog" and label.senses == ["animal", "pet"]
+    assert set(MAHALATH_MATCH_ATTRS) == {"mpl_label", "canonical_term", "frames", "match_kind", "is_stale"}
+
+
+def test_validate_semantic_label_catches_drift():
+    assert validate_semantic_label(SemanticLabel(term="t", mpl_label="m", canonical_term="c")) == []
+    errors = validate_semantic_label({"term": "t", "senses": "not-a-list"})
+    assert any("missing field: mpl_label" in e for e in errors)
+    assert any("senses must be a list" in e for e in errors)
 
 
 class FakeResolver:
