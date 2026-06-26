@@ -70,7 +70,7 @@ from tirzah.retrieval.trust import trust_temporal_diagnostic_for_node
 from tirzah.sessions.exchanges import recent_exchanges
 from tirzah.sessions.interaction import answer_query, backfill_chunks, backfill_turn_embeddings
 from tirzah.sessions.run import run_traced_interaction
-from tirzah.trace import (
+from galeed import (
     EventType,
     Tracer,
     get_bus,

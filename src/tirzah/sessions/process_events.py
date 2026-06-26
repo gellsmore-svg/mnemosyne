@@ -2,8 +2,8 @@
 
 This is the *Tirzah-specific* adapter that re-expresses the rich-but-ad-hoc
 ``process_trace`` (a list of ``{step, input, output}`` dicts) as the structured,
-extensible event stream defined in :mod:`tirzah.trace`. Keeping it here leaves the
-``tirzah.trace`` spine free of Tirzah imports so it can be extracted to a shared
+extensible event stream defined in :mod:`galeed`. Keeping it here leaves the
+``galeed`` spine free of Tirzah imports so it can be extracted to a shared
 library later.
 
 Design rule: events carry **lean, whitelisted** metadata only — never the prompt
@@ -17,8 +17,8 @@ from __future__ import annotations
 from typing import Any
 
 from tirzah.sessions.activity_reports import human_step_name
-from tirzah.trace.events import EventType
-from tirzah.trace.recorder import Tracer
+from galeed.events import EventType
+from galeed.recorder import Tracer
 
 # process_trace step name -> canonical structured event type.
 _STEP_EVENT_TYPE: dict[str, str] = {

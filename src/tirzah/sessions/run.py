@@ -4,7 +4,7 @@ Single mechanism for all interaction types — web ``/api/ask``, CLI ``ask`` and
 ``chat``, and any future route — so the structured trace-event stream and the
 3-channel answer / process / log separation are produced **uniformly**, not
 re-implemented per entrypoint. Callers pass their normal answer arguments; this
-function owns the :class:`~tirzah.trace.recorder.Tracer` lifecycle, translates the
+function owns the :class:`~galeed.recorder.Tracer` lifecycle, translates the
 pipeline's ``process_trace`` into structured events, and attaches the contract
 fields (``processEvents``, ``traceId``, ``sessionId``, ``messageId``,
 ``requestId``) to the returned result.
@@ -18,7 +18,7 @@ from tirzah.config import AppConfig
 from tirzah.planning.recursive import process_frontend_request
 from tirzah.sessions.interaction import answer_query
 from tirzah.sessions.process_events import emit_process_trace_events
-from tirzah.trace import EventType, Tracer
+from galeed import EventType, Tracer
 
 
 def run_traced_interaction(

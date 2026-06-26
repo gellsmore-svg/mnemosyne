@@ -33,6 +33,7 @@ dependencies = [
   "pydantic>=2.7",
   "pymongo>=4.7",
   "pyyaml>=6.0",
+  "galeed>=0.1",  # the cross-project trace/log spine (extracted from tirzah.trace)
 ]
 
 [project.optional-dependencies]
