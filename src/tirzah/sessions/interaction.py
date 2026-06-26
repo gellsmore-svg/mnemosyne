@@ -466,6 +466,21 @@ def answer_query_deep(
         },
     }
     retrieval_status = "deep_context" if useful else "deep_no_context"
+    # Surface each round's Context Sufficiency Score as its own process step so the
+    # score evolution shows in the process panel / dev-log (Phase 4 visibility).
+    for entry in deep_result.get("trace", []):
+        if entry.get("step") == "sufficiency":
+            process_trace.append(
+                {
+                    "step": "sufficiency",
+                    "input": {},
+                    "output": {
+                        "context_sufficiency_score": entry.get("context_sufficiency_score"),
+                        "recursion": entry.get("recursion"),
+                        "remaining_uncertainty_count": len(entry.get("remaining_uncertainty") or []),
+                    },
+                }
+            )
     process_trace.append(
         {
             "step": "deep_retrieval",

@@ -30,6 +30,7 @@ _STEP_EVENT_TYPE: dict[str, str] = {
     "answer_adapter": EventType.MODEL_RESPONSE_COMPLETED,
     "save_exchange": EventType.LOG_PERSISTED,
     "stop": EventType.PROCESS_COMPLETED,
+    "sufficiency": "context.sufficiency",
 }
 
 # small, safe scalar/identifier fields worth surfacing as event metadata.
@@ -47,6 +48,9 @@ _META_WHITELIST = (
     "count",
     "iteration",
     "stop_reason",
+    "context_sufficiency_score",
+    "recursion",
+    "remaining_uncertainty_count",
 )
 
 _MAX_STR = 200

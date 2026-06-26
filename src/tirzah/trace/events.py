@@ -39,6 +39,7 @@ class EventType:
     RETRIEVAL_MONGO_COMPLETED = "retrieval.mongo.completed"
     RETRIEVAL_MONGO_FAILED = "retrieval.mongo.failed"
     CONTEXT_SELECTED = "context.selected"
+    CONTEXT_SUFFICIENCY = "context.sufficiency"
     # external research
     RESEARCH_CONSIDERED = "research.considered"
     RESEARCH_STARTED = "research.started"

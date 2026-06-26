@@ -339,6 +339,8 @@ def human_step_name(step: str | None) -> str:
         "memory_agent_iteration": "Run Memory-Agent Planner",
         "answer_adapter": "Generate Final Answer",
         "save_exchange": "Persist Exchange",
+        "sufficiency": "Score Context Sufficiency",
+        "deep_retrieval": "Deep Retrieval",
     }.get(step or "", str(step or "Unknown Step"))
 
 

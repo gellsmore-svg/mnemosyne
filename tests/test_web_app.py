@@ -158,6 +158,7 @@ def test_ask_endpoint_returns_three_channel_contract(monkeypatch) -> None:
                 {"step": "user_prompt", "input": {"query": "Q"}, "output": {}},
                 # output.status collides with emit()'s `status` kwarg — must be namespaced
                 {"step": "retrieval_context", "input": {}, "output": {"node_count": 3, "status": "stable"}},
+                {"step": "sufficiency", "input": {}, "output": {"context_sufficiency_score": 8.4, "recursion": 2}},
                 {"step": "answer_adapter", "input": {"adapter": "mock", "model": "gemma"}, "output": {"ok": True}},
             ],
         }
@@ -190,6 +191,10 @@ def test_ask_endpoint_returns_three_channel_contract(monkeypatch) -> None:
     context_event = next(e for e in body["processEvents"] if e["type"] == "context.selected")
     assert context_event["status"] == "ok"
     assert context_event["metadata"]["step_status"] == "stable"
+    # Phase 4 visibility: the sufficiency score surfaces as its own event
+    sufficiency_event = next(e for e in body["processEvents"] if e["type"] == "context.sufficiency")
+    assert sufficiency_event["metadata"]["context_sufficiency_score"] == 8.4
+    assert sufficiency_event["summary"] == "Score Context Sufficiency"
     # events carry the same trace id and are monotonically sequenced
     assert {e["trace_id"] for e in body["processEvents"]} == {body["traceId"]}
     assert [e["seq"] for e in body["processEvents"]] == sorted(e["seq"] for e in body["processEvents"])
