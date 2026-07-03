@@ -64,9 +64,10 @@ mahalath = [
 ]
 # Specialist coherence/research via Milcah (the Tirzah->Milcah seam,
 # tirzah/coherence.py). Off by default and fail-soft if absent; install this
-# extra when `runtime.milcah_enabled` is true.
+# extra when `runtime.milcah_enabled` is true. Milcah's default specialist
+# runtime submits role calls through Hoglah, so include Milcah's Hoglah extra.
 milcah = [
-  "milcah>=0.2.0",
+  "milcah[hoglah]>=0.2.0",
 ]
 hoglah = [
   "hoglah>=0.8.0",

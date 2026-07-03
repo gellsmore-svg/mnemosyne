@@ -76,6 +76,8 @@ Then set `runtime.milcah_enabled: true` in `config.yaml`, or export
 `MILCAH_ENABLED=1`. `runtime.milcah_model` / `MILCAH_MODEL` can pin the model
 Milcah should use. If Milcah is absent or the call fails, Tirzah records a
 blocked specialist result and continues without treating that as graph memory.
+Milcah's default specialist runner submits role calls through Hoglah, so start a
+Hoglah worker as below when you want live model-backed specialist results.
 
 ## Hoglah Answer Queue
 

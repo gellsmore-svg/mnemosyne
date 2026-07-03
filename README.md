@@ -102,7 +102,9 @@ pip install "tirzah[milcah]"
 
 Set `runtime.milcah_enabled: true` (or `MILCAH_ENABLED=1`). Tirzah delegates to
 Milcah's `coherence_check` contract and degrades to a blocked specialist result
-if Milcah is not importable or the call fails.
+if Milcah is not importable or the call fails. Real Milcah specialist execution
+uses Hoglah under the hood, so run the Hoglah worker described below when you
+want live model-backed results.
 
 ## Web UI
 
