@@ -45,6 +45,11 @@ runtime:
   web_max_content_bytes: 500000
   web_max_content_chars: 8000
   web_allow_private_search_endpoint: false
+  # Optional Milcah specialist seam. Install with `pip install "tirzah[milcah]"`
+  # (or co-install the local Milcah repo), then enable this so recursive planning
+  # may dispatch coherence/counter-framework checks to Milcah. Fail-soft if absent.
+  milcah_enabled: false
+  milcah_model: ""
   ollama_model: gemma3:1b
   memory_agent_model:
   ollama_format:

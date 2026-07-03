@@ -63,6 +63,22 @@ tirzah init --non-interactive --runtime mock
 tirzah init --non-interactive --runtime ollama_http
 ```
 
+## Milcah Specialist Calls
+
+Recursive planning can optionally dispatch coherence pressure-tests and
+counter-framework research to [Milcah](https://github.com/gellsmore-svg/Milcah):
+
+```bash
+pip install "tirzah[milcah]"
+```
+
+Then set `runtime.milcah_enabled: true` in `config.yaml`, or export
+`MILCAH_ENABLED=1`. `runtime.milcah_model` / `MILCAH_MODEL` can pin the model
+Milcah should use. If Milcah is absent or the call fails, Tirzah records a
+blocked specialist result and continues without treating that as graph memory.
+
+## Hoglah Answer Queue
+
 For Hoglah-backed answers, install the optional extra and initialize that
 runtime profile:
 

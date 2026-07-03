@@ -1,3 +1,5 @@
+import sys
+import types
 from types import SimpleNamespace
 
 from tirzah.coherence import (
@@ -6,6 +8,7 @@ from tirzah.coherence import (
     MilcahClient,
     SpecialistRequest,
     SpecialistResult,
+    _default_pipeline,
     detect_specialist_call,
     make_client,
     run_planned_specialist,
@@ -53,7 +56,12 @@ def _fake_orchestration():
     return SimpleNamespace(
         reasoning=SimpleNamespace(units=[SimpleNamespace(type="claim", text="X holds under A")]),
         challenge=SimpleNamespace(
-            objections=[SimpleNamespace(text="A fails when Y")],
+            objections=[
+                SimpleNamespace(
+                    text="A fails when Y",
+                    metadata={"research_sources": [{"url": "https://example.test/source"}]},
+                )
+            ],
             counter_frameworks=[SimpleNamespace(title="Rival R")],
         ),
         metrics=SimpleNamespace(global_coherence=0.72),
@@ -76,7 +84,58 @@ def test_live_client_runs_pipeline_and_adapts():
     assert result.claims == ["X holds under A"]
     assert result.objections == ["A fails when Y"]
     assert result.evidence == ["Rival R"]
+    assert result.citations == ["https://example.test/source"]
     assert result.confidence == 0.72
+
+
+def test_live_client_accepts_milcah_provider_result():
+    provider = SpecialistResult(
+        claims=["provider claim"],
+        objections=["provider objection"],
+        evidence=["provider evidence"],
+        citations=["https://example.test/provider"],
+        confidence=0.61,
+        terminal_reason="converged",
+        trace_metadata={"mode": "coherence"},
+    )
+    client = MilcahClient(pipeline=lambda _req: provider)
+    result = client.run(SpecialistRequest(query="Is it coherent?"))
+    assert validate_specialist_result(result) == []
+    assert result == provider
+
+
+def test_default_pipeline_delegates_to_milcah_provider(monkeypatch):
+    calls = {}
+
+    package = types.ModuleType("milcah")
+    package.__path__ = []
+    orchestration = types.ModuleType("milcah.orchestration")
+    specialist = types.ModuleType("milcah.specialist")
+
+    class OrchestrationConfig:
+        def __init__(self, default_model=""):
+            self.default_model = default_model
+
+    class SpecialistConfig:
+        def __init__(self, orchestration=None):
+            self.orchestration = orchestration
+
+    def run_specialist(payload, config=None):
+        calls["payload"] = payload
+        calls["model"] = config.orchestration.default_model
+        return SpecialistResult(claims=["provider"], confidence=0.6)
+
+    orchestration.OrchestrationConfig = OrchestrationConfig
+    specialist.SpecialistConfig = SpecialistConfig
+    specialist.run_specialist = run_specialist
+    monkeypatch.setitem(sys.modules, "milcah", package)
+    monkeypatch.setitem(sys.modules, "milcah.orchestration", orchestration)
+    monkeypatch.setitem(sys.modules, "milcah.specialist", specialist)
+
+    result = _default_pipeline(SpecialistRequest(query="q", mode="research"), model="gemma")
+    assert result.claims == ["provider"]
+    assert calls["payload"]["mode"] == "research"
+    assert calls["model"] == "gemma"
 
 
 def test_live_client_is_fail_soft():
@@ -92,6 +151,7 @@ def test_live_client_is_fail_soft():
 def test_canonical_fixtures_conform():
     assert validate_specialist_request(CANONICAL_REQUEST) == []
     assert validate_specialist_result(CANONICAL_RESULT) == []
+    assert validate_specialist_request({"query": "query-only uses default mode"}) == []
 
 
 def test_request_validation():

@@ -13,10 +13,12 @@ def test_tirzah_manifest_is_conformant_and_built_from_contracts():
     assert {"ask", "coherence_check", "semantic_annotate", "capabilities"} <= set(names)
 
     # the specialist capability's schema is built from the live contract enum
-    from tirzah.coherence import SPECIALIST_MODES
+    from tirzah.coherence import REQUEST_FIELDS, SPECIALIST_MODES, TERMINAL_REASONS
 
     coherence = next(c for c in m.capabilities if c.name == "coherence_check")
     assert set(coherence.input_schema["properties"]["mode"]["enum"]) == set(SPECIALIST_MODES)
+    assert coherence.input_schema["required"] == list(REQUEST_FIELDS)
+    assert set(coherence.output_schema["properties"]["terminal_reason"]["enum"]) == set(TERMINAL_REASONS)
 
 
 def test_planner_tool_hint_derives_from_manifest_and_enablement():
@@ -42,6 +44,8 @@ def test_specialist_capability_federates_from_milcah_when_present(monkeypatch):
     # Milcah absent here -> local fallback is used (still conformant + planner-tagged)
     local = tm._specialist_capability()
     assert local.name == "coherence_check" and "planner" in local.tags
+    assert {"max_iterations", "trace_id", "session_id"} <= set(local.input_schema["properties"])
+    assert local.input_schema["properties"]["mode"]["default"] == "coherence"
 
     # Simulate Milcah present: its manifest owns the declaration -> Tirzah advertises it
     federated = capability("coherence_check", "Milcah's own description.", tags=["specialist", "coherence"])

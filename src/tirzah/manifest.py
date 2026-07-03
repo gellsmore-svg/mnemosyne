@@ -51,7 +51,7 @@ def _specialist_capability():
         return federated
 
     # Local fallback: the mirror Tirzah keeps so the seam works without Milcah installed.
-    from tirzah.coherence import RESULT_FIELDS, SPECIALIST_MODES
+    from tirzah.coherence import REQUEST_FIELDS, SPECIALIST_MODES, TERMINAL_REASONS
 
     return capability(
         "coherence_check",
@@ -63,12 +63,31 @@ def _specialist_capability():
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "the claim/framework to pressure-test"},
-                "mode": {"type": "string", "enum": sorted(SPECIALIST_MODES)},
+                "mode": {"type": "string", "enum": sorted(SPECIALIST_MODES), "default": "coherence"},
                 "context": {"type": "string", "description": "the framework text to analyse"},
+                "max_iterations": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 3,
+                    "description": "upper bound on specialist recursion depth",
+                },
+                "trace_id": {"type": "string", "description": "caller trace identifier"},
+                "session_id": {"type": "string", "description": "caller session identifier"},
             },
-            "required": ["query"],
+            "required": list(REQUEST_FIELDS),
         },
-        output_schema={"type": "object", "properties": {field: {} for field in RESULT_FIELDS}},
+        output_schema={
+            "type": "object",
+            "properties": {
+                "claims": {"type": "array", "items": {"type": "string"}},
+                "objections": {"type": "array", "items": {"type": "string"}},
+                "evidence": {"type": "array", "items": {"type": "string"}},
+                "citations": {"type": "array", "items": {"type": "string"}},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "terminal_reason": {"type": "string", "enum": sorted(TERMINAL_REASONS)},
+                "trace_metadata": {"type": "object"},
+            },
+        },
         tags=["specialist", "milcah", "planner"],
     )
 

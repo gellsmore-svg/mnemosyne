@@ -6,10 +6,10 @@ plan derives a coherence-check or research need, it dispatches a
 
 This module is the **consumer-side contract** for that seam — the request/result
 shapes, a :class:`CoherenceClient` protocol, and validators — so the boundary is
-enforced by tests before (and after) a live Milcah call is wired. It mirrors the
-shape of :mod:`tirzah.semantic` (the Mahalath seam): a typed result + validator +
-canonical fixture. Milcah should expose a matching provider-side contract; the live
-client binding is a follow-up gated by ``config.milcah_enabled``.
+enforced by tests before and after a live Milcah call. It mirrors the shape of
+:mod:`tirzah.semantic` (the Mahalath seam): a typed result + validator + canonical
+fixture. The default client now delegates to Milcah's provider-side
+``milcah.specialist.run_specialist`` entrypoint when ``config.milcah_enabled`` is on.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ class CoherenceClient(Protocol):
     def run(self, request: SpecialistRequest) -> SpecialistResult: ...
 
 
-REQUEST_FIELDS: tuple[str, ...] = ("query", "mode")
+REQUEST_FIELDS: tuple[str, ...] = ("query",)
 RESULT_FIELDS: tuple[str, ...] = (
     "claims",
     "objections",
@@ -80,8 +80,9 @@ def validate_specialist_request(request: Any) -> list[str]:
     errors = [f"missing request field: {f}" for f in REQUEST_FIELDS if f not in data]
     if not data.get("query"):
         errors.append("query must be non-empty")
-    if data.get("mode") not in SPECIALIST_MODES:
-        errors.append(f"invalid mode: {data.get('mode')!r} (allowed: {sorted(SPECIALIST_MODES)})")
+    mode = data.get("mode", "coherence")
+    if mode not in SPECIALIST_MODES:
+        errors.append(f"invalid mode: {mode!r} (allowed: {sorted(SPECIALIST_MODES)})")
     return errors
 
 
@@ -132,16 +133,37 @@ def _text(unit: Any) -> str:
     return getattr(unit, "text", "") or ""
 
 
+def _type_value(unit: Any) -> str:
+    value = getattr(unit, "type", "")
+    return str(getattr(value, "value", value))
+
+
+def _research_citations(units: list[Any]) -> list[str]:
+    citations: list[str] = []
+    seen: set[str] = set()
+    for unit in units:
+        metadata = getattr(unit, "metadata", {}) or {}
+        for source in metadata.get("research_sources") or []:
+            url = source.get("url") if isinstance(source, dict) else getattr(source, "url", "")
+            url = str(url or "").strip()
+            if url and url not in seen:
+                seen.add(url)
+                citations.append(url)
+    return citations
+
+
 def _local_adapt(orchestration: Any) -> SpecialistResult:
     """Duck-typed OrchestrationResult -> SpecialistResult (fallback when milcah.contract
     is unavailable, e.g. in tests). Kept in sync with milcah.contract's adapter."""
     reasoning = getattr(orchestration, "reasoning", None)
     units = list(getattr(reasoning, "units", []) or [])
-    claims = [_text(u) for u in units if str(getattr(u, "type", "")) == "claim" and _text(u)]
+    claims = [_text(u) for u in units if _type_value(u) == "claim" and _text(u)]
     challenge = getattr(orchestration, "challenge", None)
-    objections = [_text(o) for o in getattr(challenge, "objections", []) or [] if _text(o)]
+    objection_units = list(getattr(challenge, "objections", []) or [])
+    objections = [_text(o) for o in objection_units if _text(o)]
     counter = getattr(challenge, "counter_frameworks", []) or []
     evidence = [getattr(cf, "title", "") or getattr(cf, "name", "") or _text(cf) or str(cf) for cf in counter]
+    counter_units = [u for cf in counter for u in (getattr(cf, "units", []) or [])]
     metrics = getattr(orchestration, "metrics", None)
     try:
         confidence = max(0.0, min(1.0, float(getattr(metrics, "global_coherence", 0.0) or 0.0)))
@@ -152,7 +174,7 @@ def _local_adapt(orchestration: Any) -> SpecialistResult:
         claims=claims,
         objections=objections,
         evidence=[e for e in evidence if e],
-        citations=[],
+        citations=_research_citations([*objection_units, *counter_units]),
         confidence=confidence,
         terminal_reason="converged",
         trace_metadata={"trace_steps": len(trace), "roles": dict(getattr(orchestration, "roles", {}) or {})},
@@ -170,16 +192,29 @@ def _adapt_orchestration(orchestration: Any) -> SpecialistResult:
 
 
 def _default_pipeline(request: SpecialistRequest, *, model: str = "") -> Any:
-    """Drive Milcah end to end: ingest the framework text, extract units, orchestrate."""
-    from milcah.extraction import RuleBasedExtractor, extract
-    from milcah.ingestion import ingest_text
-    from milcah.orchestration import OrchestrationConfig, orchestrate
+    """Delegate to Milcah's provider-side specialist runner."""
+    from milcah.orchestration import OrchestrationConfig
+    from milcah.specialist import SpecialistConfig, run_specialist
 
-    text = request.context or request.query
-    framework = ingest_text(text, title=(request.query[:80] or "framework"))
-    units = extract(framework, RuleBasedExtractor())
-    config = OrchestrationConfig(default_model=model) if model else None
-    return orchestrate(framework, units, config=config)
+    config = SpecialistConfig(orchestration=OrchestrationConfig(default_model=model)) if model else None
+    return run_specialist(request.to_dict(), config=config)
+
+
+def _coerce_provider_result(value: Any) -> SpecialistResult | None:
+    if isinstance(value, SpecialistResult):
+        return value
+    if hasattr(value, "to_dict"):
+        data = value.to_dict()
+    elif isinstance(value, dict):
+        data = value
+    else:
+        return None
+    if not isinstance(data, dict) or any(field not in data for field in RESULT_FIELDS):
+        return None
+    try:
+        return SpecialistResult(**{field: data[field] for field in RESULT_FIELDS})
+    except Exception:
+        return None
 
 
 @dataclass
@@ -201,6 +236,9 @@ class MilcahClient:
             return SpecialistResult(terminal_reason="blocked")
         if orchestration is None:
             return SpecialistResult(terminal_reason="insufficient_evidence")
+        provider_result = _coerce_provider_result(orchestration)
+        if provider_result is not None:
+            return provider_result
         try:
             return adapt(orchestration)
         except Exception:

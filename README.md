@@ -92,6 +92,18 @@ actual tool menu, budgets, writes, and termination. Later information can revise
 a stored plan through `POST /api/plans/{plan_id}/revise`. Configure the planner
 with `runtime.recursive_planning_*`.
 
+When the planner needs a coherence pressure-test or counter-framework research,
+it can call [Milcah](https://github.com/gellsmore-svg/Milcah) as an optional
+specialist:
+
+```bash
+pip install "tirzah[milcah]"
+```
+
+Set `runtime.milcah_enabled: true` (or `MILCAH_ENABLED=1`). Tirzah delegates to
+Milcah's `coherence_check` contract and degrades to a blocked specialist result
+if Milcah is not importable or the call fails.
+
 ## Web UI
 
 ```bash
