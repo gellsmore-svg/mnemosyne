@@ -1000,7 +1000,7 @@ def test_annotate_embedding_coverage_reports_operator_action_states() -> None:
 
 def test_embedding_backfill_status_reports_pending_jobs(monkeypatch) -> None:
     monkeypatch.setattr(
-        "tirzah.web.app.list_embedding_backfill_jobs",
+        "tirzah.ingestion.status.list_embedding_backfill_jobs",
         lambda _db, limit=20: [
             {"job_id": "job1", "status": "pending", "batch_limit": 10},
             {"job_id": "job2", "status": "completed", "batch_limit": 10},
@@ -1017,7 +1017,7 @@ def test_embedding_backfill_status_reports_pending_jobs(monkeypatch) -> None:
 
 def test_embedding_backfill_status_reports_blocked_jobs(monkeypatch) -> None:
     monkeypatch.setattr(
-        "tirzah.web.app.list_embedding_backfill_jobs",
+        "tirzah.ingestion.status.list_embedding_backfill_jobs",
         lambda _db, limit=20: [{"job_id": "job1", "status": "blocked", "reason": "failed"}],
     )
 
@@ -1029,7 +1029,7 @@ def test_embedding_backfill_status_reports_blocked_jobs(monkeypatch) -> None:
 
 
 def test_embedding_backfill_status_reports_needed_when_no_job_exists(monkeypatch) -> None:
-    monkeypatch.setattr("tirzah.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+    monkeypatch.setattr("tirzah.ingestion.status.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
     status = embedding_backfill_status(None, {"missing_active_embeddings": 5})
 
@@ -1041,7 +1041,7 @@ def test_embedding_backfill_status_reports_needed_when_no_job_exists(monkeypatch
 
 
 def test_embedding_backfill_status_blocks_recommendation_for_disallowed_adapter(monkeypatch) -> None:
-    monkeypatch.setattr("tirzah.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+    monkeypatch.setattr("tirzah.ingestion.status.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
     status = embedding_backfill_status(
         None,
@@ -1057,7 +1057,7 @@ def test_embedding_backfill_status_blocks_recommendation_for_disallowed_adapter(
 
 
 def test_embedding_backfill_status_blocks_missing_local_profile_command(monkeypatch) -> None:
-    monkeypatch.setattr("tirzah.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+    monkeypatch.setattr("tirzah.ingestion.status.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
     status = embedding_backfill_status(
         None,
@@ -1073,7 +1073,7 @@ def test_embedding_backfill_status_blocks_missing_local_profile_command(monkeypa
 
 
 def test_embedding_backfill_status_reports_not_needed_when_coverage_complete(monkeypatch) -> None:
-    monkeypatch.setattr("tirzah.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+    monkeypatch.setattr("tirzah.ingestion.status.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
     status = embedding_backfill_status(None, {"missing_active_embeddings": 0})
 
@@ -1083,7 +1083,7 @@ def test_embedding_backfill_status_reports_not_needed_when_coverage_complete(mon
 
 
 def test_embedding_backfill_status_reports_real_backfill_needed_for_mock_coverage(monkeypatch) -> None:
-    monkeypatch.setattr("tirzah.web.app.list_embedding_backfill_jobs", lambda _db, limit=20: [])
+    monkeypatch.setattr("tirzah.ingestion.status.list_embedding_backfill_jobs", lambda _db, limit=20: [])
 
     status = embedding_backfill_status(
         None,
