@@ -229,7 +229,34 @@ def process_frontend_request(
         query, planner=planner, max_steps=config.runtime.planning_max_steps, context=planning_context,
     )
     save_plan_revision(db, initial, session_id=answer_kwargs.get("session_id", "web"))
-    result = executor(db, config, query=query, **answer_kwargs)
+    if config.runtime.plan_interpretive_execution_enabled:
+        from tirzah.coherence import make_client, run_planned_specialist
+        from tirzah.planning.executor import build_default_handlers, interpret_plan
+
+        session_id = answer_kwargs.get("session_id", "web")
+        handlers = build_default_handlers(
+            pipeline_executor=executor,
+            db=db,
+            config=config,
+            answer_kwargs=answer_kwargs,
+            specialist_runner=lambda plan, q, sid: run_planned_specialist(
+                plan, q, client=make_client(config.runtime), session_id=sid
+            ),
+        )
+        execution = interpret_plan(initial, query=query, session_id=session_id, handlers=handlers)
+        initial = execution.plan
+        save_plan_revision(db, initial, session_id=session_id)
+        result = execution.primary_result or {
+            "ok": execution.ok,
+            "reason": execution.reason or "plan_interpretation_incomplete",
+            "query": query,
+            "session_id": session_id,
+        }
+        if execution.context.trace:
+            result.setdefault("process_trace", [])
+            result["process_trace"] = execution.context.trace + result["process_trace"]
+    else:
+        result = executor(db, config, query=query, **answer_kwargs)
     information = information_from_result(result)
     revisions = revise_plan_recursively(
         initial, [information], planner=planner,

@@ -40,6 +40,9 @@ class RuntimeConfig(BaseModel):
     planning_model: str | None = None
     planning_max_revisions: int = Field(default=3, ge=1, le=20)
     planning_max_steps: int = Field(default=12, ge=1, le=30)
+    # Walk Cairn plan steps in depends_on order (SPEC §4.6) instead of only
+    # wrapping a monolithic ask pipeline.
+    plan_interpretive_execution_enabled: bool = False
     # Opt-in transient web evidence. Search uses a SearxNG JSON endpoint; results
     # are never promoted into durable graph memory automatically.
     web_research_enabled: bool = False
@@ -172,6 +175,7 @@ _ENV_OVERRIDES: dict[str, tuple[str, str]] = {
     "OLLAMA_EXECUTABLE": ("runtime", "ollama_executable"),
     "TIRZAH_WEB_RESEARCH_ENABLED": ("runtime", "web_research_enabled"),
     "TIRZAH_RECURSIVE_PLANNING_ENABLED": ("runtime", "recursive_planning_enabled"),
+    "TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED": ("runtime", "plan_interpretive_execution_enabled"),
     "TIRZAH_WEB_SEARCH_BASE_URL": ("runtime", "web_search_base_url"),
     # The Mahalath seam — so `.env` alone enables/points it (no config file needed;
     # a missing config file can no longer silently disable semantic precision).
