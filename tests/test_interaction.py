@@ -4378,19 +4378,28 @@ def test_ranked_focus_matches_forwards_query_embedding(monkeypatch) -> None:
 
 
 def test_answer_query_deep_mode_dispatch(monkeypatch) -> None:
+    """Deep mode dispatches through the phased flow: answer_query →
+    answer_phases._retrieve_deep (deep retrieval collects chunks) →
+    _synthesize_deep_and_persist (synthesize_answer produces the text)."""
+    import tirzah.retrieval.deep as deep
     import tirzah.sessions.interaction as interaction
 
     monkeypatch.setattr(interaction, "first_active_agent_identity", lambda db: None)
+    # The 'fake' adapter never reaches the factory: the phases resolve it via
+    # the interaction namespace, which is the monkeypatch seam.
+    monkeypatch.setattr(interaction, "answer_adapter", lambda runtime: object())
+    monkeypatch.setattr(interaction, "build_query_embedding", lambda runtime, text: None)
+    monkeypatch.setattr(interaction, "render_session_history_block", lambda *a, **k: "")
     monkeypatch.setattr(
-        interaction,
-        "run_deep_answer",
+        deep,
+        "run_deep_retrieval",
         lambda db, query, **k: {
-            "answer": "deep answer",
             "useful_chunks": [{"node_id": "n1"}, {"node_id": "n2"}],
             "rounds": [],
             "trace": [{"step": "stop", "reason": "planner_stop"}],
         },
     )
+    monkeypatch.setattr(deep, "synthesize_answer", lambda *a, **k: "deep answer")
     monkeypatch.setattr(interaction, "save_exchange", lambda *a, **k: "exch-deep")
     config = AppConfig(runtime=RuntimeConfig(retrieval_mode="deep", answer_adapter="fake"))
 
