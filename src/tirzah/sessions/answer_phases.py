@@ -10,32 +10,13 @@ from typing import Any
 
 from pymongo.database import Database
 
-from tirzah.adapters.answer import answer_adapter
 from tirzah.config import AppConfig, RuntimeConfig
 from tirzah.domains.registry import (
     clean_domain_id,
     conversation_domain_id_for_session,
 )
-from tirzah.retrieval.deep import run_deep_answer
 from tirzah.retrieval.queries import node_identity
-from tirzah.sessions.interaction import (
-    answer_exception_payload,
-    attach_answer_activity,
-    build_agentic_answer_envelope,
-    final_context_proposal_from_trace,
-    final_controller_decision_from_trace,
-    finish_answer_process_run,
-    first_active_agent_identity,
-    inject_history_into_prompt,
-    is_low_intent_query,
-    prepare_direct_answer_prompt,
-    render_session_history_block,
-    run_memory_agent_loop,
-    schedule_chunking,
-    schedule_turn_embedding,
-    start_answer_process_run,
-)
-from tirzah.sessions.exchanges import save_exchange
+from tirzah.sessions import interaction as ix
 
 
 @dataclass
@@ -192,10 +173,10 @@ def _begin_answer_request(
     if web_research and runtime_config.retrieval_mode != "agentic":
         runtime_config.retrieval_mode = "agentic"
         process_trace[0]["output"]["retrieval_mode_override"] = "agentic_for_web_research"
-    if runtime_config.retrieval_mode == "agentic" and not focus_node_id and is_low_intent_query(query):
+    if runtime_config.retrieval_mode == "agentic" and not focus_node_id and ix.is_low_intent_query(query):
         runtime_config.retrieval_mode = "direct"
         process_trace[0]["output"]["retrieval_mode_override"] = "direct_no_context_low_intent"
-    process_run_id = start_answer_process_run(
+    process_run_id = ix.start_answer_process_run(
         db,
         session_id=session_id,
         retrieval_mode=runtime_config.retrieval_mode,
@@ -205,7 +186,7 @@ def _begin_answer_request(
 
 def _retrieve_direct(db: Database, config: AppConfig, package: AnswerRetrievalPackage) -> dict[str, Any]:
     try:
-        preparation = prepare_direct_answer_prompt(
+        preparation = ix.prepare_direct_answer_prompt(
             db,
             config=config,
             query=package.query,
@@ -241,7 +222,7 @@ def _retrieve_agentic(
     package: AnswerRetrievalPackage,
 ) -> dict[str, Any]:
     try:
-        tool_results = run_memory_agent_loop(
+        tool_results = ix.run_memory_agent_loop(
             db=db,
             runtime_config=runtime_config,
             query=package.query,
@@ -250,17 +231,17 @@ def _retrieve_agentic(
             max_iterations=config.retrieval.memory_agent_max_iterations,
             process_trace=package.process_trace,
         )
-        prompt = build_agentic_answer_envelope(
+        prompt = ix.build_agentic_answer_envelope(
             query=package.query,
             tool_results=tool_results,
             token_budget=config.retrieval.prompt_token_budget,
             reserved_response_tokens=config.retrieval.reserved_response_tokens,
-            proposed_controller_decision=final_controller_decision_from_trace(package.process_trace),
-            context_proposal=final_context_proposal_from_trace(package.process_trace),
+            proposed_controller_decision=ix.final_controller_decision_from_trace(package.process_trace),
+            context_proposal=ix.final_context_proposal_from_trace(package.process_trace),
         )
-        prompt = inject_history_into_prompt(
+        prompt = ix.inject_history_into_prompt(
             prompt,
-            render_session_history_block(db, config, session_id=package.session_id, query=package.query),
+            ix.render_session_history_block(db, config, session_id=package.session_id, query=package.query),
         )
     except Exception as error:
         return _retrieval_failed(
@@ -279,15 +260,15 @@ def _retrieve_deep(
     runtime_config: RuntimeConfig,
     package: AnswerRetrievalPackage,
 ) -> dict[str, Any]:
-    identity = first_active_agent_identity(db) if package.session_id else None
+    identity = ix.first_active_agent_identity(db) if package.session_id else None
     try:
-        deep_result = run_deep_answer(
+        deep_result = ix.run_deep_answer(
             db,
             package.query,
             config=config,
             runtime_config=runtime_config,
             identity=identity,
-            history_block=render_session_history_block(
+            history_block=ix.render_session_history_block(
                 db, config, session_id=package.session_id, query=package.query
             ),
         )
@@ -351,6 +332,7 @@ def _synthesize_and_persist(
     package: AnswerRetrievalPackage,
 ) -> dict[str, Any]:
     prompt = package.prompt or {}
+    evidence_summary = (prompt.get("context_metadata") or {}).get("evidence_summary")
     adapter_step = {
         "step": "answer_adapter",
         "input": {
@@ -358,6 +340,7 @@ def _synthesize_and_persist(
             "model": runtime_config.ollama_model,
             "prompt_text": prompt.get("prompt_text"),
             "controller_decision": package.controller_decision,
+            "evidence_summary": evidence_summary,
             "timeout_seconds": runtime_config.ollama_timeout_seconds
             if runtime_config.answer_adapter.startswith("ollama")
             else None,
@@ -366,21 +349,21 @@ def _synthesize_and_persist(
     }
     package.process_trace.append(adapter_step)
     try:
-        answer = answer_adapter(runtime_config).answer(prompt)
+        answer = ix.answer_adapter(runtime_config).answer(prompt)
     except Exception as error:
-        finish_answer_process_run(
+        ix.finish_answer_process_run(
             db,
             package.process_run_id,
             status="blocked",
             current_step_id="answer_adapter_failed",
-            exception=answer_exception_payload(
+            exception=ix.answer_exception_payload(
                 "answer_adapter_failed",
                 "Inspect adapter/model configuration and retry.",
                 error,
             ),
         )
         adapter_step["output"] = {"ok": False, "error": str(error)}
-        return attach_answer_activity(
+        return ix.attach_answer_activity(
             {
                 "ok": False,
                 "reason": "answer_adapter_failed",
@@ -421,7 +404,7 @@ def _persist_answer(
 ) -> dict[str, Any]:
     prompt = package.prompt or {}
     try:
-        exchange_id = save_exchange(
+        exchange_id = ix.save_exchange(
             db,
             query=package.query,
             answer=answer,
@@ -432,19 +415,19 @@ def _persist_answer(
             project_domain_id=package.project_domain_id,
             conversation_domain_id=package.conversation_domain_id,
         )
-        schedule_turn_embedding(
+        ix.schedule_turn_embedding(
             db, config, runtime_config, exchange_id, package.session_id, package.query, answer["answer"]
         )
-        schedule_chunking(
+        ix.schedule_chunking(
             db, config, runtime_config, exchange_id, package.session_id, package.query, answer["answer"]
         )
     except Exception as error:
-        finish_answer_process_run(
+        ix.finish_answer_process_run(
             db,
             package.process_run_id,
             status="blocked",
             current_step_id="answer_save_failed",
-            exception=answer_exception_payload(
+            exception=ix.answer_exception_payload(
                 "answer_save_failed",
                 "Inspect exchange persistence and retry.",
                 error,
@@ -457,7 +440,7 @@ def _persist_answer(
                 "output": {"ok": False, "error": str(error), "type": type(error).__name__},
             }
         )
-        return attach_answer_activity(
+        return ix.attach_answer_activity(
             {
                 "ok": False,
                 "reason": "answer_save_failed",
@@ -470,7 +453,7 @@ def _persist_answer(
             }
         )
     completed_step = "deep_retrieval" if package.pre_built_answer else "answer_adapter"
-    finish_answer_process_run(
+    ix.finish_answer_process_run(
         db,
         package.process_run_id,
         status="completed",
@@ -502,7 +485,7 @@ def _persist_answer(
         "process_trace": package.process_trace,
         "phase": "synthesis",
     }
-    return attach_answer_activity(result)
+    return ix.attach_answer_activity(result)
 
 
 def _retrieval_failed(
@@ -513,12 +496,12 @@ def _retrieval_failed(
     error: Exception,
     runtime_config: RuntimeConfig,
 ) -> dict[str, Any]:
-    finish_answer_process_run(
+    ix.finish_answer_process_run(
         db,
         package.process_run_id,
         status="blocked",
-        current_step_id=f"{step_name}_failed",
-        exception=answer_exception_payload(reason, "Inspect retrieval and retry.", error),
+        current_step_id=reason,
+        exception=ix.answer_exception_payload(reason, "Inspect retrieval and retry.", error),
     )
     package.process_trace.append(
         {
@@ -527,14 +510,16 @@ def _retrieval_failed(
             "output": {"ok": False, "error": str(error)},
         }
     )
-    return {
-        "ok": False,
-        "reason": reason,
-        "message": str(error),
-        "adapter": runtime_config.answer_adapter,
-        "model": runtime_config.ollama_model,
-        "focus_node_id": package.selected_node_id,
-        "process_run_id": package.process_run_id,
-        "process_trace": package.process_trace,
-        "phase": "retrieval",
-    }
+    return ix.attach_answer_activity(
+        {
+            "ok": False,
+            "reason": reason,
+            "message": str(error),
+            "adapter": runtime_config.answer_adapter,
+            "model": runtime_config.ollama_model,
+            "focus_node_id": package.selected_node_id,
+            "process_run_id": package.process_run_id,
+            "process_trace": package.process_trace,
+            "phase": "retrieval",
+        }
+    )

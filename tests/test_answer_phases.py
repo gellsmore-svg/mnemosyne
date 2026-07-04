@@ -8,14 +8,13 @@ def test_synthesize_from_prebuilt_deep_package(monkeypatch):
         saved.update(kwargs)
         return "ex-1"
 
-    monkeypatch.setattr("tirzah.sessions.answer_phases.save_exchange", fake_save)
-    monkeypatch.setattr("tirzah.sessions.answer_phases.schedule_turn_embedding", lambda *a, **k: None)
-    monkeypatch.setattr("tirzah.sessions.answer_phases.schedule_chunking", lambda *a, **k: None)
-    monkeypatch.setattr("tirzah.sessions.answer_phases.finish_answer_process_run", lambda *a, **k: None)
-    monkeypatch.setattr(
-        "tirzah.sessions.answer_phases.attach_answer_activity",
-        lambda result: result,
-    )
+    import tirzah.sessions.interaction as interaction
+
+    monkeypatch.setattr(interaction, "save_exchange", fake_save)
+    monkeypatch.setattr(interaction, "schedule_turn_embedding", lambda *a, **k: None)
+    monkeypatch.setattr(interaction, "schedule_chunking", lambda *a, **k: None)
+    monkeypatch.setattr(interaction, "finish_answer_process_run", lambda *a, **k: None)
+    monkeypatch.setattr(interaction, "attach_answer_activity", lambda result: result)
 
     package = AnswerRetrievalPackage(
         query="q",

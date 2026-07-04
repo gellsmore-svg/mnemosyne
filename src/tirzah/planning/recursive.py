@@ -243,7 +243,15 @@ def process_frontend_request(
             ),
             use_split_phases=True,
         )
-        execution = interpret_plan(initial, query=query, session_id=session_id, handlers=handlers)
+        execution = interpret_plan(
+            initial,
+            query=query,
+            session_id=session_id,
+            handlers=handlers,
+            db=db,
+            persist_execution=True,
+            resume_execution=True,
+        )
         initial = execution.plan
         save_plan_revision(db, initial, session_id=session_id)
         result = execution.primary_result or {

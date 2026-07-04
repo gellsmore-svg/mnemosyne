@@ -168,6 +168,11 @@ def ensure_indexes(db: Database) -> None:
     db.process_runs.create_index([("session_id", 1), ("status", 1)])
     db.recursive_plans.create_index([("plan_id", 1), ("revision", 1)], unique=True)
     db.recursive_plans.create_index([("session_id", 1), ("created_at", -1)])
+    db.plan_executions.create_index(
+        [("plan_id", 1), ("revision", 1), ("session_id", 1)],
+        unique=True,
+    )
+    db.plan_executions.create_index([("session_id", 1), ("status", 1), ("updated_at", -1)])
     db.queue.create_index([("status", 1), ("created_at", 1)])
     db.queue.create_index("checksum_sha256")
     db.queue.create_index("path")
