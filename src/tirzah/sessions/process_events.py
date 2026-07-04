@@ -32,6 +32,15 @@ _STEP_EVENT_TYPE: dict[str, str] = {
     "stop": EventType.PROCESS_COMPLETED,
     "sufficiency": "context.sufficiency",
     "specialist_coherence": EventType.SPECIALIST_COMPLETED,
+    "request_plan": EventType.PROCESS_STEP,
+    "plan_execution": EventType.PROCESS_STEP,
+    "context_bundle": EventType.CONTEXT_SELECTED,
+    "plan.iterate.round": EventType.PROCESS_STEP,
+    "plan.decision.selected": EventType.PROCESS_STEP,
+    "plan.step.started": EventType.PROCESS_STEP,
+    "plan.step.completed": EventType.PROCESS_STEP,
+    "plan.step.blocked": EventType.PROCESS_STEP,
+    "plan.step.skipped": EventType.PROCESS_STEP,
 }
 
 # small, safe scalar/identifier fields worth surfacing as event metadata.
@@ -57,6 +66,13 @@ _META_WHITELIST = (
     "objections",
     "confidence",
     "terminal_reason",
+    "branch",
+    "round",
+    "tool_count",
+    "completed_count",
+    "step_count",
+    "artifact_keys",
+    "tools",
 )
 
 _MAX_STR = 200

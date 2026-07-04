@@ -107,7 +107,13 @@ def interpretive_plan_template_hint() -> str:
     )
 
 
-def build_initial_plan_prompt(request: str, max_steps: int, context: str = "") -> str:
+def build_initial_plan_prompt(
+    request: str,
+    max_steps: int,
+    context: str = "",
+    *,
+    profile_hint: str = "",
+) -> str:
     lines = [
         "You are Tirzah's process planner immediately below the front end.",
         "Create a first-pass plan for the request. Do not answer or execute the request.",
@@ -122,6 +128,8 @@ def build_initial_plan_prompt(request: str, max_steps: int, context: str = "") -
         interpretive_plan_template_hint(),
         "",
     ]
+    if profile_hint:
+        lines += [profile_hint, ""]
     if context:
         # Phase 5: make planning context-aware with prior decisions/constraints/open items.
         lines += [context, ""]
@@ -150,10 +158,19 @@ def build_revision_prompt(plan: CairnPlan, new_information: dict[str, Any], max_
     ])
 
 
-def create_initial_plan(request: str, *, planner: PlannerFn, max_steps: int = 12, context: str = "") -> CairnPlan:
+def create_initial_plan(
+    request: str,
+    *,
+    planner: PlannerFn,
+    max_steps: int = 12,
+    context: str = "",
+    profile_hint: str = "",
+) -> CairnPlan:
     plan_id = f"plan_{uuid4().hex}"
     try:
-        payload = parse_plan_payload(planner(build_initial_plan_prompt(request, max_steps, context)))
+        payload = parse_plan_payload(
+            planner(build_initial_plan_prompt(request, max_steps, context, profile_hint=profile_hint))
+        )
         return plan_from_payload(
             payload, plan_id=plan_id, revision=1, parent_revision=None,
             request=request, trigger="initial_request", max_steps=max_steps,
@@ -251,8 +268,19 @@ def process_frontend_request(
             planning_context = (planning_context + "\n\n" + tool_hint).strip()
     except Exception:
         pass
+    profile_hint = ""
+    try:
+        from tirzah.planning.constructs import suggest_plan_profile_hint
+
+        profile_hint = suggest_plan_profile_hint(query, answer_kwargs, config)
+    except Exception:
+        profile_hint = ""
     initial = create_initial_plan(
-        query, planner=planner, max_steps=config.runtime.planning_max_steps, context=planning_context,
+        query,
+        planner=planner,
+        max_steps=config.runtime.planning_max_steps,
+        context=planning_context,
+        profile_hint=profile_hint,
     )
     save_plan_revision(db, initial, session_id=answer_kwargs.get("session_id", "web"))
     if config.runtime.plan_interpretive_execution_enabled:
@@ -275,6 +303,8 @@ def process_frontend_request(
             session_id=session_id,
             handlers=handlers,
             db=db,
+            config=config,
+            answer_kwargs=answer_kwargs,
             persist_execution=True,
             resume_execution=True,
         )
@@ -298,6 +328,22 @@ def process_frontend_request(
         if execution.context.trace:
             result.setdefault("process_trace", [])
             result["process_trace"] = execution.context.trace + result["process_trace"]
+        if result.get("context_bundle_summary"):
+            result.setdefault("process_trace", []).append(
+                {
+                    "step": "context_bundle",
+                    "input": {"session_id": session_id},
+                    "output": result["context_bundle_summary"],
+                }
+            )
+        if result.get("plan_execution"):
+            result.setdefault("process_trace", []).append(
+                {
+                    "step": "plan_execution",
+                    "input": {"plan_id": initial.plan_id, "revision": initial.revision},
+                    "output": result["plan_execution"],
+                }
+            )
     else:
         result = executor(db, config, query=query, **answer_kwargs)
     information = information_from_result(result)

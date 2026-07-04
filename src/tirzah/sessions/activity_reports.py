@@ -342,6 +342,15 @@ def human_step_name(step: str | None) -> str:
         "sufficiency": "Score Context Sufficiency",
         "deep_retrieval": "Deep Retrieval",
         "specialist_coherence": "Specialist Coherence Call",
+        "plan_execution": "Plan Execution State",
+        "context_bundle": "Accumulated Context Bundle",
+        "plan.iterate.round": "Plan Iterate Round",
+        "plan.decision.selected": "Plan Decision Branch",
+        "plan.step.started": "Plan Step Started",
+        "plan.step.completed": "Plan Step Completed",
+        "plan.step.blocked": "Plan Step Blocked",
+        "plan.step.skipped": "Plan Step Skipped",
+        "request_plan": "Request Plan Revision",
     }.get(step or "", str(step or "Unknown Step"))
 
 

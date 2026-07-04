@@ -8,6 +8,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable
 
+from tirzah.planning.constructs import (
+    execute_decision_step,
+    execute_iterate_step,
+    is_owned_by_pending_parent,
+)
 from tirzah.planning.context_bundle import (
     append_tool_result,
     ensure_bundle,
@@ -28,6 +33,10 @@ class PlanExecutionContext:
     artifacts: dict[str, Any] = field(default_factory=dict)
     trace: list[dict[str, Any]] = field(default_factory=list)
     effects: set[str] = field(default_factory=set)  # once-only handlers (e.g. tirzah_retrieval)
+    plan_steps: list[PlanStep] = field(default_factory=list)
+    completed_step_ids: set[str] = field(default_factory=set)
+    answer_kwargs: dict[str, Any] = field(default_factory=dict)
+    config: Any = None
 
 
 @dataclass
@@ -44,6 +53,8 @@ def ready_steps(plan: CairnPlan, completed: set[str]) -> list[PlanStep]:
     for step in plan.steps:
         if step.status != "pending":
             continue
+        if is_owned_by_pending_parent(step, plan.steps, completed):
+            continue
         if all(dep in completed for dep in step.depends_on):
             ready.append(step)
     return ready
@@ -56,6 +67,8 @@ def interpret_plan(
     session_id: str,
     handlers: dict[str, StepHandler] | None = None,
     db: Any = None,
+    config: Any = None,
+    answer_kwargs: dict[str, Any] | None = None,
     persist_execution: bool = False,
     resume_execution: bool = True,
 ) -> PlanExecutionResult:
@@ -74,16 +87,32 @@ def interpret_plan(
                 artifacts=artifacts,
                 trace=trace,
                 effects=effects,
+                config=config,
+                answer_kwargs=dict(answer_kwargs or {}),
+                plan_steps=working_steps,
+                completed_step_ids=completed,
             )
             execution_id = saved.get("execution_id")
         else:
-            context = PlanExecutionContext(query=query, session_id=session_id)
+            context = PlanExecutionContext(
+                query=query,
+                session_id=session_id,
+                config=config,
+                answer_kwargs=dict(answer_kwargs or {}),
+            )
             working_steps = [replace(step) for step in plan.steps]
             completed = set()
     else:
-        context = PlanExecutionContext(query=query, session_id=session_id)
+        context = PlanExecutionContext(
+            query=query,
+            session_id=session_id,
+            config=config,
+            answer_kwargs=dict(answer_kwargs or {}),
+        )
         working_steps = [replace(step) for step in plan.steps]
         completed = set()
+    context.plan_steps = working_steps
+    context.completed_step_ids = completed
     max_rounds = len(working_steps) + 1
 
     for _ in range(max_rounds):
@@ -108,7 +137,7 @@ def interpret_plan(
                 continue
             working_steps[index] = replace(working_steps[index], status="active")
             _append_trace(context, step.id, "plan.step.started", {"construct": step.construct})
-            outcome = _execute_step(working_steps[index], context, handlers)
+            outcome = _execute_step(working_steps[index], context, handlers, completed=completed)
             working_steps[index] = replace(
                 working_steps[index],
                 status=outcome["status"],
@@ -533,7 +562,10 @@ def _execute_step(
     step: PlanStep,
     context: PlanExecutionContext,
     handlers: dict[str, StepHandler],
+    *,
+    completed: set[str] | None = None,
 ) -> dict[str, Any]:
+    completed = completed if completed is not None else context.completed_step_ids
     construct = (step.construct or "STEP").upper()
     if construct == "STEP":
         return {"status": "completed", "artifact": {"acknowledged": True, "action": step.action}}
@@ -541,9 +573,42 @@ def _execute_step(
         return _dispatch_call(step, context, handlers)
     if construct == "RECURSE":
         return {"status": "skipped", "reason": "revision_loop_owns_recursion"}
-    if construct in {"ITERATE", "DECISION"}:
-        return {"status": "blocked", "reason": f"construct_not_interpreted:{construct.lower()}"}
+    if construct == "ITERATE":
+        return execute_iterate_step(
+            step,
+            steps=context.plan_steps,
+            completed=completed,
+            artifacts=context.artifacts,
+            trace=context.trace,
+            run_step=lambda body_step: _run_iterate_body_step(body_step, context, handlers),
+        )
+    if construct == "DECISION":
+        return execute_decision_step(
+            step,
+            steps=context.plan_steps,
+            completed=completed,
+            artifacts=context.artifacts,
+            answer_kwargs=context.answer_kwargs,
+            config=context.config,
+            trace=context.trace,
+        )
     return {"status": "blocked", "reason": f"unknown_construct:{construct}"}
+
+
+def _run_iterate_body_step(
+    step: PlanStep,
+    context: PlanExecutionContext,
+    handlers: dict[str, StepHandler],
+) -> dict[str, Any]:
+    _append_trace(context, step.id, "plan.step.started", {"construct": step.construct})
+    construct = (step.construct or "STEP").upper()
+    if construct == "CALL":
+        outcome = _dispatch_call(step, context, handlers)
+    elif construct == "STEP":
+        outcome = {"status": "completed", "artifact": {"acknowledged": True, "action": step.action}}
+    else:
+        outcome = {"status": "blocked", "reason": f"iterate_body_construct:{construct.lower()}"}
+    return outcome
 
 
 def _dispatch_call(
