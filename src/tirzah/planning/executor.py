@@ -8,6 +8,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable
 
+from tirzah.planning.context_bundle import (
+    append_tool_result,
+    ensure_bundle,
+    resolve_compile_node_id,
+    resolve_web_fetch_url,
+)
 from tirzah.planning.recursive import ALLOWED_PLAN_TOOLS, CairnPlan, PlanStep
 
 StepHandler = Callable[[PlanStep, "PlanExecutionContext"], dict[str, Any]]
@@ -214,15 +220,126 @@ def build_default_handlers(
             result = synthesize_from_retrieval(db, config, package)
             ctx.artifacts["synthesis_result"] = result
             return result
+        bundle = ctx.artifacts.get("context_bundle")
+        if bundle and bundle.get("tool_results") and use_split_phases and pipeline_executor is None:
+            from tirzah.sessions.answer_phases import synthesize_from_context_bundle
+
+            bundle_kwargs = {key: value for key, value in answer_kwargs.items() if key != "session_id"}
+            result = synthesize_from_context_bundle(
+                db,
+                config,
+                query=ctx.query,
+                session_id=ctx.session_id,
+                bundle=bundle,
+                **bundle_kwargs,
+            )
+            ctx.artifacts["synthesis_result"] = result
+            return result
         if pipeline_executor is not None:
             result = pipeline_executor(db, config, query=ctx.query, **answer_kwargs)
             ctx.artifacts["synthesis_result"] = result
             return result
         return {"ok": False, "reason": "missing_retrieval_package"}
 
+    def search_nodes_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        from tirzah.sessions import interaction as ix
+
+        limit = 5
+        output, details = ix.execute_search_nodes_tool(
+            db,
+            query=ctx.query,
+            original_query=ctx.query,
+            session_id=ctx.session_id,
+            runtime_config=config.runtime if config is not None else None,
+            limit=limit,
+        )
+        bundle = ensure_bundle(ctx.artifacts)
+        entry = append_tool_result(
+            bundle,
+            tool="search_nodes",
+            output=output,
+            arguments={"query": ctx.query, "limit": limit},
+            details=details,
+        )
+        return {"ok": True, "tool": "search_nodes", "tool_result": entry, "match_count": len(output.get("matches") or [])}
+
+    def compile_context_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        bundle = ensure_bundle(ctx.artifacts)
+        node_id = resolve_compile_node_id(bundle, answer_kwargs)
+        if not node_id:
+            return {"ok": False, "reason": "missing_node_id"}
+        from tirzah.retrieval.queries import compile_context
+
+        context = compile_context(db, node_id)
+        if not context:
+            return {"ok": False, "reason": "node_not_found", "node_id": node_id}
+        entry = append_tool_result(
+            bundle,
+            tool="compile_context",
+            output=context,
+            arguments={"node_id": node_id},
+        )
+        return {"ok": True, "tool": "compile_context", "tool_result": entry, "node_id": node_id}
+
+    def web_search_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None or config is None:
+            return {"ok": False, "reason": "missing_runtime"}
+        if not config.runtime.web_research_enabled and not answer_kwargs.get("web_research"):
+            return {"ok": False, "reason": "web_research_disabled"}
+        from tirzah.sessions import interaction as ix
+        from tirzah.web_research import sources_to_jsonable
+
+        try:
+            client = ix.make_web_research_client(config.runtime)
+            sources = client.research(ctx.query)
+        except Exception as error:
+            return {"ok": False, "reason": "web_search_failed", "error": str(error)}
+        output = {"query": ctx.query, "sources": sources_to_jsonable(sources)}
+        bundle = ensure_bundle(ctx.artifacts)
+        entry = append_tool_result(
+            bundle,
+            tool="web_search",
+            output=output,
+            arguments={"query": ctx.query},
+        )
+        return {"ok": True, "tool": "web_search", "tool_result": entry, "source_count": len(sources)}
+
+    def web_fetch_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None or config is None:
+            return {"ok": False, "reason": "missing_runtime"}
+        if not config.runtime.web_research_enabled and not answer_kwargs.get("web_research"):
+            return {"ok": False, "reason": "web_research_disabled"}
+        bundle = ensure_bundle(ctx.artifacts)
+        url = resolve_web_fetch_url(bundle)
+        if not url:
+            return {"ok": False, "reason": "missing_web_search_url"}
+        from tirzah.sessions import interaction as ix
+
+        try:
+            client = ix.make_web_research_client(config.runtime)
+            content = client.fetch(url)
+        except Exception as error:
+            return {"ok": False, "reason": "web_fetch_failed", "error": str(error)}
+        output = {"url": url, "content": content, "untrusted": True}
+        entry = append_tool_result(
+            bundle,
+            tool="web_fetch",
+            output=output,
+            arguments={"url": url},
+        )
+        return {"ok": True, "tool": "web_fetch", "tool_result": entry, "url": url}
+
     handlers: dict[str, StepHandler] = {
         "tirzah_retrieval": tirzah_retrieval,
         "answer_adapter": answer_adapter_handler,
+        "search_nodes": search_nodes_handler,
+        "compile_context": compile_context_handler,
+        "web_search": web_search_handler,
+        "web_fetch": web_fetch_handler,
     }
 
     if specialist_runner is not None:
@@ -323,6 +440,6 @@ def _first_artifact(context: PlanExecutionContext) -> dict[str, Any] | None:
 def _serializable_artifacts(artifacts: dict[str, Any]) -> dict[str, Any]:
     serializable: dict[str, Any] = {}
     for key, value in artifacts.items():
-        if key in {"retrieval_package", "synthesis_result", "retrieval_result"} or isinstance(value, dict):
+        if key in {"retrieval_package", "synthesis_result", "retrieval_result", "context_bundle"} or isinstance(value, dict):
             serializable[key] = value
     return serializable

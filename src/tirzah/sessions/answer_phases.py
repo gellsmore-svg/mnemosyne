@@ -135,6 +135,131 @@ def synthesize_from_retrieval(
     return _synthesize_and_persist(db, config, runtime_config, package)
 
 
+def build_retrieval_package_from_context_bundle(
+    db: Database,
+    config: AppConfig,
+    *,
+    query: str,
+    session_id: str,
+    bundle: dict[str, Any],
+    focus_node_id: str | None = None,
+    answer_adapter_name: str | None = None,
+    ollama_model: str | None = None,
+    retrieval_mode: str | None = None,
+    web_research: bool | None = None,
+    project_domain_id: str | None = None,
+    conversation_domain_id: str | None = None,
+) -> dict[str, Any]:
+    """Build an answer envelope from accumulated interpretive tool_results."""
+    tool_results = list((bundle or {}).get("tool_results") or [])
+    if not tool_results:
+        return {"ok": False, "reason": "empty_context_bundle"}
+    runtime_config, process_trace, process_run_id = _begin_answer_request(
+        db,
+        config,
+        query=query,
+        focus_node_id=focus_node_id,
+        session_id=session_id,
+        answer_adapter_name=answer_adapter_name,
+        ollama_model=ollama_model,
+        retrieval_mode=retrieval_mode or "agentic",
+        web_research=web_research,
+    )
+    try:
+        prompt = ix.build_agentic_answer_envelope(
+            query=query,
+            tool_results=tool_results,
+            token_budget=config.retrieval.prompt_token_budget,
+            reserved_response_tokens=config.retrieval.reserved_response_tokens,
+            proposed_controller_decision=ix.final_controller_decision_from_trace(process_trace),
+            context_proposal=ix.final_context_proposal_from_trace(process_trace),
+        )
+        prompt = ix.inject_history_into_prompt(
+            prompt,
+            ix.render_session_history_block(db, config, session_id=session_id, query=query),
+        )
+    except Exception as error:
+        return {
+            "ok": False,
+            "reason": "context_bundle_envelope_failed",
+            "message": str(error),
+            "process_trace": process_trace,
+        }
+    selected_node_id = focus_node_id or _node_id_from_tool_results(tool_results)
+    package = AnswerRetrievalPackage(
+        query=query,
+        session_id=session_id,
+        focus_node_id=focus_node_id,
+        selected_node_id=selected_node_id,
+        retrieval_mode=runtime_config.retrieval_mode,
+        runtime_config=runtime_config.model_dump(),
+        process_trace=process_trace,
+        process_run_id=process_run_id,
+        project_domain_id=project_domain_id,
+        conversation_domain_id=conversation_domain_id,
+        prompt=prompt,
+        retrieval_status=(prompt.get("context_metadata") or {}).get("retrieval_status"),
+        controller_decision=(prompt.get("context_metadata") or {}).get("controller_decision"),
+    )
+    package.process_trace.append(
+        {
+            "step": "context_bundle",
+            "input": {"query": query, "tool_result_count": len(tool_results)},
+            "output": {
+                "ok": True,
+                "retrieval_status": package.retrieval_status,
+                "tools": [row.get("tool") for row in tool_results],
+            },
+        }
+    )
+    return {"ok": True, "package": package.to_dict(), "phase": "context_bundle"}
+
+
+def synthesize_from_context_bundle(
+    db: Database,
+    config: AppConfig,
+    *,
+    query: str,
+    session_id: str,
+    bundle: dict[str, Any],
+    **answer_kwargs: Any,
+) -> dict[str, Any]:
+    """Synthesize and persist using granular plan context artifacts."""
+    built = build_retrieval_package_from_context_bundle(
+        db,
+        config,
+        query=query,
+        session_id=session_id,
+        bundle=bundle,
+        focus_node_id=answer_kwargs.get("focus_node_id"),
+        answer_adapter_name=answer_kwargs.get("answer_adapter_name"),
+        ollama_model=answer_kwargs.get("ollama_model"),
+        retrieval_mode=answer_kwargs.get("retrieval_mode"),
+        web_research=answer_kwargs.get("web_research"),
+        project_domain_id=answer_kwargs.get("project_domain_id"),
+        conversation_domain_id=answer_kwargs.get("conversation_domain_id"),
+    )
+    if not built.get("ok"):
+        return built
+    return synthesize_from_retrieval(db, config, built["package"])
+
+
+def _node_id_from_tool_results(tool_results: list[dict[str, Any]]) -> str | None:
+    for result in reversed(tool_results):
+        if not result.get("ok"):
+            continue
+        output = result.get("output") or {}
+        if not isinstance(output, dict):
+            continue
+        if result.get("tool") == "compile_context" and output.get("focus_node_id"):
+            return str(output["focus_node_id"])
+        if result.get("tool") == "search_nodes":
+            matches = output.get("matches") or []
+            if matches and matches[0].get("node_id"):
+                return str(matches[0]["node_id"])
+    return None
+
+
 def _begin_answer_request(
     db: Database,
     config: AppConfig,

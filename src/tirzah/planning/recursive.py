@@ -95,6 +95,13 @@ def interpretive_plan_template_hint() -> str:
             '3. CALL allowed_tools=["answer_adapter"] depends_on=["2"] — synthesize a grounded answer.',
             '4. RECURSE depends_on=["3"] — revise when new evidence changes required work.',
             "The interpreter executes steps 2 and 3 separately; do not merge retrieval and synthesis.",
+            "",
+            "Granular context profile (when DB/web budget or revision scoping matters):",
+            '2a. CALL allowed_tools=["search_nodes"] depends_on=["1"]',
+            '2b. CALL allowed_tools=["compile_context"] depends_on=["2a"] (uses focus node or top search hit)',
+            '2c. CALL allowed_tools=["web_search"] depends_on=["2b"] — only when external evidence is required',
+            '2d. CALL allowed_tools=["web_fetch"] depends_on=["2c"] — optional when snippets are insufficient',
+            '3. CALL allowed_tools=["answer_adapter"] depends_on=["2b" or "2d"] — synthesize from accumulated tool_results',
         ]
     )
 
