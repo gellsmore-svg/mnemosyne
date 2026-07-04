@@ -101,6 +101,131 @@ def test_decision_skips_unselected_branch():
     assert "2a" in completed and "2a" not in outcome["artifact"]["selected_steps"]
 
 
+def test_interpret_plan_inline_decision_branches_inside_iterate(monkeypatch):
+    tool_order: list[str] = []
+
+    def fake_search(*_args, **_kwargs):
+        tool_order.append("search_nodes")
+        return {"matches": [{"node_id": "n1", "title": "Hit"}], "compiled_contexts": []}, {}
+
+    monkeypatch.setattr("tirzah.sessions.interaction.execute_search_nodes_tool", fake_search)
+    monkeypatch.setattr(
+        "tirzah.retrieval.queries.compile_context",
+        lambda _db, node_id, **_kwargs: (
+            tool_order.append("compile_context") or {
+                "focus_node_id": node_id,
+                "document": {"title": "Doc"},
+                "records": [{"node_id": node_id, "role": "focus", "distance": 0, "text": "body"}],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.answer_phases._begin_answer_request",
+        lambda *_args, **_kwargs: (RuntimeConfig(answer_adapter="mock"), [], "run1"),
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.build_agentic_answer_envelope",
+        lambda **_kwargs: {
+            "prompt_text": "prompt",
+            "budget": {},
+            "context_metadata": {
+                "retrieval_status": "matched_context",
+                "included": [{"node_id": "n1"}],
+                "evidence_summary": {},
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.inject_history_into_prompt",
+        lambda prompt, _history: prompt,
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.render_session_history_block",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.answer_phases.synthesize_from_context_bundle",
+        lambda _db, _config, **kwargs: {
+            "ok": True,
+            "answer": "inline iterate answer",
+            "used_node_ids": ["n1"],
+            "retrieval_status": "matched_context",
+        },
+    )
+
+    plan = _plan(
+        PlanStep(
+            id="1",
+            action="Gather MAX: 2",
+            construct="ITERATE",
+            success_criteria=["until:context_ready"],
+        ),
+        PlanStep(
+            id="2",
+            action="Search",
+            construct="CALL",
+            depends_on=["1"],
+            allowed_tools=["search_nodes"],
+        ),
+        PlanStep(
+            id="3",
+            action="ON: context_depth",
+            construct="DECISION",
+            depends_on=["1", "2"],
+        ),
+        PlanStep(
+            id="3a",
+            action="Compile",
+            construct="CALL",
+            depends_on=["3"],
+            allowed_tools=["compile_context"],
+            success_criteria=["branch:compile"],
+        ),
+        PlanStep(
+            id="3b",
+            action="Expand",
+            construct="CALL",
+            depends_on=["3"],
+            allowed_tools=["expand_proximity"],
+            success_criteria=["branch:expand"],
+        ),
+        PlanStep(
+            id="4",
+            action="Answer",
+            construct="CALL",
+            depends_on=["1"],
+            allowed_tools=["answer_adapter"],
+        ),
+    )
+    handlers = build_default_handlers(
+        db=object(),
+        config=AppConfig(),
+        answer_kwargs={"focus_node_id": "focus-1", "session_id": "s1"},
+        use_split_phases=True,
+    )
+    result = interpret_plan(
+        plan,
+        query="Q",
+        session_id="s1",
+        handlers=handlers,
+        config=AppConfig(),
+        answer_kwargs={"focus_node_id": "focus-1", "session_id": "s1"},
+    )
+    statuses = {step.id: step.status for step in result.plan.steps}
+    assert statuses["3"] == "completed"
+    assert statuses["3a"] == "completed"
+    assert statuses["3b"] == "skipped"
+    assert tool_order == ["search_nodes", "compile_context"]
+    assert result.ok
+    assert result.primary_result["answer"] == "inline iterate answer"
+    inline_events = [
+        row
+        for row in result.context.trace
+        if row.get("metadata", {}).get("inline_decision_branch")
+    ]
+    assert any(row.get("step_id") == "3a" for row in inline_events)
+
+
 def test_interpret_plan_expands_iterate_and_decision(monkeypatch):
     monkeypatch.setattr(
         "tirzah.sessions.interaction.execute_search_nodes_tool",

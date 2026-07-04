@@ -8,10 +8,68 @@ from tirzah.planning.context_bundle import ensure_bundle, latest_tool_matches
 from tirzah.planning.recursive import PlanStep
 
 StepRunner = Callable[[PlanStep], dict[str, Any]]
+BranchRunner = Callable[[PlanStep], dict[str, Any]]
 
 
 def direct_body_steps(parent_id: str, steps: list[PlanStep]) -> list[PlanStep]:
     return [step for step in steps if parent_id in step.depends_on]
+
+
+def transitive_dependents(root_id: str, steps: list[PlanStep]) -> set[str]:
+    """All steps that depend on *root_id* directly or through other dependents."""
+    dependents: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for row in steps:
+            if row.id in dependents or row.id == root_id:
+                continue
+            deps = set(row.depends_on)
+            if root_id in deps or deps.intersection(dependents):
+                if root_id in deps or dependents.intersection(deps):
+                    dependents.add(row.id)
+                    changed = True
+    return dependents
+
+
+def selected_branch_subtree(decision_id: str, selected_ids: list[str], steps: list[PlanStep]) -> list[PlanStep]:
+    """Steps reachable from selected branch heads without crossing skipped heads."""
+    heads = set(selected_ids)
+    skipped_heads = {row.id for row in direct_body_steps(decision_id, steps) if row.id not in heads}
+    subtree_ids: set[str] = set(heads)
+    changed = True
+    while changed:
+        changed = False
+        for row in steps:
+            if row.id in subtree_ids or row.id in skipped_heads:
+                continue
+            deps = set(row.depends_on)
+            if decision_id not in deps and not deps.intersection(subtree_ids):
+                continue
+            if deps.intersection(skipped_heads):
+                continue
+            if deps - {decision_id} - subtree_ids:
+                continue
+            subtree_ids.add(row.id)
+            changed = True
+    order = {row.id: index for index, row in enumerate(steps)}
+    return sorted((row for row in steps if row.id in subtree_ids), key=lambda row: order[row.id])
+
+
+def reset_decision_subtree(
+    decision_id: str,
+    steps: list[PlanStep],
+    completed: set[str],
+    artifacts: dict[str, Any],
+) -> None:
+    for step_id in transitive_dependents(decision_id, steps):
+        row = next((item for item in steps if item.id == step_id), None)
+        if row is None:
+            continue
+        row.status = "pending"
+        completed.discard(step_id)
+        artifacts.pop(step_id, None)
+    artifacts.pop(f"decision:{decision_id}", None)
 
 
 def is_owned_by_pending_parent(step: PlanStep, steps: list[PlanStep], completed: set[str]) -> bool:
@@ -200,6 +258,8 @@ def execute_iterate_step(
                 if (body_step.construct or "").upper() not in {"BREAK", "CONTINUE"}:
                     body_step.status = "pending"
                     completed.discard(body_step.id)
+                    if (body_step.construct or "").upper() == "DECISION":
+                        reset_decision_subtree(body_step.id, steps, completed, artifacts)
             if body_step.status != "pending":
                 continue
             if not all(dep in completed or dep == step.id for dep in body_step.depends_on):
@@ -270,7 +330,10 @@ def execute_iterate_step(
                     }
                 )
                 continue
-            outcome = run_step(body_step)
+            try:
+                outcome = run_step(body_step, round_num=round_num)
+            except TypeError:
+                outcome = run_step(body_step)
             body_step.status = outcome["status"]
             trace.append(
                 {
@@ -302,6 +365,58 @@ def execute_iterate_step(
     }
 
 
+def execute_selected_branch_steps(
+    step: PlanStep,
+    *,
+    steps: list[PlanStep],
+    completed: set[str],
+    artifacts: dict[str, Any],
+    selected_ids: list[str],
+    branch_runner: BranchRunner,
+    trace: list[dict[str, Any]],
+    round_num: int | None = None,
+) -> dict[str, Any]:
+    """Run selected DECISION branch steps immediately (inside an active ITERATE round)."""
+    subtree = selected_branch_subtree(step.id, selected_ids, steps)
+    metadata_base = {"round": round_num} if round_num is not None else {}
+    while True:
+        progressed = False
+        for branch_step in subtree:
+            if branch_step.status != "pending":
+                continue
+            if not all(dep in completed or dep == step.id for dep in branch_step.depends_on):
+                continue
+            outcome = branch_runner(branch_step)
+            branch_step.status = outcome["status"]
+            trace.append(
+                {
+                    "step": f"plan.step.{outcome['status']}",
+                    "step_id": branch_step.id,
+                    "metadata": {
+                        "construct": branch_step.construct,
+                        "reason": outcome.get("reason"),
+                        "inline_decision_branch": True,
+                        "decision_id": step.id,
+                        **metadata_base,
+                    },
+                }
+            )
+            progressed = True
+            if outcome["status"] == "completed":
+                completed.add(branch_step.id)
+                if outcome.get("artifact") is not None:
+                    artifacts[branch_step.id] = outcome["artifact"]
+            elif outcome["status"] == "blocked":
+                return {
+                    "status": "blocked",
+                    "reason": outcome.get("reason", "inline_branch_blocked"),
+                    "artifact": outcome.get("artifact"),
+                }
+        if not progressed:
+            break
+    return {"status": "completed"}
+
+
 def execute_decision_step(
     step: PlanStep,
     *,
@@ -311,6 +426,8 @@ def execute_decision_step(
     answer_kwargs: dict[str, Any],
     config: Any,
     trace: list[dict[str, Any]],
+    branch_runner: BranchRunner | None = None,
+    round_num: int | None = None,
 ) -> dict[str, Any]:
     signal = parse_decision_signal(step)
     chosen = evaluate_decision_branch(signal, artifacts=artifacts, answer_kwargs=answer_kwargs, config=config)
@@ -345,10 +462,25 @@ def execute_decision_step(
         {
             "step": "plan.decision.selected",
             "step_id": step.id,
-            "metadata": {"signal": signal, "branch": chosen, "selected_steps": selected},
+            "metadata": {"signal": signal, "branch": chosen, "selected_steps": selected, "round": round_num},
         }
     )
-    return {"status": "completed", "artifact": {"signal": signal, "branch": chosen, "selected_steps": selected}}
+    artifact = {"signal": signal, "branch": chosen, "selected_steps": selected}
+    if branch_runner is not None and selected:
+        branch_outcome = execute_selected_branch_steps(
+            step,
+            steps=steps,
+            completed=completed,
+            artifacts=artifacts,
+            selected_ids=selected,
+            branch_runner=branch_runner,
+            trace=trace,
+            round_num=round_num,
+        )
+        if branch_outcome["status"] == "blocked":
+            return branch_outcome
+        artifact["inline_branch_status"] = branch_outcome["status"]
+    return {"status": "completed", "artifact": artifact}
 
 
 def suggest_plan_profile_hint(query: str, answer_kwargs: dict[str, Any], config: Any) -> str:

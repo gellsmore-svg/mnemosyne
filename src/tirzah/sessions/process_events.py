@@ -81,6 +81,8 @@ _META_WHITELIST = (
     "condition",
     "skipped_parent",
     "loop_break",
+    "inline_decision_branch",
+    "decision_id",
     "tool_count",
     "completed_count",
     "step_count",

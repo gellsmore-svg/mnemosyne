@@ -37,6 +37,7 @@ class PlanExecutionContext:
     completed_step_ids: set[str] = field(default_factory=set)
     answer_kwargs: dict[str, Any] = field(default_factory=dict)
     config: Any = None
+    iterate_round: int | None = None
 
 
 @dataclass
@@ -574,13 +575,17 @@ def _execute_step(
     if construct == "RECURSE":
         return {"status": "skipped", "reason": "revision_loop_owns_recursion"}
     if construct == "ITERATE":
+        def run_iterate_body(body_step: PlanStep, *, round_num: int = 1) -> dict[str, Any]:
+            context.iterate_round = round_num
+            return _run_iterate_body_step(body_step, context, handlers)
+
         return execute_iterate_step(
             step,
             steps=context.plan_steps,
             completed=completed,
             artifacts=context.artifacts,
             trace=context.trace,
-            run_step=lambda body_step: _run_iterate_body_step(body_step, context, handlers),
+            run_step=run_iterate_body,
         )
     if construct == "DECISION":
         return execute_decision_step(
@@ -600,10 +605,27 @@ def _run_iterate_body_step(
     context: PlanExecutionContext,
     handlers: dict[str, StepHandler],
 ) -> dict[str, Any]:
-    _append_trace(context, step.id, "plan.step.started", {"construct": step.construct})
+    _append_trace(
+        context,
+        step.id,
+        "plan.step.started",
+        {"construct": step.construct, "round": context.iterate_round},
+    )
     construct = (step.construct or "STEP").upper()
     if construct in {"BREAK", "CONTINUE"}:
         return {"status": "completed", "artifact": {"control": construct.lower()}}
+    if construct == "DECISION":
+        return execute_decision_step(
+            step,
+            steps=context.plan_steps,
+            completed=context.completed_step_ids,
+            artifacts=context.artifacts,
+            answer_kwargs=context.answer_kwargs,
+            config=context.config,
+            trace=context.trace,
+            branch_runner=lambda branch_step: _run_iterate_body_step(branch_step, context, handlers),
+            round_num=context.iterate_round,
+        )
     return _execute_step(
         step,
         context,
