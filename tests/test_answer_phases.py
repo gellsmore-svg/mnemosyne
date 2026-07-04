@@ -1,7 +1,7 @@
 from tirzah.sessions.answer_phases import AnswerRetrievalPackage, synthesize_from_retrieval
 
 
-def test_synthesize_from_prebuilt_deep_package(monkeypatch):
+def test_synthesize_from_deep_useful_chunks(monkeypatch):
     saved = {}
 
     def fake_save(db, **kwargs):
@@ -15,6 +15,11 @@ def test_synthesize_from_prebuilt_deep_package(monkeypatch):
     monkeypatch.setattr(interaction, "schedule_chunking", lambda *a, **k: None)
     monkeypatch.setattr(interaction, "finish_answer_process_run", lambda *a, **k: None)
     monkeypatch.setattr(interaction, "attach_answer_activity", lambda result: result)
+    monkeypatch.setattr(interaction, "render_session_history_block", lambda *a, **k: "")
+    monkeypatch.setattr(
+        "tirzah.retrieval.deep.synthesize_answer",
+        lambda query, chunks, adapter, history_block="": "deep answer",
+    )
 
     package = AnswerRetrievalPackage(
         query="q",
@@ -27,12 +32,7 @@ def test_synthesize_from_prebuilt_deep_package(monkeypatch):
         process_run_id=None,
         prompt={"prompt_text": "", "budget": {}, "context_metadata": {"included": []}},
         retrieval_status="deep_context",
-        pre_built_answer={
-            "answer": "deep answer",
-            "used_node_ids": ["n1"],
-            "adapter": "mock",
-            "model": "m",
-        },
+        useful_chunks=[{"node_id": "n1", "title": "T", "text": "body"}],
     )
 
     result = synthesize_from_retrieval(None, None, package)
@@ -40,6 +40,46 @@ def test_synthesize_from_prebuilt_deep_package(monkeypatch):
     assert result["answer"] == "deep answer"
     assert result["phase"] == "synthesis"
     assert saved["answer"]["answer"] == "deep answer"
+    adapter_steps = [row for row in result["process_trace"] if row.get("step") == "answer_adapter"]
+    assert len(adapter_steps) == 1
+    assert adapter_steps[0]["input"]["mode"] == "deep_synthesis"
+    assert adapter_steps[0]["output"]["ok"] is True
+
+
+def test_retrieve_deep_stores_chunks_not_prebuilt_answer(monkeypatch):
+    import tirzah.sessions.answer_phases as phases
+    import tirzah.sessions.interaction as interaction
+
+    monkeypatch.setattr(interaction, "first_active_agent_identity", lambda db: None)
+    monkeypatch.setattr(interaction, "answer_adapter", lambda rc: object())
+    monkeypatch.setattr(interaction, "build_query_embedding", lambda rc, text: None)
+    monkeypatch.setattr(
+        "tirzah.retrieval.deep.run_deep_retrieval",
+        lambda *a, **k: {
+            "useful_chunks": [{"node_id": "n1", "title": "T", "text": "x"}],
+            "rounds": [],
+            "trace": [{"step": "stop", "reason": "planner_stop"}],
+        },
+    )
+    from tirzah.config import AppConfig, RuntimeConfig
+
+    runtime = RuntimeConfig(answer_adapter="mock")
+    config = AppConfig()
+    monkeypatch.setattr(phases, "_begin_answer_request", lambda *a, **k: (runtime, [], None))
+
+    package = phases.AnswerRetrievalPackage(
+        query="q",
+        session_id="s1",
+        focus_node_id=None,
+        selected_node_id=None,
+        retrieval_mode="deep",
+        runtime_config={"answer_adapter": "mock"},
+        process_trace=[],
+    )
+    result = phases._retrieve_deep(None, config, runtime, package)
+    assert result["ok"] is True
+    assert package.pre_built_answer is None
+    assert package.useful_chunks == [{"node_id": "n1", "title": "T", "text": "x"}]
 
 
 def test_split_handlers_invoke_both_phases(monkeypatch):

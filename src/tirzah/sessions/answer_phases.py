@@ -1,6 +1,6 @@
 """Split answer pipeline into retrieval and synthesis phases for interpretive PLAN execution.
 
-``retrieve_for_answer`` gathers context (and may pre-synthesize in deep mode).
+``retrieve_for_answer`` gathers context only (including deep retrieval chunks).
 ``synthesize_from_retrieval`` runs the answer adapter and persists the exchange.
 """
 from __future__ import annotations
@@ -35,6 +35,7 @@ class AnswerRetrievalPackage:
     retrieval_status: str | None = None
     controller_decision: Any = None
     pre_built_answer: dict[str, Any] | None = None
+    useful_chunks: list[dict[str, Any]] | None = None
     deep_trace: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -53,6 +54,7 @@ class AnswerRetrievalPackage:
             "retrieval_status": self.retrieval_status,
             "controller_decision": self.controller_decision,
             "pre_built_answer": self.pre_built_answer,
+            "useful_chunks": self.useful_chunks,
             "deep_trace": self.deep_trace,
         }
 
@@ -73,6 +75,7 @@ class AnswerRetrievalPackage:
             retrieval_status=value.get("retrieval_status"),
             controller_decision=value.get("controller_decision"),
             pre_built_answer=value.get("pre_built_answer"),
+            useful_chunks=value.get("useful_chunks"),
             deep_trace=value.get("deep_trace"),
         )
 
@@ -132,6 +135,8 @@ def synthesize_from_retrieval(
     runtime_config = RuntimeConfig.model_validate(package.runtime_config)
     if package.pre_built_answer:
         return _persist_prebuilt_answer(db, config, runtime_config, package)
+    if package.useful_chunks is not None:
+        return _synthesize_deep_and_persist(db, config, runtime_config, package)
     return _synthesize_and_persist(db, config, runtime_config, package)
 
 
@@ -385,28 +390,33 @@ def _retrieve_deep(
     runtime_config: RuntimeConfig,
     package: AnswerRetrievalPackage,
 ) -> dict[str, Any]:
+    from tirzah.retrieval.deep import (
+        make_planner,
+        make_scorer,
+        make_triager,
+        run_deep_retrieval,
+    )
+
     identity = ix.first_active_agent_identity(db) if package.session_id else None
+    adapter = ix.answer_adapter(runtime_config)
+    embedder = (lambda text: ix.build_query_embedding(runtime_config, text)) if runtime_config else None
     try:
-        deep_result = ix.run_deep_answer(
+        deep_result = run_deep_retrieval(
             db,
             package.query,
             config=config,
-            runtime_config=runtime_config,
+            planner=make_planner(adapter),
+            triager=make_triager(adapter),
+            scorer=make_scorer(adapter) if getattr(config.retrieval, "deep_sufficiency_scoring", False) else None,
+            query_embedding=ix.build_query_embedding(runtime_config, package.query),
             identity=identity,
-            history_block=ix.render_session_history_block(
-                db, config, session_id=package.session_id, query=package.query
-            ),
+            embedder=embedder,
         )
     except Exception as error:
         return _retrieval_failed(db, package, "deep_retrieval_failed", "deep_retrieval", error, runtime_config)
     useful = deep_result["useful_chunks"]
     used_node_ids = [nid for nid in (node_identity(c) for c in useful) if nid]
-    package.pre_built_answer = {
-        "answer": deep_result["answer"],
-        "used_node_ids": used_node_ids,
-        "adapter": runtime_config.answer_adapter,
-        "model": runtime_config.ollama_model,
-    }
+    package.useful_chunks = list(useful)
     package.prompt = {
         "prompt_text": "",
         "budget": {},
@@ -500,6 +510,81 @@ def _synthesize_and_persist(
                 "process_trace": package.process_trace,
             }
         )
+    adapter_step["output"] = {
+        "ok": True,
+        "answer": answer["answer"],
+        "used_node_ids": answer["used_node_ids"],
+        "adapter": answer["adapter"],
+        "model": answer.get("model"),
+    }
+    return _persist_answer(db, config, runtime_config, package, answer)
+
+
+def _synthesize_deep_and_persist(
+    db: Database,
+    config: AppConfig,
+    runtime_config: RuntimeConfig,
+    package: AnswerRetrievalPackage,
+) -> dict[str, Any]:
+    from tirzah.retrieval.deep import synthesize_answer
+
+    useful = list(package.useful_chunks or [])
+    used_node_ids = [nid for nid in (node_identity(c) for c in useful) if nid]
+    history_block = ix.render_session_history_block(
+        db, config, session_id=package.session_id, query=package.query
+    )
+    adapter_step = {
+        "step": "answer_adapter",
+        "input": {
+            "adapter": runtime_config.answer_adapter,
+            "model": runtime_config.ollama_model,
+            "mode": "deep_synthesis",
+            "useful_count": len(useful),
+            "timeout_seconds": runtime_config.ollama_timeout_seconds
+            if runtime_config.answer_adapter.startswith("ollama")
+            else None,
+        },
+        "output": {},
+    }
+    package.process_trace.append(adapter_step)
+    try:
+        answer_text = synthesize_answer(
+            package.query,
+            useful,
+            ix.answer_adapter(runtime_config),
+            history_block=history_block,
+        )
+    except Exception as error:
+        ix.finish_answer_process_run(
+            db,
+            package.process_run_id,
+            status="blocked",
+            current_step_id="answer_adapter_failed",
+            exception=ix.answer_exception_payload(
+                "answer_adapter_failed",
+                "Inspect adapter/model configuration and retry.",
+                error,
+            ),
+        )
+        adapter_step["output"] = {"ok": False, "error": str(error)}
+        return ix.attach_answer_activity(
+            {
+                "ok": False,
+                "reason": "answer_adapter_failed",
+                "message": str(error),
+                "adapter": runtime_config.answer_adapter,
+                "model": runtime_config.ollama_model,
+                "focus_node_id": package.selected_node_id,
+                "process_run_id": package.process_run_id,
+                "process_trace": package.process_trace,
+            }
+        )
+    answer = {
+        "answer": answer_text,
+        "used_node_ids": used_node_ids,
+        "adapter": runtime_config.answer_adapter,
+        "model": runtime_config.ollama_model,
+    }
     adapter_step["output"] = {
         "ok": True,
         "answer": answer["answer"],

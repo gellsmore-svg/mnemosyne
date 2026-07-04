@@ -68,6 +68,14 @@ _META_WHITELIST = (
     "terminal_reason",
     "branch",
     "round",
+    "max_rounds",
+    "step_id",
+    "construct",
+    "reason",
+    "revision",
+    "signal",
+    "selected_steps",
+    "body",
     "tool_count",
     "completed_count",
     "step_count",
@@ -81,7 +89,10 @@ _MAX_STR = 200
 def _compact_meta(step: dict[str, Any]) -> dict[str, Any]:
     """Pull a bounded, whitelisted set of small fields from a trace step."""
     meta: dict[str, Any] = {}
-    for source in (step.get("input"), step.get("output")):
+    if step.get("step_id") is not None:
+        meta["step_id"] = step["step_id"]
+    sources: list[Any] = [step.get("input"), step.get("output"), step.get("metadata")]
+    for source in sources:
         if not isinstance(source, dict):
             continue
         for key in _META_WHITELIST:
@@ -91,6 +102,10 @@ def _compact_meta(step: dict[str, Any]) -> dict[str, Any]:
                     value = value[:_MAX_STR] + "…"
                 if isinstance(value, (str, int, float, bool)) or value is None:
                     meta[key] = value
+                elif isinstance(value, list) and key == "selected_steps":
+                    meta["selected_steps"] = [str(item) for item in value[:12]]
+                elif isinstance(value, list) and key == "body":
+                    meta["body"] = [str(item) for item in value[:12]]
         # derive a count of included/returned items without dumping them
         for list_key in ("included_nodes", "tool_results", "results", "candidates"):
             items = source.get(list_key)
