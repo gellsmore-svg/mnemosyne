@@ -40,6 +40,14 @@ _STEP_EVENT_TYPE: dict[str, str] = {
     "plan.parallel.completed": EventType.PROCESS_STEP,
     "plan.parallel.merged": EventType.PROCESS_STEP,
     "plan.retry.attempt": EventType.PROCESS_STEP,
+    "plan.retry.backoff": EventType.PROCESS_STEP,
+    "plan.await.pending": EventType.PROCESS_STEP,
+    "plan.await.satisfied": EventType.PROCESS_STEP,
+    "plan.await.timeout": EventType.PROCESS_STEP,
+    "plan.service.tick": EventType.PROCESS_STEP,
+    "plan.concurrent.branch": EventType.PROCESS_STEP,
+    "plan.concurrent.completed": EventType.PROCESS_STEP,
+    "plan.revision.mid_step": EventType.PROCESS_STEP,
     "plan.error.triggered": EventType.PROCESS_STEP,
     "context_bundle": EventType.CONTEXT_SELECTED,
     "plan.iterate.round": EventType.PROCESS_STEP,
@@ -48,6 +56,7 @@ _STEP_EVENT_TYPE: dict[str, str] = {
     "plan.step.completed": EventType.PROCESS_STEP,
     "plan.step.blocked": EventType.PROCESS_STEP,
     "plan.step.skipped": EventType.PROCESS_STEP,
+    "plan.step.awaiting": EventType.PROCESS_STEP,
     "plan.loop.break": EventType.PROCESS_STEP,
     "plan.loop.continue": EventType.PROCESS_STEP,
 }
@@ -113,6 +122,15 @@ _META_WHITELIST = (
     "step_count",
     "artifact_keys",
     "tools",
+    "execution_mode",
+    "backoff_mode",
+    "delay_seconds",
+    "event",
+    "timeout_seconds",
+    "signals",
+    "tick",
+    "service_tick",
+    "ticks",
 )
 
 _MAX_STR = 200

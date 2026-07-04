@@ -5,18 +5,24 @@ registry constrained by allowed_tools, and records per-step status + trace.
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable
 
 from tirzah.planning.constructs import (
+    execute_await_step,
+    execute_concurrent_step,
     execute_decision_step,
     execute_error_step,
     execute_iterate_step,
     execute_merge_step,
     execute_parallel_step,
     execute_retry_step,
+    execute_service_step,
     is_owned_by_pending_parent,
+    resume_awaiting_steps,
 )
+from tirzah.planning.revision_runtime import apply_mid_step_revision
 from tirzah.planning.context_bundle import (
     append_tool_result,
     ensure_bundle,
@@ -76,6 +82,8 @@ def interpret_plan(
     answer_kwargs: dict[str, Any] | None = None,
     persist_execution: bool = False,
     resume_execution: bool = True,
+    revision_planner: Callable[[str], str] | None = None,
+    allow_mid_revision: bool = False,
 ) -> PlanExecutionResult:
     """Walk *plan* step-by-step; return updated plan + execution context."""
     handlers = handlers or {}
@@ -119,17 +127,44 @@ def interpret_plan(
     context.plan_steps = working_steps
     context.completed_step_ids = completed
     max_rounds = len(working_steps) + 1
+    shared_parallel_lock = threading.Lock()
+    current_plan = replace(plan)
+
+    def isolated_branch_runner(local_artifacts: dict[str, Any], local_completed: set[str]) -> Callable[[PlanStep], dict[str, Any]]:
+        def runner(branch_step: PlanStep) -> dict[str, Any]:
+            saved_artifacts = context.artifacts
+            context.artifacts = local_artifacts
+            try:
+                return _execute_step(
+                    branch_step,
+                    context,
+                    handlers,
+                    completed=local_completed,
+                    shared_parallel_lock=shared_parallel_lock,
+                    isolated_branch_runner=isolated_branch_runner,
+                )
+            finally:
+                context.artifacts = saved_artifacts
+
+        return runner
 
     for _ in range(max_rounds):
+        resume_awaiting_steps(
+            working_steps,
+            completed,
+            answer_kwargs=context.answer_kwargs,
+            artifacts=context.artifacts,
+            trace=context.trace,
+        )
         ready = ready_steps(
             CairnPlan(
-                plan_id=plan.plan_id,
-                revision=plan.revision,
-                parent_revision=plan.parent_revision,
-                request=plan.request,
-                trigger=plan.trigger,
-                objective=plan.objective,
-                status=plan.status,
+                plan_id=current_plan.plan_id,
+                revision=current_plan.revision,
+                parent_revision=current_plan.parent_revision,
+                request=current_plan.request,
+                trigger=current_plan.trigger,
+                objective=current_plan.objective,
+                status=current_plan.status,
                 steps=working_steps,
             ),
             completed,
@@ -142,7 +177,14 @@ def interpret_plan(
                 continue
             working_steps[index] = replace(working_steps[index], status="active")
             _append_trace(context, step.id, "plan.step.started", {"construct": step.construct})
-            outcome = _execute_step(working_steps[index], context, handlers, completed=completed)
+            outcome = _execute_step(
+                working_steps[index],
+                context,
+                handlers,
+                completed=completed,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            )
             working_steps[index] = replace(
                 working_steps[index],
                 status=outcome["status"],
@@ -157,12 +199,32 @@ def interpret_plan(
                 completed.add(step.id)
                 if outcome.get("artifact") is not None:
                     context.artifacts[step.id] = outcome["artifact"]
+            if (
+                allow_mid_revision
+                and revision_planner is not None
+                and config is not None
+                and outcome["status"] == "completed"
+            ):
+                working_steps, revised_plan, swapped = apply_mid_step_revision(
+                    current_plan,
+                    working_steps,
+                    completed,
+                    context,
+                    planner=revision_planner,
+                    config=config,
+                    last_step_id=step.id,
+                    last_outcome=outcome,
+                )
+                if swapped:
+                    current_plan = revised_plan
+                    context.plan_steps = working_steps
+                    context.completed_step_ids = completed
             if db and persist_execution:
                 from tirzah.planning.execution_store import save_plan_execution
 
                 execution_id = save_plan_execution(
                     db,
-                    plan=replace(plan, steps=working_steps),
+                    plan=replace(current_plan, steps=working_steps),
                     session_id=session_id,
                     query=query,
                     steps=working_steps,
@@ -174,14 +236,15 @@ def interpret_plan(
                     execution_id=execution_id,
                 )
 
-    updated = replace(plan, steps=working_steps)
+    updated = replace(current_plan, steps=working_steps)
     primary = (
         context.artifacts.get("synthesis_result")
         or context.artifacts.get("retrieval_result")
         or _first_artifact(context)
     )
     blocked = [s for s in working_steps if s.status == "blocked"]
-    ok = not blocked and any(s.status == "completed" for s in working_steps)
+    awaiting = [s for s in working_steps if s.status == "awaiting"]
+    ok = not blocked and not awaiting and any(s.status == "completed" for s in working_steps)
     if db and persist_execution:
         from tirzah.planning.execution_store import finalize_plan_execution, save_plan_execution
 
@@ -200,7 +263,7 @@ def interpret_plan(
             execution_id=execution_id,
         )
         if final_status != "running":
-            finalize_plan_execution(db, plan.plan_id, plan.revision, session_id, status=final_status)
+            finalize_plan_execution(db, current_plan.plan_id, current_plan.revision, session_id, status=final_status)
     return PlanExecutionResult(
         ok=ok,
         plan=updated,
@@ -569,6 +632,8 @@ def _execute_step(
     handlers: dict[str, StepHandler],
     *,
     completed: set[str] | None = None,
+    shared_parallel_lock: threading.Lock | None = None,
+    isolated_branch_runner: Callable[[dict[str, Any], set[str]], Callable[[PlanStep], dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     completed = completed if completed is not None else context.completed_step_ids
     construct = (step.construct or "STEP").upper()
@@ -581,7 +646,13 @@ def _execute_step(
     if construct == "ITERATE":
         def run_iterate_body(body_step: PlanStep, *, round_num: int = 1) -> dict[str, Any]:
             context.iterate_round = round_num
-            return _run_iterate_body_step(body_step, context, handlers)
+            return _run_iterate_body_step(
+                body_step,
+                context,
+                handlers,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            )
 
         return execute_iterate_step(
             step,
@@ -608,10 +679,61 @@ def _execute_step(
             completed=completed,
             artifacts=context.artifacts,
             branch_runner=lambda branch_step: _execute_step(
-                branch_step, context, handlers, completed=completed
+                branch_step,
+                context,
+                handlers,
+                completed=completed,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
             ),
             trace=context.trace,
             round_num=context.iterate_round,
+            isolated_branch_runner=isolated_branch_runner,
+            shared_lock=shared_parallel_lock,
+        )
+    if construct == "AWAIT":
+        return execute_await_step(
+            step,
+            answer_kwargs=context.answer_kwargs,
+            artifacts=context.artifacts,
+            trace=context.trace,
+        )
+    if construct == "SERVICE":
+        return execute_service_step(
+            step,
+            steps=context.plan_steps,
+            completed=completed,
+            artifacts=context.artifacts,
+            run_step=lambda body_step: _execute_step(
+                body_step,
+                context,
+                handlers,
+                completed=completed,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
+            trace=context.trace,
+            answer_kwargs=context.answer_kwargs,
+            round_num=context.iterate_round,
+        )
+    if construct == "CONCURRENT":
+        return execute_concurrent_step(
+            step,
+            steps=context.plan_steps,
+            completed=completed,
+            artifacts=context.artifacts,
+            branch_runner=lambda branch_step: _execute_step(
+                branch_step,
+                context,
+                handlers,
+                completed=completed,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
+            trace=context.trace,
+            round_num=context.iterate_round,
+            isolated_branch_runner=isolated_branch_runner,
+            shared_lock=shared_parallel_lock,
         )
     if construct == "MERGE":
         return execute_merge_step(
@@ -626,7 +748,14 @@ def _execute_step(
             steps=context.plan_steps,
             completed=completed,
             artifacts=context.artifacts,
-            run_step=lambda body_step: _execute_step(body_step, context, handlers, completed=completed),
+            run_step=lambda body_step: _execute_step(
+                body_step,
+                context,
+                handlers,
+                completed=completed,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
             trace=context.trace,
             round_num=context.iterate_round,
         )
@@ -636,7 +765,14 @@ def _execute_step(
             steps=context.plan_steps,
             completed=completed,
             artifacts=context.artifacts,
-            run_step=lambda body_step: _execute_step(body_step, context, handlers, completed=completed),
+            run_step=lambda body_step: _execute_step(
+                body_step,
+                context,
+                handlers,
+                completed=completed,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
             trace=context.trace,
             round_num=context.iterate_round,
         )
@@ -647,6 +783,9 @@ def _run_iterate_body_step(
     step: PlanStep,
     context: PlanExecutionContext,
     handlers: dict[str, StepHandler],
+    *,
+    shared_parallel_lock: threading.Lock | None = None,
+    isolated_branch_runner: Callable[[dict[str, Any], set[str]], Callable[[PlanStep], dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     _append_trace(
         context,
@@ -666,7 +805,13 @@ def _run_iterate_body_step(
             answer_kwargs=context.answer_kwargs,
             config=context.config,
             trace=context.trace,
-            branch_runner=lambda branch_step: _run_iterate_body_step(branch_step, context, handlers),
+            branch_runner=lambda branch_step: _run_iterate_body_step(
+                branch_step,
+                context,
+                handlers,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
             round_num=context.iterate_round,
         )
     if construct == "PARALLEL":
@@ -675,9 +820,59 @@ def _run_iterate_body_step(
             steps=context.plan_steps,
             completed=context.completed_step_ids,
             artifacts=context.artifacts,
-            branch_runner=lambda branch_step: _run_iterate_body_step(branch_step, context, handlers),
+            branch_runner=lambda branch_step: _run_iterate_body_step(
+                branch_step,
+                context,
+                handlers,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
             trace=context.trace,
             round_num=context.iterate_round,
+            isolated_branch_runner=isolated_branch_runner,
+            shared_lock=shared_parallel_lock,
+        )
+    if construct == "AWAIT":
+        return execute_await_step(
+            step,
+            answer_kwargs=context.answer_kwargs,
+            artifacts=context.artifacts,
+            trace=context.trace,
+        )
+    if construct == "SERVICE":
+        return execute_service_step(
+            step,
+            steps=context.plan_steps,
+            completed=context.completed_step_ids,
+            artifacts=context.artifacts,
+            run_step=lambda body_step: _run_iterate_body_step(
+                body_step,
+                context,
+                handlers,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
+            trace=context.trace,
+            answer_kwargs=context.answer_kwargs,
+            round_num=context.iterate_round,
+        )
+    if construct == "CONCURRENT":
+        return execute_concurrent_step(
+            step,
+            steps=context.plan_steps,
+            completed=context.completed_step_ids,
+            artifacts=context.artifacts,
+            branch_runner=lambda branch_step: _run_iterate_body_step(
+                branch_step,
+                context,
+                handlers,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
+            trace=context.trace,
+            round_num=context.iterate_round,
+            isolated_branch_runner=isolated_branch_runner,
+            shared_lock=shared_parallel_lock,
         )
     if construct == "MERGE":
         return execute_merge_step(
@@ -692,7 +887,13 @@ def _run_iterate_body_step(
             steps=context.plan_steps,
             completed=context.completed_step_ids,
             artifacts=context.artifacts,
-            run_step=lambda body_step: _run_iterate_body_step(body_step, context, handlers),
+            run_step=lambda body_step: _run_iterate_body_step(
+                body_step,
+                context,
+                handlers,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
             trace=context.trace,
             round_num=context.iterate_round,
         )
@@ -702,7 +903,13 @@ def _run_iterate_body_step(
             steps=context.plan_steps,
             completed=context.completed_step_ids,
             artifacts=context.artifacts,
-            run_step=lambda body_step: _run_iterate_body_step(body_step, context, handlers),
+            run_step=lambda body_step: _run_iterate_body_step(
+                body_step,
+                context,
+                handlers,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
             trace=context.trace,
             round_num=context.iterate_round,
         )
@@ -711,6 +918,8 @@ def _run_iterate_body_step(
         context,
         handlers,
         completed=context.completed_step_ids,
+        shared_parallel_lock=shared_parallel_lock,
+        isolated_branch_runner=isolated_branch_runner,
     )
 
 

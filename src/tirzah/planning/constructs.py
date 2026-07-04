@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import copy
 import re
+import time
 from typing import Any, Callable
+
+from tirzah.planning.parallel_runtime import isolated_artifacts_snapshot, run_branches_concurrently
+
+_retry_sleeper = time.sleep
 
 from tirzah.planning.context_bundle import ensure_bundle, latest_tool_matches
 from tirzah.planning.recursive import PlanStep
@@ -77,8 +82,112 @@ def is_owned_by_pending_parent(step: PlanStep, steps: list[PlanStep], completed:
     for parent in steps:
         if parent.id not in step.depends_on:
             continue
-        if parent.construct in {"ITERATE", "DECISION", "PARALLEL", "RETRY", "ERROR"} and parent.id not in completed:
+        if parent.construct in {
+            "ITERATE",
+            "DECISION",
+            "PARALLEL",
+            "RETRY",
+            "ERROR",
+            "AWAIT",
+            "SERVICE",
+            "CONCURRENT",
+        } and parent.id not in completed:
             return True
+    return False
+
+
+def parse_retry_backoff(step: PlanStep) -> tuple[str, int]:
+    text = " ".join([step.action, *step.success_criteria])
+    mode = "none"
+    match = re.search(r"BACKOFF:\s*(none|linear|exponential)", text, re.I)
+    if match:
+        mode = match.group(1).lower()
+    for item in step.success_criteria:
+        if item.lower().startswith("backoff:"):
+            mode = item.split(":", 1)[1].strip().lower()
+    base_ms = 10
+    ms_match = re.search(r"BACKOFF_MS:\s*(\d+)", text, re.I)
+    if ms_match:
+        base_ms = max(0, int(ms_match.group(1)))
+    return mode, base_ms
+
+
+def retry_backoff_seconds(attempt: int, mode: str, base_ms: int) -> float:
+    if mode == "none" or base_ms <= 0 or attempt <= 1:
+        return 0.0
+    if mode == "linear":
+        return (attempt * base_ms) / 1000.0
+    if mode == "exponential":
+        return (2 ** (attempt - 2) * base_ms) / 1000.0
+    return 0.0
+
+
+def parse_parallel_mode(step: PlanStep) -> str:
+    text = " ".join([step.action, *step.success_criteria])
+    if re.search(r"\bCONCURRENT\b|MODE:\s*concurrent", text, re.I):
+        return "concurrent"
+    for item in step.success_criteria:
+        if item.lower() in {"concurrent", "mode:concurrent"}:
+            return "concurrent"
+    return "sequential"
+
+
+def _trim_await_event(value: str) -> str:
+    raw = str(value or "").strip()
+    raw = re.split(r"\s+TIMEOUT:", raw, maxsplit=1, flags=re.I)[0].strip()
+    return _normalize_error_signal(raw)
+
+
+def parse_await_event(step: PlanStep) -> str:
+    text = " ".join([step.action, *step.success_criteria])
+    match = re.search(r"EVENT:\s*([^;\]]+)", text, re.I)
+    if match:
+        return _trim_await_event(match.group(1))
+    for item in step.success_criteria:
+        if item.lower().startswith("event:"):
+            return _trim_await_event(item.split(":", 1)[1])
+    return "default"
+
+
+def parse_await_timeout_seconds(step: PlanStep) -> float | None:
+    text = " ".join([step.action, *step.success_criteria])
+    match = re.search(r"TIMEOUT:\s*(\d+(?:\.\d+)?)(s|ms)?", text, re.I)
+    if match:
+        value = float(match.group(1))
+        unit = (match.group(2) or "s").lower()
+        return value / 1000.0 if unit == "ms" else value
+    for item in step.success_criteria:
+        if item.lower().startswith("timeout:"):
+            raw = item.split(":", 1)[1].strip().lower()
+            if raw.endswith("ms"):
+                return float(raw[:-2]) / 1000.0
+            if raw.endswith("s"):
+                return float(raw[:-1])
+            return float(raw)
+    return None
+
+
+def await_signals(answer_kwargs: dict[str, Any], artifacts: dict[str, Any]) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    merged.update(artifacts.get("await_signals") or {})
+    merged.update(answer_kwargs.get("await_signals") or {})
+    return merged
+
+
+def await_event_satisfied(
+    step: PlanStep,
+    *,
+    answer_kwargs: dict[str, Any],
+    artifacts: dict[str, Any],
+) -> bool:
+    event = parse_await_event(step)
+    signals = await_signals(answer_kwargs, artifacts)
+    if signals.get("any") or signals.get("*"):
+        return True
+    if signals.get(step.id):
+        return True
+    if signals.get(event):
+        return True
     return False
 
 
@@ -484,6 +593,54 @@ def infer_parallel_parent(merge_step: PlanStep, steps: list[PlanStep]) -> str | 
     return None
 
 
+def _run_single_parallel_branch(
+    step: PlanStep,
+    branch: PlanStep,
+    *,
+    steps: list[PlanStep],
+    completed: set[str],
+    artifacts: dict[str, Any],
+    branch_runner: BranchRunner,
+    trace: list[dict[str, Any]],
+    round_num: int | None,
+    state: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    trace.append(
+        {
+            "step": "plan.parallel.branch",
+            "step_id": step.id,
+            "metadata": {"branch": branch.id, "state": state, "round": round_num},
+        }
+    )
+    saved_bundle = artifacts.get("context_bundle")
+    if state == "isolated":
+        artifacts["context_bundle"] = {"tool_results": []}
+    try:
+        outcome = execute_branch_subtree(
+            step,
+            steps=steps,
+            completed=completed,
+            artifacts=artifacts,
+            selected_ids=[branch.id],
+            branch_runner=branch_runner,
+            trace=trace,
+            round_num=round_num,
+            inline_kind="parallel",
+        )
+    finally:
+        if state == "isolated":
+            payload = {
+                **dict(artifacts.get(branch.id) or {}),
+                "context_bundle": copy.deepcopy(artifacts.get("context_bundle") or {"tool_results": []}),
+            }
+            if saved_bundle is not None:
+                artifacts["context_bundle"] = saved_bundle
+            else:
+                artifacts.pop("context_bundle", None)
+            return outcome, payload
+    return outcome, dict(artifacts.get(branch.id) or {})
+
+
 def execute_parallel_step(
     step: PlanStep,
     *,
@@ -493,52 +650,83 @@ def execute_parallel_step(
     branch_runner: BranchRunner,
     trace: list[dict[str, Any]],
     round_num: int | None = None,
+    isolated_branch_runner: Callable[[dict[str, Any], set[str]], BranchRunner] | None = None,
+    shared_lock: Any | None = None,
 ) -> dict[str, Any]:
-    """Run every PARALLEL branch sequentially (v1 fan-out) and record branch artifacts."""
+    """Run PARALLEL branches sequentially or concurrently; isolated or shared state."""
     branches = direct_body_steps(step.id, steps)
-    if not branches:
-        return {"status": "completed", "artifact": {"branches": [], "state": parse_parallel_state(step)}}
     state = parse_parallel_state(step)
+    execution_mode = parse_parallel_mode(step)
+    if not branches:
+        return {
+            "status": "completed",
+            "artifact": {"branches": [], "state": state, "execution_mode": execution_mode},
+        }
     branch_payload: dict[str, Any] = {}
-    for branch in branches:
-        trace.append(
-            {
-                "step": "plan.parallel.branch",
-                "step_id": step.id,
-                "metadata": {"branch": branch.id, "state": state, "round": round_num},
-            }
-        )
-        saved_bundle = artifacts.get("context_bundle")
-        if state == "isolated":
-            artifacts["context_bundle"] = {"tool_results": []}
-        try:
+
+    def run_branch(branch: PlanStep) -> tuple[dict[str, Any], dict[str, Any]]:
+        if execution_mode == "concurrent" and state == "isolated" and isolated_branch_runner is not None:
+            local_artifacts = isolated_artifacts_snapshot(artifacts)
+            local_completed = set(completed)
+            local_trace: list[dict[str, Any]] = []
+            trace.append(
+                {
+                    "step": "plan.parallel.branch",
+                    "step_id": step.id,
+                    "metadata": {"branch": branch.id, "state": state, "round": round_num, "execution_mode": execution_mode},
+                }
+            )
             outcome = execute_branch_subtree(
                 step,
                 steps=steps,
-                completed=completed,
-                artifacts=artifacts,
+                completed=local_completed,
+                artifacts=local_artifacts,
                 selected_ids=[branch.id],
-                branch_runner=branch_runner,
-                trace=trace,
+                branch_runner=isolated_branch_runner(local_artifacts, local_completed),
+                trace=local_trace,
                 round_num=round_num,
                 inline_kind="parallel",
             )
-        finally:
-            if state == "isolated":
-                branch_payload[branch.id] = {
-                    **dict(artifacts.get(branch.id) or {}),
-                    "context_bundle": copy.deepcopy(artifacts.get("context_bundle") or {"tool_results": []}),
-                }
-                if saved_bundle is not None:
-                    artifacts["context_bundle"] = saved_bundle
-                else:
-                    artifacts.pop("context_bundle", None)
-        if outcome["status"] == "blocked":
-            return outcome
-        if state != "isolated":
-            branch_payload[branch.id] = artifacts.get(branch.id)
+            trace.extend(local_trace)
+            completed.update(local_completed)
+            payload = {
+                **dict(local_artifacts.get(branch.id) or {}),
+                "context_bundle": copy.deepcopy(local_artifacts.get("context_bundle") or {"tool_results": []}),
+            }
+            return outcome, payload
+        runner = branch_runner
+        if execution_mode == "concurrent" and state == "shared" and shared_lock is not None:
+            from tirzah.planning.parallel_runtime import shared_branch_runner
+
+            runner = shared_branch_runner(branch_runner, artifacts, shared_lock)
+        return _run_single_parallel_branch(
+            step,
+            branch,
+            steps=steps,
+            completed=completed,
+            artifacts=artifacts,
+            branch_runner=runner,
+            trace=trace,
+            round_num=round_num,
+            state=state,
+        )
+
+    if execution_mode == "concurrent":
+        results = run_branches_concurrently(branches, run_branch=run_branch)
+        for branch_id, outcome, payload in results:
+            if outcome["status"] == "blocked":
+                return outcome
+            branch_payload[branch_id] = payload
+    else:
+        for branch in branches:
+            outcome, payload = run_branch(branch)
+            if outcome["status"] == "blocked":
+                return outcome
+            branch_payload[branch.id] = payload
+
     parallel_artifact = {
         "state": state,
+        "execution_mode": execution_mode,
         "branch_ids": [branch.id for branch in branches],
         "branches": branch_payload,
     }
@@ -549,6 +737,7 @@ def execute_parallel_step(
             "step_id": step.id,
             "metadata": {
                 "state": state,
+                "execution_mode": execution_mode,
                 "branch_ids": parallel_artifact["branch_ids"],
                 "round": round_num,
             },
@@ -809,14 +998,36 @@ def execute_retry_step(
     if not body:
         return {"status": "completed", "artifact": {"attempts": 0, "body": []}}
     max_attempts = parse_retry_max(step)
+    backoff_mode, backoff_ms = parse_retry_backoff(step)
     attempts_run = 0
     for attempt in range(1, max_attempts + 1):
         attempts_run = attempt
+        if attempt > 1:
+            delay = retry_backoff_seconds(attempt, backoff_mode, backoff_ms)
+            if delay > 0:
+                trace.append(
+                    {
+                        "step": "plan.retry.backoff",
+                        "step_id": step.id,
+                        "metadata": {
+                            "attempt": attempt,
+                            "backoff_mode": backoff_mode,
+                            "delay_seconds": delay,
+                            "round": round_num,
+                        },
+                    }
+                )
+                _retry_sleeper(delay)
         trace.append(
             {
                 "step": "plan.retry.attempt",
                 "step_id": step.id,
-                "metadata": {"attempt": attempt, "max_attempts": max_attempts, "round": round_num},
+                "metadata": {
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "backoff_mode": backoff_mode,
+                    "round": round_num,
+                },
             }
         )
         body_blocked = False
@@ -924,6 +1135,327 @@ def execute_decision_step(
             return branch_outcome
         artifact["inline_branch_status"] = branch_outcome["status"]
     return {"status": "completed", "artifact": artifact}
+
+
+def parse_await_then(step: PlanStep) -> str:
+    text = " ".join([step.action, *step.success_criteria])
+    match = re.search(r"THEN:\s*([A-Za-z_]+)", text, re.I)
+    if match:
+        return match.group(1).lower()
+    for item in step.success_criteria:
+        if item.lower().startswith("then:"):
+            return item.split(":", 1)[1].strip().lower()
+    return "blocked"
+
+
+def await_started_at(artifacts: dict[str, Any], step_id: str) -> float | None:
+    payload = artifacts.get(f"await:{step_id}")
+    if isinstance(payload, dict):
+        started = payload.get("started_at")
+        if isinstance(started, (int, float)):
+            return float(started)
+    return None
+
+
+def await_timeout_elapsed(step: PlanStep, artifacts: dict[str, Any], *, now: float | None = None) -> bool:
+    timeout = parse_await_timeout_seconds(step)
+    if timeout is None:
+        return False
+    started = await_started_at(artifacts, step.id)
+    if started is None:
+        return False
+    current = time.time() if now is None else now
+    return (current - started) >= timeout
+
+
+def resume_awaiting_steps(
+    steps: list[PlanStep],
+    completed: set[str],
+    *,
+    answer_kwargs: dict[str, Any],
+    artifacts: dict[str, Any],
+    trace: list[dict[str, Any]],
+) -> None:
+    """Promote awaiting steps when external signals arrive or a timeout fires."""
+    for step in steps:
+        if step.status != "awaiting":
+            continue
+        event = parse_await_event(step)
+        if await_event_satisfied(step, answer_kwargs=answer_kwargs, artifacts=artifacts):
+            step.status = "completed"
+            completed.add(step.id)
+            artifacts[f"await:{step.id}"] = {
+                "event": event,
+                "status": "satisfied",
+                "signals": await_signals(answer_kwargs, artifacts),
+            }
+            trace.append(
+                {
+                    "step": "plan.await.satisfied",
+                    "step_id": step.id,
+                    "metadata": {"event": event, "signals": sorted(await_signals(answer_kwargs, artifacts).keys())},
+                }
+            )
+            continue
+        if await_timeout_elapsed(step, artifacts):
+            then_mode = parse_await_then(step)
+            step.status = "blocked" if then_mode == "blocked" else "completed"
+            if step.status == "completed":
+                completed.add(step.id)
+            artifacts[f"await:{step.id}"] = {
+                "event": event,
+                "status": "timeout",
+                "then": then_mode,
+            }
+            trace.append(
+                {
+                    "step": "plan.await.timeout",
+                    "step_id": step.id,
+                    "metadata": {"event": event, "then": then_mode, "timeout_seconds": parse_await_timeout_seconds(step)},
+                }
+            )
+
+
+def execute_await_step(
+    step: PlanStep,
+    *,
+    answer_kwargs: dict[str, Any],
+    artifacts: dict[str, Any],
+    trace: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Suspend until await_signals satisfy EVENT or TIMEOUT elapses."""
+    event = parse_await_event(step)
+    if await_event_satisfied(step, answer_kwargs=answer_kwargs, artifacts=artifacts):
+        payload = {
+            "event": event,
+            "status": "satisfied",
+            "signals": await_signals(answer_kwargs, artifacts),
+        }
+        artifacts[f"await:{step.id}"] = payload
+        trace.append(
+            {
+                "step": "plan.await.satisfied",
+                "step_id": step.id,
+                "metadata": {"event": event, "signals": sorted(payload["signals"].keys())},
+            }
+        )
+        return {"status": "completed", "artifact": payload}
+    if await_timeout_elapsed(step, artifacts):
+        then_mode = parse_await_then(step)
+        payload = {"event": event, "status": "timeout", "then": then_mode}
+        artifacts[f"await:{step.id}"] = payload
+        trace.append(
+            {
+                "step": "plan.await.timeout",
+                "step_id": step.id,
+                "metadata": {"event": event, "then": then_mode, "timeout_seconds": parse_await_timeout_seconds(step)},
+            }
+        )
+        if then_mode == "blocked":
+            return {"status": "blocked", "reason": "await_timeout", "artifact": payload}
+        return {"status": "completed", "artifact": payload}
+    artifacts[f"await:{step.id}"] = {
+        "event": event,
+        "status": "pending",
+        "started_at": time.time(),
+        "timeout_seconds": parse_await_timeout_seconds(step),
+    }
+    trace.append(
+        {
+            "step": "plan.await.pending",
+            "step_id": step.id,
+            "metadata": {"event": event, "timeout_seconds": parse_await_timeout_seconds(step)},
+        }
+    )
+    return {"status": "awaiting", "artifact": artifacts[f"await:{step.id}"]}
+
+
+def service_should_continue(step: PlanStep, answer_kwargs: dict[str, Any]) -> bool:
+    if answer_kwargs.get("service_continue"):
+        return True
+    target = answer_kwargs.get("service_step_id")
+    return bool(target and str(target) == step.id)
+
+
+def execute_service_step(
+    step: PlanStep,
+    *,
+    steps: list[PlanStep],
+    completed: set[str],
+    artifacts: dict[str, Any],
+    run_step: StepRunner,
+    trace: list[dict[str, Any]],
+    answer_kwargs: dict[str, Any],
+    round_num: int | None = None,
+) -> dict[str, Any]:
+    """Run one SERVICE tick over direct body steps (resume with service_continue)."""
+    body = direct_body_steps(step.id, steps)
+    if not body:
+        return {"status": "completed", "artifact": {"ticks": 0, "body": []}}
+    state = artifacts.get(f"service:{step.id}") or {}
+    ticks = int(state.get("ticks") or 0)
+    if ticks > 0 and not service_should_continue(step, answer_kwargs):
+        return {"status": "completed", "artifact": {**state, "resumed": False}}
+    ticks += 1
+    trace.append(
+        {
+            "step": "plan.service.tick",
+            "step_id": step.id,
+            "metadata": {"tick": ticks, "body": [item.id for item in body], "round": round_num},
+        }
+    )
+    body_blocked = False
+    for body_step in body:
+        if body_step.status in {"completed", "skipped"} and ticks > 1:
+            body_step.status = "pending"
+            completed.discard(body_step.id)
+        if body_step.status != "pending":
+            continue
+        if not all(dep in completed or dep == step.id for dep in body_step.depends_on):
+            continue
+        outcome = run_step(body_step)
+        body_step.status = outcome["status"]
+        trace.append(
+            {
+                "step": f"plan.step.{outcome['status']}",
+                "step_id": body_step.id,
+                "metadata": {
+                    "construct": body_step.construct,
+                    "reason": outcome.get("reason"),
+                    "service_tick": ticks,
+                    "round": round_num,
+                },
+            }
+        )
+        if outcome["status"] == "completed":
+            completed.add(body_step.id)
+            if outcome.get("artifact") is not None:
+                artifacts[body_step.id] = outcome["artifact"]
+        if outcome["status"] == "blocked":
+            body_blocked = True
+    payload = {
+        "ticks": ticks,
+        "body": [item.id for item in body],
+        "blocked": body_blocked,
+        "continue": service_should_continue(step, answer_kwargs),
+    }
+    artifacts[f"service:{step.id}"] = payload
+    if body_blocked:
+        return {"status": "blocked", "reason": "service_tick_blocked", "artifact": payload}
+    return {"status": "completed", "artifact": payload}
+
+
+def execute_concurrent_step(
+    step: PlanStep,
+    *,
+    steps: list[PlanStep],
+    completed: set[str],
+    artifacts: dict[str, Any],
+    branch_runner: BranchRunner,
+    trace: list[dict[str, Any]],
+    round_num: int | None = None,
+    isolated_branch_runner: Callable[[dict[str, Any], set[str]], BranchRunner] | None = None,
+    shared_lock: Any | None = None,
+) -> dict[str, Any]:
+    """Run CONCURRENT branches without a MERGE join (non-joining fan-out)."""
+    branches = direct_body_steps(step.id, steps)
+    state = parse_parallel_state(step)
+    execution_mode = parse_parallel_mode(step)
+    if not branches:
+        return {
+            "status": "completed",
+            "artifact": {"branches": [], "state": state, "execution_mode": execution_mode},
+        }
+    branch_payload: dict[str, Any] = {}
+
+    def run_branch(branch: PlanStep) -> tuple[dict[str, Any], dict[str, Any]]:
+        if execution_mode == "concurrent" and state == "isolated" and isolated_branch_runner is not None:
+            local_artifacts = isolated_artifacts_snapshot(artifacts)
+            local_completed = set(completed)
+            local_trace: list[dict[str, Any]] = []
+            trace.append(
+                {
+                    "step": "plan.concurrent.branch",
+                    "step_id": step.id,
+                    "metadata": {"branch": branch.id, "state": state, "round": round_num, "execution_mode": execution_mode},
+                }
+            )
+            outcome = execute_branch_subtree(
+                step,
+                steps=steps,
+                completed=local_completed,
+                artifacts=local_artifacts,
+                selected_ids=[branch.id],
+                branch_runner=isolated_branch_runner(local_artifacts, local_completed),
+                trace=local_trace,
+                round_num=round_num,
+                inline_kind="parallel",
+            )
+            trace.extend(local_trace)
+            completed.update(local_completed)
+            payload = {
+                **dict(local_artifacts.get(branch.id) or {}),
+                "context_bundle": copy.deepcopy(local_artifacts.get("context_bundle") or {"tool_results": []}),
+            }
+            return outcome, payload
+        runner = branch_runner
+        if execution_mode == "concurrent" and state == "shared" and shared_lock is not None:
+            from tirzah.planning.parallel_runtime import shared_branch_runner
+
+            runner = shared_branch_runner(branch_runner, artifacts, shared_lock)
+        trace.append(
+            {
+                "step": "plan.concurrent.branch",
+                "step_id": step.id,
+                "metadata": {"branch": branch.id, "state": state, "round": round_num, "execution_mode": execution_mode},
+            }
+        )
+        outcome = execute_branch_subtree(
+            step,
+            steps=steps,
+            completed=completed,
+            artifacts=artifacts,
+            selected_ids=[branch.id],
+            branch_runner=runner,
+            trace=trace,
+            round_num=round_num,
+            inline_kind="parallel",
+        )
+        return outcome, dict(artifacts.get(branch.id) or {})
+
+    if execution_mode == "concurrent":
+        results = run_branches_concurrently(branches, run_branch=run_branch)
+        for branch_id, outcome, payload in results:
+            if outcome["status"] == "blocked":
+                return outcome
+            branch_payload[branch_id] = payload
+    else:
+        for branch in branches:
+            outcome, payload = run_branch(branch)
+            if outcome["status"] == "blocked":
+                return outcome
+            branch_payload[branch.id] = payload
+
+    concurrent_artifact = {
+        "state": state,
+        "execution_mode": execution_mode,
+        "branch_ids": [branch.id for branch in branches],
+        "branches": branch_payload,
+    }
+    artifacts[f"concurrent:{step.id}"] = concurrent_artifact
+    trace.append(
+        {
+            "step": "plan.concurrent.completed",
+            "step_id": step.id,
+            "metadata": {
+                "state": state,
+                "execution_mode": execution_mode,
+                "branch_ids": concurrent_artifact["branch_ids"],
+                "round": round_num,
+            },
+        }
+    )
+    return {"status": "completed", "artifact": concurrent_artifact}
 
 
 def suggest_plan_profile_hint(query: str, answer_kwargs: dict[str, Any], config: Any) -> str:

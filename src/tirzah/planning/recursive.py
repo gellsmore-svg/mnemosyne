@@ -16,9 +16,22 @@ from tirzah.adapters.answer import answer_adapter
 from tirzah.config import AppConfig, RuntimeConfig
 
 PLAN_STATUSES = {"draft", "active", "stable", "complete", "blocked"}
-STEP_STATUSES = {"pending", "active", "completed", "blocked", "skipped"}
+STEP_STATUSES = {"pending", "active", "completed", "blocked", "skipped", "awaiting"}
 CONSTRUCTS = {
-    "STEP", "CALL", "ITERATE", "DECISION", "RECURSE", "PARALLEL", "MERGE", "BREAK", "CONTINUE", "RETRY", "ERROR",
+    "STEP",
+    "CALL",
+    "ITERATE",
+    "DECISION",
+    "RECURSE",
+    "PARALLEL",
+    "MERGE",
+    "BREAK",
+    "CONTINUE",
+    "RETRY",
+    "ERROR",
+    "AWAIT",
+    "SERVICE",
+    "CONCURRENT",
 }
 REVISION_DECISIONS = {"revise", "stable", "complete", "blocked"}
 ALLOWED_PLAN_TOOLS = {
@@ -367,6 +380,7 @@ def process_frontend_request(
             ),
             use_split_phases=True,
         )
+        allow_mid_revision = bool(config.runtime.plan_mid_revision_enabled)
         execution = interpret_plan(
             initial,
             query=query,
@@ -377,6 +391,8 @@ def process_frontend_request(
             answer_kwargs=answer_kwargs,
             persist_execution=True,
             resume_execution=True,
+            revision_planner=planner if allow_mid_revision else None,
+            allow_mid_revision=allow_mid_revision,
         )
         current_plan = execution.plan
         save_plan_revision(db, current_plan, session_id=session_id)
@@ -409,6 +425,8 @@ def process_frontend_request(
                 answer_kwargs=answer_kwargs,
                 persist_execution=True,
                 resume_execution=False,
+                revision_planner=planner if allow_mid_revision else None,
+                allow_mid_revision=allow_mid_revision,
             )
             current_plan = execution.plan
             revisions[-1] = current_plan

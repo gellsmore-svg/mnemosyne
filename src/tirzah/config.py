@@ -43,6 +43,8 @@ class RuntimeConfig(BaseModel):
     # Walk Cairn plan steps in depends_on order (SPEC §4.6) instead of only
     # wrapping a monolithic ask pipeline.
     plan_interpretive_execution_enabled: bool = False
+    # Revise the active plan after each completed step when interpretive mode runs.
+    plan_mid_revision_enabled: bool = True
     # Opt-in transient web evidence. Search uses a SearxNG JSON endpoint; results
     # are never promoted into durable graph memory automatically.
     web_research_enabled: bool = False
@@ -176,6 +178,7 @@ _ENV_OVERRIDES: dict[str, tuple[str, str]] = {
     "TIRZAH_WEB_RESEARCH_ENABLED": ("runtime", "web_research_enabled"),
     "TIRZAH_RECURSIVE_PLANNING_ENABLED": ("runtime", "recursive_planning_enabled"),
     "TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED": ("runtime", "plan_interpretive_execution_enabled"),
+    "TIRZAH_PLAN_MID_REVISION_ENABLED": ("runtime", "plan_mid_revision_enabled"),
     "TIRZAH_WEB_SEARCH_BASE_URL": ("runtime", "web_search_base_url"),
     # The Mahalath seam — so `.env` alone enables/points it (no config file needed;
     # a missing config file can no longer silently disable semantic precision).
