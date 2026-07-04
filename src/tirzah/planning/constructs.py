@@ -993,7 +993,14 @@ def execute_retry_step(
     trace: list[dict[str, Any]],
     round_num: int | None = None,
 ) -> dict[str, Any]:
-    """Re-run direct body steps until they complete or MAX attempts are exhausted."""
+    """Re-run direct body steps until they complete or MAX attempts are exhausted.
+
+    Intended semantics: a retry attempt re-runs the WHOLE body — including steps
+    that succeeded on an earlier attempt — so each attempt is a coherent pass
+    rather than a patchwork of stale and fresh results. Callers should keep
+    side-effectful steps (e.g. web_fetch) idempotent or wrap only the fragile
+    tail of a flow in RETRY.
+    """
     body = direct_body_steps(step.id, steps)
     if not body:
         return {"status": "completed", "artifact": {"attempts": 0, "body": []}}

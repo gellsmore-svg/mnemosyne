@@ -526,7 +526,7 @@ def _synthesize_deep_and_persist(
     runtime_config: RuntimeConfig,
     package: AnswerRetrievalPackage,
 ) -> dict[str, Any]:
-    from tirzah.retrieval.deep import synthesize_answer
+    from tirzah.retrieval.deep import build_synthesis_prompt, synthesize_answer
 
     useful = list(package.useful_chunks or [])
     used_node_ids = [nid for nid in (node_identity(c) for c in useful) if nid]
@@ -539,6 +539,9 @@ def _synthesize_deep_and_persist(
             "adapter": runtime_config.answer_adapter,
             "model": runtime_config.ollama_model,
             "mode": "deep_synthesis",
+            # The full synthesis input, so the LLM debugging view (llm_calls)
+            # shows deep-mode In→Out like every other call.
+            "prompt_text": build_synthesis_prompt(package.query, useful, history_block),
             "useful_count": len(useful),
             "timeout_seconds": runtime_config.ollama_timeout_seconds
             if runtime_config.answer_adapter.startswith("ollama")

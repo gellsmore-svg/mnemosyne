@@ -287,3 +287,27 @@ def test_interpret_plan_mid_step_revision(monkeypatch):
     assert "3" in step_ids
     assert result.plan.revision == 2
     assert any(row.get("step") == "plan.revision.mid_step" for row in result.context.trace)
+
+def test_concurrent_branch_exception_blocks_only_that_branch():
+    """A crashed branch under CONCURRENT becomes a blocked outcome for that
+    branch; siblings still complete and results keep plan order."""
+    from tirzah.planning.parallel_runtime import run_branches_concurrently
+
+    class Branch:
+        def __init__(self, id):
+            self.id = id
+
+    def run_branch(branch):
+        if branch.id == "b2":
+            raise RuntimeError("handler exploded")
+        return {"status": "completed"}, {"out": branch.id}
+
+    results = run_branches_concurrently(
+        [Branch("b1"), Branch("b2"), Branch("b3")], run_branch=run_branch
+    )
+    by_id = {branch_id: outcome for branch_id, outcome, _ in results}
+    assert [branch_id for branch_id, _, _ in results] == ["b1", "b2", "b3"]
+    assert by_id["b1"]["status"] == "completed"
+    assert by_id["b3"]["status"] == "completed"
+    assert by_id["b2"]["status"] == "blocked"
+    assert "handler exploded" in by_id["b2"]["reason"]

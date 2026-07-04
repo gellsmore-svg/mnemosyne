@@ -26,7 +26,12 @@ def run_branches_concurrently(
         futures = {pool.submit(run_branch, branch): branch for branch in branches}
         for future in as_completed(futures):
             branch = futures[future]
-            outcome, payload = future.result()
+            try:
+                outcome, payload = future.result()
+            except Exception as error:  # noqa: BLE001 — a crashed branch blocks
+                # itself, not the whole parallel step (siblings still land).
+                outcome = {"status": "blocked", "reason": f"branch_exception: {error}"}
+                payload = {}
             results.append((branch.id, outcome, payload))
     order = {branch.id: index for index, branch in enumerate(branches)}
     results.sort(key=lambda item: order.get(item[0], 0))

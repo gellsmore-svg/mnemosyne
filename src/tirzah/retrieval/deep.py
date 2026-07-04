@@ -635,32 +635,38 @@ def detect_plateau(history: list[float], passes: int, epsilon: float) -> bool:
 # --------------------------------------------------------------------------- #
 
 
+def build_synthesis_prompt(
+    query: str, useful_chunks: list[dict[str, Any]], history_block: str = ""
+) -> str:
+    """The exact prompt deep synthesis sends to the model — exposed so the
+    answer pipeline can record the full input in the LLM debugging view."""
+    prefix = (history_block.rstrip() + "\n\n") if history_block else ""
+    if not useful_chunks:
+        return (
+            prefix
+            + "Answer the question. If there is no relevant information available, say so plainly.\n\n"
+            f"Question: {query}\n"
+        )
+    blocks = []
+    for chunk in useful_chunks:
+        text = chunk.get("text") or chunk.get("text_preview") or ""
+        title = chunk.get("title") or ""
+        blocks.append(f"[{node_identity(chunk)}] {title}\n{text}".strip())
+    return (
+        prefix
+        + "Answer the question using ONLY the context below. Cite the [node_id] sources you "
+        "use. If the context is insufficient, say so plainly.\n\n"
+        f"Context:\n{chr(10).join(blocks)}\n\nQuestion: {query}\n"
+    )
+
+
 def synthesize_answer(
     query: str, useful_chunks: list[dict[str, Any]], adapter: Any, history_block: str = ""
 ) -> str:
     """Write the final answer from the kept chunks (the useful-chunks bucket).
     Reads the chunk text, cites node ids, and is told to flag insufficiency.
     ``history_block`` (optional) threads prior conversation turns for continuity."""
-    prefix = (history_block.rstrip() + "\n\n") if history_block else ""
-    if not useful_chunks:
-        prompt = (
-            prefix
-            + "Answer the question. If there is no relevant information available, say so plainly.\n\n"
-            f"Question: {query}\n"
-        )
-    else:
-        blocks = []
-        for chunk in useful_chunks:
-            text = chunk.get("text") or chunk.get("text_preview") or ""
-            title = chunk.get("title") or ""
-            blocks.append(f"[{node_identity(chunk)}] {title}\n{text}".strip())
-        prompt = (
-            prefix
-            + "Answer the question using ONLY the context below. Cite the [node_id] sources you "
-            "use. If the context is insufficient, say so plainly.\n\n"
-            f"Context:\n{chr(10).join(blocks)}\n\nQuestion: {query}\n"
-        )
-    return _adapter_answer(adapter, prompt)
+    return _adapter_answer(adapter, build_synthesis_prompt(query, useful_chunks, history_block))
 
 
 def _build_query_embedding(runtime_config: Any, text: str) -> dict[str, Any] | None:
