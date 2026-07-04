@@ -12,6 +12,8 @@ from tirzah.planning.context_bundle import (
     append_tool_result,
     ensure_bundle,
     resolve_compile_node_id,
+    resolve_document_id,
+    resolve_focus_node_id,
     resolve_web_fetch_url,
 )
 from tirzah.planning.recursive import ALLOWED_PLAN_TOOLS, CairnPlan, PlanStep
@@ -333,11 +335,163 @@ def build_default_handlers(
         )
         return {"ok": True, "tool": "web_fetch", "tool_result": entry, "url": url}
 
+    def _record_bundle_tool(
+        ctx: PlanExecutionContext,
+        *,
+        tool: str,
+        output: Any,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        bundle = ensure_bundle(ctx.artifacts)
+        entry = append_tool_result(bundle, tool=tool, output=output, arguments=arguments)
+        if isinstance(output, dict):
+            count = len(output.get("matches") or output.get("nodes") or output.get("sources") or [])
+        elif isinstance(output, list):
+            count = len(output)
+        else:
+            count = 0
+        return {"ok": True, "tool": tool, "tool_result": entry, "result_count": count}
+
+    def _require_node_id(ctx: PlanExecutionContext) -> str | None:
+        bundle = ensure_bundle(ctx.artifacts)
+        return resolve_focus_node_id(bundle, answer_kwargs)
+
+    def get_node_context_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        node_id = _require_node_id(ctx)
+        if not node_id:
+            return {"ok": False, "reason": "missing_node_id"}
+        from tirzah.retrieval.queries import node_context
+
+        output = node_context(db, node_id, child_limit=5)
+        return _record_bundle_tool(ctx, tool="get_node_context", output=output, arguments={"node_id": node_id})
+
+    def get_graph_edges_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        node_id = _require_node_id(ctx)
+        if not node_id:
+            return {"ok": False, "reason": "missing_node_id"}
+        from tirzah.retrieval.queries import graph_edges_for_node
+
+        output = graph_edges_for_node(db, node_id=node_id, direction="both", limit=5)
+        return _record_bundle_tool(
+            ctx,
+            tool="get_graph_edges",
+            output=output,
+            arguments={"node_id": node_id, "direction": "both", "limit": 5},
+        )
+
+    def expand_proximity_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        node_id = _require_node_id(ctx)
+        if not node_id:
+            return {"ok": False, "reason": "missing_node_id"}
+        from tirzah.sessions import interaction as ix
+
+        output = ix.execute_expand_proximity_tool(db, node_id=node_id, direction="both", limit=5)
+        return _record_bundle_tool(
+            ctx,
+            tool="expand_proximity",
+            output=output,
+            arguments={"node_id": node_id, "direction": "both", "limit": 5},
+        )
+
+    def expand_graph_paths_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        node_id = _require_node_id(ctx)
+        if not node_id:
+            return {"ok": False, "reason": "missing_node_id"}
+        from tirzah.sessions import interaction as ix
+
+        output = ix.execute_expand_graph_paths_tool(
+            db, node_id=node_id, direction="both", max_depth=2, branch_limit=5, limit=5,
+        )
+        return _record_bundle_tool(
+            ctx,
+            tool="expand_graph_paths",
+            output=output,
+            arguments={"node_id": node_id, "direction": "both", "max_depth": 2, "limit": 5},
+        )
+
+    def semantic_candidates_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        node_id = _require_node_id(ctx)
+        if not node_id:
+            return {"ok": False, "reason": "missing_node_id"}
+        from tirzah.sessions import interaction as ix
+
+        output = ix.execute_semantic_candidates_tool(db, node_id=node_id, include_same_document=False, limit=5)
+        return _record_bundle_tool(
+            ctx,
+            tool="semantic_candidates",
+            output=output,
+            arguments={"node_id": node_id, "include_same_document": False, "limit": 5},
+        )
+
+    def list_documents_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        from tirzah.retrieval.queries import list_documents
+
+        output = list_documents(db, limit=5)
+        return _record_bundle_tool(ctx, tool="list_documents", output=output, arguments={"limit": 5})
+
+    def list_active_documents_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        from tirzah.sessions.active_documents import list_active_documents
+
+        output = list_active_documents(db, session_id=ctx.session_id, limit=5)
+        return _record_bundle_tool(
+            ctx,
+            tool="list_active_documents",
+            output=output,
+            arguments={"session_id": ctx.session_id, "limit": 5},
+        )
+
+    def get_document_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        bundle = ensure_bundle(ctx.artifacts)
+        document_id = resolve_document_id(bundle, answer_kwargs)
+        if not document_id:
+            return {"ok": False, "reason": "missing_document_id"}
+        from tirzah.retrieval.queries import get_document
+
+        output = get_document(db, document_id)
+        return _record_bundle_tool(ctx, tool="get_document", output=output, arguments={"document_id": document_id})
+
+    def get_document_tree_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if db is None:
+            return {"ok": False, "reason": "missing_database"}
+        bundle = ensure_bundle(ctx.artifacts)
+        document_id = resolve_document_id(bundle, answer_kwargs)
+        if not document_id:
+            return {"ok": False, "reason": "missing_document_id"}
+        from tirzah.db.repositories import document_tree
+
+        output = document_tree(db, document_id)
+        return _record_bundle_tool(ctx, tool="get_document_tree", output=output, arguments={"document_id": document_id})
+
     handlers: dict[str, StepHandler] = {
         "tirzah_retrieval": tirzah_retrieval,
         "answer_adapter": answer_adapter_handler,
         "search_nodes": search_nodes_handler,
         "compile_context": compile_context_handler,
+        "get_node_context": get_node_context_handler,
+        "get_graph_edges": get_graph_edges_handler,
+        "expand_proximity": expand_proximity_handler,
+        "expand_graph_paths": expand_graph_paths_handler,
+        "semantic_candidates": semantic_candidates_handler,
+        "list_documents": list_documents_handler,
+        "list_active_documents": list_active_documents_handler,
+        "get_document": get_document_handler,
+        "get_document_tree": get_document_tree_handler,
         "web_search": web_search_handler,
         "web_fetch": web_fetch_handler,
     }

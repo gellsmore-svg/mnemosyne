@@ -152,3 +152,76 @@ def test_interpretive_wrapper_uses_split_phases(monkeypatch):
     )
     assert result["answer"] == "via-plan"
     assert any(str(row.get("step", "")).startswith("plan.step.") for row in result.get("process_trace", []))
+
+
+def test_interpretive_wrapper_exposes_execution_and_bundle_summary(monkeypatch):
+    from tirzah.config import AppConfig, RuntimeConfig
+    from tirzah.planning.executor import PlanExecutionContext, PlanExecutionResult
+    from tirzah.planning.recursive import process_frontend_request
+
+    def fake_interpret(plan, **kwargs):
+        context = PlanExecutionContext(
+            query=kwargs.get("query", "hello"),
+            session_id=kwargs.get("session_id", "s1"),
+            artifacts={
+                "context_bundle": {
+                    "tool_results": [{"tool": "search_nodes", "ok": True, "output": {"matches": []}}],
+                },
+                "synthesis_result": {"ok": True, "answer": "bundled", "used_node_ids": ["n1"]},
+            },
+            trace=[{"step": "plan.step.completed", "step_id": "1", "metadata": {}}],
+        )
+        return PlanExecutionResult(
+            ok=True,
+            plan=plan,
+            context=context,
+            primary_result=context.artifacts["synthesis_result"],
+        )
+
+    monkeypatch.setattr("tirzah.planning.executor.interpret_plan", fake_interpret)
+    monkeypatch.setattr(
+        "tirzah.planning.execution_store.get_plan_execution",
+        lambda _db, plan_id, revision, session_id: {
+            "plan_id": plan_id,
+            "revision": revision,
+            "session_id": session_id,
+            "status": "completed",
+            "artifacts": {"context_bundle": {"tool_results": []}},
+            "steps": [],
+            "completed_step_ids": ["1"],
+        },
+    )
+    monkeypatch.setattr(
+        "tirzah.planning.recursive.create_initial_plan",
+        lambda *a, **k: _plan(
+            PlanStep(id="1", action="Search", construct="CALL", allowed_tools=["search_nodes"]),
+            PlanStep(
+                id="2",
+                action="Answer",
+                construct="CALL",
+                depends_on=["1"],
+                allowed_tools=["answer_adapter"],
+            ),
+        ),
+    )
+    monkeypatch.setattr("tirzah.planning.recursive.revise_plan_recursively", lambda plan, *a, **k: [plan])
+    monkeypatch.setattr("tirzah.planning.recursive.save_plan_revision", lambda *a, **k: None)
+
+    cfg = AppConfig(
+        runtime=RuntimeConfig(
+            recursive_planning_enabled=True,
+            plan_interpretive_execution_enabled=True,
+        )
+    )
+    result = process_frontend_request(
+        None,
+        cfg,
+        query="hello",
+        executor=lambda *_a, **_k: {"ok": True, "answer": "unused"},
+        planner=lambda _prompt: "{}",
+        session_id="s1",
+    )
+    assert result["answer"] == "bundled"
+    assert result["context_bundle_summary"]["tools"] == ["search_nodes"]
+    assert result["plan_execution"]["plan_id"] == "plan_test"
+    assert result["plan_execution"]["status"] == "completed"

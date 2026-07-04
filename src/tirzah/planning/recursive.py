@@ -99,9 +99,10 @@ def interpretive_plan_template_hint() -> str:
             "Granular context profile (when DB/web budget or revision scoping matters):",
             '2a. CALL allowed_tools=["search_nodes"] depends_on=["1"]',
             '2b. CALL allowed_tools=["compile_context"] depends_on=["2a"] (uses focus node or top search hit)',
-            '2c. CALL allowed_tools=["web_search"] depends_on=["2b"] — only when external evidence is required',
-            '2d. CALL allowed_tools=["web_fetch"] depends_on=["2c"] — optional when snippets are insufficient',
-            '3. CALL allowed_tools=["answer_adapter"] depends_on=["2b" or "2d"] — synthesize from accumulated tool_results',
+            '2c. CALL allowed_tools=["expand_proximity"] or ["semantic_candidates"] depends_on=["2b"] — graph expansion',
+            '2d. CALL allowed_tools=["web_search"] depends_on=["2c"] — only when external evidence is required',
+            '2e. CALL allowed_tools=["web_fetch"] depends_on=["2d"] — optional when snippets are insufficient',
+            '3. CALL allowed_tools=["answer_adapter"] depends_on=["2b" or "2e"] — synthesize from accumulated tool_results',
         ]
     )
 
@@ -285,6 +286,15 @@ def process_frontend_request(
             "query": query,
             "session_id": session_id,
         }
+        from tirzah.planning.context_bundle import compact_context_bundle_summary
+        from tirzah.planning.execution_store import compact_execution_summary, get_plan_execution
+
+        bundle = execution.context.artifacts.get("context_bundle")
+        if bundle:
+            result["context_bundle_summary"] = compact_context_bundle_summary(bundle)
+        saved_execution = get_plan_execution(db, initial.plan_id, initial.revision, session_id)
+        if saved_execution:
+            result["plan_execution"] = compact_execution_summary(saved_execution)
         if execution.context.trace:
             result.setdefault("process_trace", [])
             result["process_trace"] = execution.context.trace + result["process_trace"]

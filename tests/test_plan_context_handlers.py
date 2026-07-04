@@ -1,8 +1,10 @@
 from tirzah.config import AppConfig, RuntimeConfig
 from tirzah.planning.context_bundle import (
     append_tool_result,
+    compact_context_bundle_summary,
     ensure_bundle,
     resolve_compile_node_id,
+    resolve_focus_node_id,
     resolve_web_fetch_url,
 )
 from tirzah.planning.executor import build_default_handlers, interpret_plan
@@ -129,6 +131,56 @@ def test_compile_context_without_node_id_is_blocked():
     result = interpret_plan(plan, query="q", session_id="s1", handlers=handlers)
     assert not result.ok
     assert result.plan.steps[0].status == "blocked"
+
+
+def test_resolve_focus_node_id_prefers_compile_context():
+    artifacts: dict = {}
+    bundle = ensure_bundle(artifacts)
+    append_tool_result(
+        bundle,
+        tool="search_nodes",
+        output={"matches": [{"node_id": "search-hit"}]},
+        arguments={},
+    )
+    append_tool_result(
+        bundle,
+        tool="compile_context",
+        output={"focus_node_id": "compiled-focus", "document": {}, "records": []},
+        arguments={},
+    )
+    assert resolve_focus_node_id(bundle, {}) == "compiled-focus"
+
+
+def test_expand_proximity_handler_appends_to_bundle(monkeypatch):
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.execute_expand_proximity_tool",
+        lambda _db, node_id, **_kwargs: {
+            "matches": [{"node_id": "near-1", "title": "Neighbor"}],
+            "compiled_contexts": [],
+        },
+    )
+    plan = _plan(
+        PlanStep(
+            id="1",
+            action="Expand graph",
+            construct="CALL",
+            allowed_tools=["expand_proximity"],
+        ),
+    )
+    handlers = build_default_handlers(
+        db=object(),
+        config=AppConfig(),
+        answer_kwargs={"focus_node_id": "focus-1"},
+    )
+    result = interpret_plan(plan, query="Q", session_id="s1", handlers=handlers)
+    assert result.ok
+    tools = [row["tool"] for row in result.context.artifacts["context_bundle"]["tool_results"]]
+    assert tools == ["expand_proximity"]
+    assert compact_context_bundle_summary(result.context.artifacts["context_bundle"]) == {
+        "tool_count": 1,
+        "tools": ["expand_proximity"],
+        "ok_count": 1,
+    }
 
 
 def test_web_search_disabled_blocks_step():
