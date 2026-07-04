@@ -268,7 +268,11 @@ def _interpretive_result_from_execution(
         "query": query,
         "session_id": session_id,
     }
-    process_trace: list[dict[str, Any]] = list(execution.context.trace or [])
+    # Keep the phases' own trace (it carries the answer_adapter step with the
+    # full prompt — the LLM debugging capture reads it), then append the
+    # executor's live-marked plan trace.
+    process_trace: list[dict[str, Any]] = list(result.get("process_trace") or [])
+    process_trace.extend(execution.context.trace or [])
     bundle = execution.context.artifacts.get("context_bundle")
     if bundle:
         result["context_bundle_summary"] = compact_context_bundle_summary(bundle)

@@ -137,7 +137,7 @@ def interpret_plan(
     panel in real time via :class:`LiveTraceList`."""
     handlers = handlers or {}
     execution_id: str | None = None
-    if db and persist_execution and resume_execution:
+    if db is not None and persist_execution and resume_execution:
         from tirzah.planning.execution_store import load_plan_execution, resume_steps_and_context
 
         saved = load_plan_execution(db, plan.plan_id, plan.revision, session_id)
@@ -269,7 +269,7 @@ def interpret_plan(
                     current_plan = revised_plan
                     context.plan_steps = working_steps
                     context.completed_step_ids = completed
-            if db and persist_execution:
+            if db is not None and persist_execution:
                 from tirzah.planning.execution_store import save_plan_execution
 
                 execution_id = save_plan_execution(
@@ -295,7 +295,7 @@ def interpret_plan(
     blocked = [s for s in working_steps if s.status == "blocked"]
     awaiting = [s for s in working_steps if s.status == "awaiting"]
     ok = not blocked and not awaiting and any(s.status == "completed" for s in working_steps)
-    if db and persist_execution:
+    if db is not None and persist_execution:
         from tirzah.planning.execution_store import finalize_plan_execution, save_plan_execution
 
         final_status = "completed" if ok else ("blocked" if blocked else "running")
