@@ -235,13 +235,13 @@ def process_frontend_request(
 
         session_id = answer_kwargs.get("session_id", "web")
         handlers = build_default_handlers(
-            pipeline_executor=executor,
             db=db,
             config=config,
             answer_kwargs=answer_kwargs,
             specialist_runner=lambda plan, q, sid: run_planned_specialist(
                 plan, q, client=make_client(config.runtime), session_id=sid
             ),
+            use_split_phases=True,
         )
         execution = interpret_plan(initial, query=query, session_id=session_id, handlers=handlers)
         initial = execution.plan

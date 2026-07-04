@@ -94,7 +94,11 @@ def interpret_plan(
                     context.artifacts[step.id] = outcome["artifact"]
 
     updated = replace(plan, steps=working_steps)
-    primary = context.artifacts.get("retrieval_result") or _first_artifact(context)
+    primary = (
+        context.artifacts.get("synthesis_result")
+        or context.artifacts.get("retrieval_result")
+        or _first_artifact(context)
+    )
     blocked = [s for s in working_steps if s.status == "blocked"]
     ok = not blocked and any(s.status == "completed" for s in working_steps)
     return PlanExecutionResult(
@@ -108,33 +112,59 @@ def interpret_plan(
 
 def build_default_handlers(
     *,
-    pipeline_executor: Callable[..., dict[str, Any]],
+    pipeline_executor: Callable[..., dict[str, Any]] | None = None,
     db: Any,
     config: Any,
     answer_kwargs: dict[str, Any],
     specialist_runner: Callable[[CairnPlan, str, str], tuple[str | None, Any | None]] | None = None,
+    use_split_phases: bool = True,
 ) -> dict[str, StepHandler]:
-    """Registry for Tirzah's v1 interpretive mode."""
+    """Registry for Tirzah's interpretive mode (split retrieve/synthesize by default)."""
 
     def tirzah_retrieval(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
         if "tirzah_retrieval" in ctx.effects:
             return {"ok": True, "skipped": True, "reason": "duplicate_effect"}
-        result = pipeline_executor(db, config, query=ctx.query, **answer_kwargs)
-        ctx.effects.add("tirzah_retrieval")
-        ctx.artifacts["retrieval_result"] = result
-        return result
+        if use_split_phases and pipeline_executor is None:
+            from tirzah.sessions.answer_phases import retrieve_for_answer
 
-    def answer_adapter(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
-        existing = ctx.artifacts.get("retrieval_result")
-        if existing:
-            return existing
-        result = pipeline_executor(db, config, query=ctx.query, **answer_kwargs)
-        ctx.artifacts["retrieval_result"] = result
-        return result
+            result = retrieve_for_answer(db, config, query=ctx.query, **answer_kwargs)
+        else:
+            executor = pipeline_executor
+            if executor is None:
+                return {"ok": False, "reason": "no_pipeline_executor"}
+            result = executor(db, config, query=ctx.query, **answer_kwargs)
+            ctx.effects.add("tirzah_retrieval")
+            ctx.artifacts["synthesis_result"] = result
+            return result
+        ctx.effects.add("tirzah_retrieval")
+        if not result.get("ok"):
+            return result
+        ctx.artifacts["retrieval_package"] = result["package"]
+        return {
+            "ok": True,
+            "phase": "retrieval",
+            "retrieval_status": (result.get("package") or {}).get("retrieval_status"),
+        }
+
+    def answer_adapter_handler(step: PlanStep, ctx: PlanExecutionContext) -> dict[str, Any]:
+        if ctx.artifacts.get("synthesis_result"):
+            return ctx.artifacts["synthesis_result"]
+        package = ctx.artifacts.get("retrieval_package")
+        if package and use_split_phases and pipeline_executor is None:
+            from tirzah.sessions.answer_phases import synthesize_from_retrieval
+
+            result = synthesize_from_retrieval(db, config, package)
+            ctx.artifacts["synthesis_result"] = result
+            return result
+        if pipeline_executor is not None:
+            result = pipeline_executor(db, config, query=ctx.query, **answer_kwargs)
+            ctx.artifacts["synthesis_result"] = result
+            return result
+        return {"ok": False, "reason": "missing_retrieval_package"}
 
     handlers: dict[str, StepHandler] = {
         "tirzah_retrieval": tirzah_retrieval,
-        "answer_adapter": answer_adapter,
+        "answer_adapter": answer_adapter_handler,
     }
 
     if specialist_runner is not None:

@@ -45,6 +45,7 @@ def test_interpret_plan_walks_depends_on_order():
         db=None,
         config=None,
         answer_kwargs={"session_id": "s1"},
+        use_split_phases=False,
     )
     result = interpret_plan(plan, query="Do X", session_id="s1", handlers=handlers)
     assert result.ok
@@ -85,6 +86,7 @@ def test_duplicate_retrieval_call_is_skipped():
         db=None,
         config=None,
         answer_kwargs={},
+        use_split_phases=False,
     )
     result = interpret_plan(plan, query="q", session_id="s1", handlers=handlers)
     assert seen["count"] == 1
@@ -92,18 +94,47 @@ def test_duplicate_retrieval_call_is_skipped():
     assert result.plan.steps[1].status == "skipped"
 
 
-def test_interpretive_wrapper_uses_executor_path(monkeypatch):
+def test_interpretive_wrapper_uses_split_phases(monkeypatch):
     from tirzah.config import AppConfig, RuntimeConfig
     from tirzah.planning.recursive import process_frontend_request
 
     monkeypatch.setattr(
         "tirzah.planning.recursive.create_initial_plan",
         lambda *a, **k: _plan(
-            PlanStep(id="1", action="Go", construct="CALL", allowed_tools=["tirzah_retrieval"]),
+            PlanStep(id="1", action="Retrieve", construct="CALL", allowed_tools=["tirzah_retrieval"]),
+            PlanStep(
+                id="2",
+                action="Synthesize",
+                construct="CALL",
+                depends_on=["1"],
+                allowed_tools=["answer_adapter"],
+            ),
         ),
     )
     monkeypatch.setattr("tirzah.planning.recursive.revise_plan_recursively", lambda plan, *a, **k: [plan])
     monkeypatch.setattr("tirzah.planning.recursive.save_plan_revision", lambda *a, **k: None)
+
+    monkeypatch.setattr(
+        "tirzah.sessions.answer_phases.retrieve_for_answer",
+        lambda _db, _config, **kwargs: {
+            "ok": True,
+            "package": {
+                "query": kwargs["query"],
+                "session_id": kwargs.get("session_id", "default"),
+                "focus_node_id": None,
+                "selected_node_id": None,
+                "retrieval_mode": "direct",
+                "runtime_config": {"answer_adapter": "mock"},
+                "process_trace": [],
+                "prompt": {"prompt_text": "ctx", "budget": {}, "context_metadata": {}},
+                "retrieval_status": "matched_context",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.answer_phases.synthesize_from_retrieval",
+        lambda _db, _config, _package: {"ok": True, "answer": "via-plan", "used_node_ids": []},
+    )
 
     cfg = AppConfig(
         runtime=RuntimeConfig(
@@ -115,9 +146,9 @@ def test_interpretive_wrapper_uses_executor_path(monkeypatch):
         None,
         cfg,
         query="hello",
-        executor=lambda _db, _config, **kwargs: {"ok": True, "answer": "via-plan", "used_node_ids": []},
+        executor=lambda *_a, **_k: {"ok": True, "answer": "unused"},
         planner=lambda _prompt: "{}",
         session_id="s1",
     )
     assert result["answer"] == "via-plan"
-    assert any(row["step"].startswith("plan.step.") for row in result.get("process_trace", []))
+    assert any(str(row.get("step", "")).startswith("plan.step.") for row in result.get("process_trace", []))
