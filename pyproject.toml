@@ -34,7 +34,7 @@ dependencies = [
   "pymongo>=4.7",
   "pyyaml>=6.0",
   "galeed>=0.1",  # the cross-project trace/log spine (extracted from tirzah.trace)
-  "cairn>=0.1",  # process-grammar conformance surface the recursive planner validates against
+  "cairn-lang>=0.3",  # process-grammar conformance (import name: cairn) the recursive planner validates against
   "keturah>=0.1",  # uniform manifest of LLM-consumable interfaces (served at /api/capabilities)
 ]
 
