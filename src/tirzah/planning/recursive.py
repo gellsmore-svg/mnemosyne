@@ -236,6 +236,72 @@ def revise_plan_recursively(
     return revisions
 
 
+def _interpretive_result_from_execution(
+    execution: Any,
+    plan: CairnPlan,
+    *,
+    db: Any,
+    query: str,
+    session_id: str,
+) -> dict[str, Any]:
+    from tirzah.planning.context_bundle import compact_context_bundle_summary
+    from tirzah.planning.execution_store import compact_execution_summary, get_plan_execution
+
+    result = execution.primary_result or {
+        "ok": execution.ok,
+        "reason": execution.reason or "plan_interpretation_incomplete",
+        "query": query,
+        "session_id": session_id,
+    }
+    process_trace: list[dict[str, Any]] = list(execution.context.trace or [])
+    bundle = execution.context.artifacts.get("context_bundle")
+    if bundle:
+        result["context_bundle_summary"] = compact_context_bundle_summary(bundle)
+        process_trace.append(
+            {
+                "step": "context_bundle",
+                "input": {"session_id": session_id},
+                "output": result["context_bundle_summary"],
+            }
+        )
+    saved_execution = get_plan_execution(db, plan.plan_id, plan.revision, session_id)
+    if saved_execution:
+        result["plan_execution"] = compact_execution_summary(saved_execution)
+        process_trace.append(
+            {
+                "step": "plan_execution",
+                "input": {"plan_id": plan.plan_id, "revision": plan.revision},
+                "output": result["plan_execution"],
+            }
+        )
+    if process_trace:
+        result["process_trace"] = process_trace
+    return result
+
+
+def _merge_interpretive_results(previous: dict[str, Any], fresh: dict[str, Any]) -> dict[str, Any]:
+    merged = {**previous, **fresh}
+    merged["process_trace"] = (previous.get("process_trace") or []) + (fresh.get("process_trace") or [])
+    return merged
+
+
+def _revision_trace_event(step: str, plan: CairnPlan) -> dict[str, Any]:
+    return {
+        "step": step,
+        "input": {
+            "plan_id": plan.plan_id,
+            "revision": plan.revision,
+            "parent_revision": plan.parent_revision,
+        },
+        "output": {
+            "revision_decision": plan.revision_decision,
+            "revision_reason": plan.revision_reason,
+            "status": plan.status,
+            "step_count": len(plan.steps),
+        },
+    }
+
+
 def process_frontend_request(
     db,
     config: AppConfig,
@@ -282,12 +348,14 @@ def process_frontend_request(
         context=planning_context,
         profile_hint=profile_hint,
     )
-    save_plan_revision(db, initial, session_id=answer_kwargs.get("session_id", "web"))
-    if config.runtime.plan_interpretive_execution_enabled:
+    session_id = answer_kwargs.get("session_id", "web")
+    save_plan_revision(db, initial, session_id=session_id)
+    interpretive = config.runtime.plan_interpretive_execution_enabled
+    revisions: list[CairnPlan] = []
+    if interpretive:
         from tirzah.coherence import make_client, run_planned_specialist
         from tirzah.planning.executor import build_default_handlers, interpret_plan
 
-        session_id = answer_kwargs.get("session_id", "web")
         handlers = build_default_handlers(
             db=db,
             config=config,
@@ -308,52 +376,63 @@ def process_frontend_request(
             persist_execution=True,
             resume_execution=True,
         )
-        initial = execution.plan
-        save_plan_revision(db, initial, session_id=session_id)
-        result = execution.primary_result or {
-            "ok": execution.ok,
-            "reason": execution.reason or "plan_interpretation_incomplete",
-            "query": query,
-            "session_id": session_id,
-        }
-        from tirzah.planning.context_bundle import compact_context_bundle_summary
-        from tirzah.planning.execution_store import compact_execution_summary, get_plan_execution
-
-        bundle = execution.context.artifacts.get("context_bundle")
-        if bundle:
-            result["context_bundle_summary"] = compact_context_bundle_summary(bundle)
-        saved_execution = get_plan_execution(db, initial.plan_id, initial.revision, session_id)
-        if saved_execution:
-            result["plan_execution"] = compact_execution_summary(saved_execution)
-        if execution.context.trace:
-            result.setdefault("process_trace", [])
-            result["process_trace"] = execution.context.trace + result["process_trace"]
-        if result.get("context_bundle_summary"):
-            result.setdefault("process_trace", []).append(
-                {
-                    "step": "context_bundle",
-                    "input": {"session_id": session_id},
-                    "output": result["context_bundle_summary"],
-                }
+        current_plan = execution.plan
+        save_plan_revision(db, current_plan, session_id=session_id)
+        result = _interpretive_result_from_execution(
+            execution, current_plan, db=db, query=query, session_id=session_id
+        )
+        revisions = [current_plan]
+        information = information_from_result(result)
+        while len(revisions) < max(1, config.runtime.planning_max_revisions):
+            proposed = revise_plan(
+                revisions[-1],
+                information,
+                planner=planner,
+                max_steps=config.runtime.planning_max_steps,
             )
-        if result.get("plan_execution"):
-            result.setdefault("process_trace", []).append(
-                {
-                    "step": "plan_execution",
-                    "input": {"plan_id": initial.plan_id, "revision": initial.revision},
-                    "output": result["plan_execution"],
-                }
+            if proposed.revision <= revisions[-1].revision:
+                break
+            revisions.append(proposed)
+            save_plan_revision(db, proposed, session_id=session_id)
+            result.setdefault("process_trace", []).append(_revision_trace_event("plan.revision.proposed", proposed))
+            if proposed.revision_decision in {"stable", "complete", "blocked"}:
+                break
+            execution = interpret_plan(
+                proposed,
+                query=query,
+                session_id=session_id,
+                handlers=handlers,
+                db=db,
+                config=config,
+                answer_kwargs=answer_kwargs,
+                persist_execution=True,
+                resume_execution=False,
             )
+            current_plan = execution.plan
+            revisions[-1] = current_plan
+            save_plan_revision(db, current_plan, session_id=session_id)
+            fresh = _interpretive_result_from_execution(
+                execution, current_plan, db=db, query=query, session_id=session_id
+            )
+            result = _merge_interpretive_results(result, fresh)
+            result.setdefault("process_trace", []).append(
+                _revision_trace_event("plan.revision.executed", current_plan)
+            )
+            information = information_from_result(result)
+        initial = revisions[-1]
     else:
         result = executor(db, config, query=query, **answer_kwargs)
-    information = information_from_result(result)
-    revisions = revise_plan_recursively(
-        initial, [information], planner=planner,
-        max_revisions=config.runtime.planning_max_revisions,
-        max_steps=config.runtime.planning_max_steps,
-    )
-    for revision in revisions[1:]:
-        save_plan_revision(db, revision, session_id=answer_kwargs.get("session_id", "web"))
+        information = information_from_result(result)
+        revisions = revise_plan_recursively(
+            initial,
+            [information],
+            planner=planner,
+            max_revisions=config.runtime.planning_max_revisions,
+            max_steps=config.runtime.planning_max_steps,
+        )
+        for revision in revisions[1:]:
+            save_plan_revision(db, revision, session_id=session_id)
+        initial = revisions[-1]
     plan_trace = [
         {
             "step": "request_plan",
@@ -455,9 +534,8 @@ def plan_from_payload(
         revision_decision=decision,
         revision_reason=clean_text(payload.get("revision_reason"), 1000),
     )
-    if revision == 1:
-        for step in plan.steps:
-            step.status = "pending"
+    for step in plan.steps:
+        step.status = "pending"
     plan.steps = ensure_interpretive_plan_shape(plan.steps)
     plan.cairn_text = render_cairn_plan(plan)
     return plan

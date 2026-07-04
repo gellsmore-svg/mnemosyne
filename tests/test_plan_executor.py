@@ -154,6 +154,119 @@ def test_interpretive_wrapper_uses_split_phases(monkeypatch):
     assert any(str(row.get("step", "")).startswith("plan.step.") for row in result.get("process_trace", []))
 
 
+def test_interpretive_mode_executes_each_revised_plan(monkeypatch):
+    from tirzah.config import AppConfig, RuntimeConfig
+    from tirzah.planning.executor import PlanExecutionContext, PlanExecutionResult
+    from tirzah.planning.recursive import CairnPlan, PlanStep, process_frontend_request
+
+    revised_plan = CairnPlan(
+        plan_id="plan_test",
+        revision=2,
+        parent_revision=1,
+        request="hello",
+        trigger="execution_evidence",
+        objective="hello",
+        status="stable",
+        steps=[
+            PlanStep(id="1", action="Revised step", construct="STEP"),
+            PlanStep(
+                id="2",
+                action="Answer revised",
+                construct="CALL",
+                depends_on=["1"],
+                allowed_tools=["answer_adapter"],
+            ),
+        ],
+        revision_decision="revise",
+        revision_reason="needs revised execution",
+    )
+    interpreted_revisions: list[int] = []
+
+    def fake_interpret(plan, **kwargs):
+        interpreted_revisions.append(plan.revision)
+        answer = "rev1" if plan.revision == 1 else "rev2"
+        context = PlanExecutionContext(
+            query=kwargs.get("query", "hello"),
+            session_id=kwargs.get("session_id", "s1"),
+            artifacts={"synthesis_result": {"ok": True, "answer": answer, "used_node_ids": []}},
+            trace=[{"step": "plan.step.completed", "step_id": "1", "metadata": {"revision": plan.revision}}],
+        )
+        return PlanExecutionResult(
+            ok=True,
+            plan=plan,
+            context=context,
+            primary_result={"ok": True, "answer": answer, "used_node_ids": []},
+        )
+
+    monkeypatch.setattr("tirzah.planning.executor.interpret_plan", fake_interpret)
+    stable_plan = CairnPlan(
+        plan_id="plan_test",
+        revision=3,
+        parent_revision=2,
+        request="hello",
+        trigger="execution_evidence",
+        objective="hello",
+        status="stable",
+        steps=revised_plan.steps,
+        revision_decision="stable",
+        revision_reason="done",
+    )
+
+    def fake_revise(plan, _info, **kwargs):
+        if plan.revision == 1:
+            return revised_plan
+        return stable_plan
+
+    monkeypatch.setattr("tirzah.planning.recursive.revise_plan", fake_revise)
+    monkeypatch.setattr(
+        "tirzah.planning.execution_store.get_plan_execution",
+        lambda _db, plan_id, revision, session_id: {
+            "plan_id": plan_id,
+            "revision": revision,
+            "session_id": session_id,
+            "status": "completed",
+            "artifacts": {},
+            "steps": [],
+            "completed_step_ids": ["1"],
+        },
+    )
+    monkeypatch.setattr(
+        "tirzah.planning.recursive.create_initial_plan",
+        lambda *a, **k: _plan(
+            PlanStep(id="1", action="Gather", construct="CALL", allowed_tools=["tirzah_retrieval"]),
+            PlanStep(
+                id="2",
+                action="Answer",
+                construct="CALL",
+                depends_on=["1"],
+                allowed_tools=["answer_adapter"],
+            ),
+        ),
+    )
+    monkeypatch.setattr("tirzah.planning.recursive.save_plan_revision", lambda *a, **k: None)
+
+    cfg = AppConfig(
+        runtime=RuntimeConfig(
+            recursive_planning_enabled=True,
+            plan_interpretive_execution_enabled=True,
+            planning_max_revisions=3,
+        )
+    )
+    result = process_frontend_request(
+        None,
+        cfg,
+        query="hello",
+        executor=lambda *_a, **_k: {"ok": True, "answer": "unused"},
+        planner=lambda _prompt: "{}",
+        session_id="s1",
+    )
+    assert interpreted_revisions == [1, 2]
+    assert result["answer"] == "rev2"
+    assert result["request_plan"]["revision"] == 3
+    assert any(row.get("step") == "plan.revision.proposed" for row in result.get("process_trace", []))
+    assert any(row.get("step") == "plan.revision.executed" for row in result.get("process_trace", []))
+
+
 def test_interpretive_wrapper_exposes_execution_and_bundle_summary(monkeypatch):
     from tirzah.config import AppConfig, RuntimeConfig
     from tirzah.planning.executor import PlanExecutionContext, PlanExecutionResult
