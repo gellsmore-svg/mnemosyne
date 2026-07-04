@@ -325,6 +325,7 @@ def process_frontend_request(
     executor: ExecutorFn,
     planner: PlannerFn | None = None,
     planning_enabled: bool | None = None,
+    tracer: Any = None,
     **answer_kwargs: Any,
 ) -> dict[str, Any]:
     enabled = config.runtime.recursive_planning_enabled if planning_enabled is None else planning_enabled
@@ -393,6 +394,7 @@ def process_frontend_request(
             resume_execution=True,
             revision_planner=planner if allow_mid_revision else None,
             allow_mid_revision=allow_mid_revision,
+            tracer=tracer,
         )
         current_plan = execution.plan
         save_plan_revision(db, current_plan, session_id=session_id)
@@ -427,6 +429,7 @@ def process_frontend_request(
                 resume_execution=False,
                 revision_planner=planner if allow_mid_revision else None,
                 allow_mid_revision=allow_mid_revision,
+                tracer=tracer,
             )
             current_plan = execution.plan
             revisions[-1] = current_plan

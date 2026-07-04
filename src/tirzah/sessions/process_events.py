@@ -189,6 +189,10 @@ def emit_process_trace_events(
         name = step.get("step")
         if name in skip_steps:
             continue
+        if step.get("live"):
+            # Already emitted in real time by the plan executor's LiveTraceList;
+            # re-emitting here would duplicate it in the panel and the store.
+            continue
         event_type = _STEP_EVENT_TYPE.get(name or "", "process.step")
         summary = human_step_name(name) or (name or "step")
         status = _status_for(step, name)

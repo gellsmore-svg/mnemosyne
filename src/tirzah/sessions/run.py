@@ -55,6 +55,7 @@ def run_traced_interaction(
             executor=executor,
             planning_enabled=planning_enabled,
             session_id=session_id,
+            tracer=tracer,  # plan-step events stream live to the process panel
             **answer_kwargs,
         )
     except Exception as error:  # noqa: BLE001 - log a failure event, then re-raise

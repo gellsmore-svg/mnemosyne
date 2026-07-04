@@ -338,3 +338,54 @@ def test_interpretive_wrapper_exposes_execution_and_bundle_summary(monkeypatch):
     assert result["context_bundle_summary"]["tools"] == ["search_nodes"]
     assert result["plan_execution"]["plan_id"] == "plan_test"
     assert result["plan_execution"]["status"] == "completed"
+
+def test_interpret_plan_streams_trace_live_and_bridge_skips_duplicates():
+    """With a live tracer, every executor trace entry is published in real time
+    (bus + store) and marked `live`, so the post-hoc process_trace bridge does
+    not emit it a second time."""
+    from galeed.bus import TraceBus
+    from galeed.recorder import Tracer
+
+    from tirzah.sessions.process_events import emit_process_trace_events
+
+    bus = TraceBus()
+    live_events = []
+    with bus.subscribe("*") as subscription:
+        tracer = Tracer(session_id="s1", db=None, bus=bus, source="tirzah")
+        plan = _plan(PlanStep(id="1", action="Interpret", construct="STEP"))
+        execution = interpret_plan(
+            plan, query="q", session_id="s1", handlers={}, tracer=tracer
+        )
+        while not subscription.empty():
+            live_events.append(subscription.get_nowait())
+
+    types = [event.type for event in live_events]
+    assert "plan.step.started" in types
+    assert any(t.startswith("plan.step.") and t != "plan.step.started" for t in types)
+    # every executor trace entry carries the live marker…
+    assert execution.context.trace and all(e.get("live") for e in execution.context.trace)
+
+    # …so the post-hoc bridge emits nothing for them (no duplicates).
+    before = len(tracer.events)
+    emit_process_trace_events(tracer, list(execution.context.trace))
+    assert len(tracer.events) == before
+
+
+def test_interpret_plan_without_tracer_keeps_bridge_emission():
+    """No tracer → entries are not marked live and the bridge still emits them
+    (backwards-compatible post-hoc behaviour)."""
+    from galeed.recorder import Tracer
+
+    from tirzah.sessions.process_events import emit_process_trace_events
+
+    plan = _plan(PlanStep(id="1", action="Interpret", construct="STEP"))
+    execution = interpret_plan(plan, query="q", session_id="s1", handlers={})
+    assert execution.context.trace and not any(e.get("live") for e in execution.context.trace)
+
+    tracer = Tracer(session_id="s1", db=None, source="tirzah")
+    emit_process_trace_events(tracer, list(execution.context.trace))
+    # the bridge maps plan.* names onto process.step events, name in metadata
+    assert any(
+        str(event.metadata.get("step", "")).startswith("plan.step.")
+        for event in tracer.events
+    )

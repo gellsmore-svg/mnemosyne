@@ -36,6 +36,50 @@ from tirzah.planning.recursive import ALLOWED_PLAN_TOOLS, CairnPlan, PlanStep
 StepHandler = Callable[[PlanStep, "PlanExecutionContext"], dict[str, Any]]
 
 
+class LiveTraceList(list):
+    """A trace list that also publishes each entry through a live Tracer.
+
+    The executor and every construct append plain dicts to ``trace``; wrapping
+    the list means ALL of them stream to the process panel in real time (bus +
+    persistence via the request Tracer) without touching the construct code.
+    Entries are marked ``live`` so the post-hoc process_trace → event bridge
+    does not emit them a second time. Emission is best-effort by design.
+    """
+
+    def __init__(self, iterable=(), tracer: Any = None) -> None:
+        super().__init__(iterable)
+        self.tracer = tracer
+
+    def append(self, entry: dict[str, Any]) -> None:  # type: ignore[override]
+        if self.tracer is not None and isinstance(entry, dict):
+            entry = {**entry, "live": True}
+            try:
+                event = str(entry.get("step") or "plan.step")
+                metadata = dict(entry.get("metadata") or {})
+                if event.endswith(".blocked"):
+                    status = "failed"
+                elif event.endswith(".started") or event.endswith(".attempt"):
+                    status = "started"
+                elif event.endswith(".completed"):
+                    status = "completed"
+                else:
+                    status = "ok"
+                construct = metadata.get("construct")
+                step_id = entry.get("step_id")
+                label = " ".join(str(part) for part in (construct, step_id) if part)
+                self.tracer.emit(
+                    event,
+                    status=status,
+                    summary=(f"{label}: {event.rsplit('.', 1)[-1]}" if label else event),
+                    step_id=step_id,
+                    **{k: v for k, v in metadata.items()
+                       if isinstance(v, (str, int, float, bool)) or v is None},
+                )
+            except Exception:
+                pass
+        super().append(entry)
+
+
 @dataclass
 class PlanExecutionContext:
     query: str
@@ -84,8 +128,13 @@ def interpret_plan(
     resume_execution: bool = True,
     revision_planner: Callable[[str], str] | None = None,
     allow_mid_revision: bool = False,
+    tracer: Any = None,
 ) -> PlanExecutionResult:
-    """Walk *plan* step-by-step; return updated plan + execution context."""
+    """Walk *plan* step-by-step; return updated plan + execution context.
+
+    With ``tracer`` (a live galeed Tracer), every trace entry — step
+    transitions and construct internals alike — also streams to the process
+    panel in real time via :class:`LiveTraceList`."""
     handlers = handlers or {}
     execution_id: str | None = None
     if db and persist_execution and resume_execution:
@@ -124,6 +173,7 @@ def interpret_plan(
         )
         working_steps = [replace(step) for step in plan.steps]
         completed = set()
+    context.trace = LiveTraceList(context.trace, tracer=tracer)
     context.plan_steps = working_steps
     context.completed_step_ids = completed
     max_rounds = len(working_steps) + 1
