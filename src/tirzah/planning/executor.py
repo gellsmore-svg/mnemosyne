@@ -602,13 +602,14 @@ def _run_iterate_body_step(
 ) -> dict[str, Any]:
     _append_trace(context, step.id, "plan.step.started", {"construct": step.construct})
     construct = (step.construct or "STEP").upper()
-    if construct == "CALL":
-        outcome = _dispatch_call(step, context, handlers)
-    elif construct == "STEP":
-        outcome = {"status": "completed", "artifact": {"acknowledged": True, "action": step.action}}
-    else:
-        outcome = {"status": "blocked", "reason": f"iterate_body_construct:{construct.lower()}"}
-    return outcome
+    if construct in {"BREAK", "CONTINUE"}:
+        return {"status": "completed", "artifact": {"control": construct.lower()}}
+    return _execute_step(
+        step,
+        context,
+        handlers,
+        completed=context.completed_step_ids,
+    )
 
 
 def _dispatch_call(

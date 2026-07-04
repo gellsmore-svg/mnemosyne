@@ -144,6 +144,30 @@ def test_ask_endpoint_uses_recursive_planning_wrapper(monkeypatch) -> None:
 
 
 
+def test_ask_endpoint_surfaces_plan_execution_fields(monkeypatch) -> None:
+    client = TestClient(app)
+
+    def wrapped(_db, _config, **kwargs):
+        return {
+            "ok": True,
+            "answer": "planned answer",
+            "session_id": "s1",
+            "plan_execution": {"plan_id": "plan_test", "status": "completed", "step_count": 4},
+            "context_bundle_summary": {"tools": ["search_nodes"], "tool_count": 1},
+            "process_trace": [],
+        }
+
+    monkeypatch.setattr("tirzah.sessions.run.process_frontend_request", wrapped)
+    response = client.post(
+        "/api/ask",
+        json={"query": "Q", "session_id": "s1", "recursive_planning": True},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["plan_execution"]["plan_id"] == "plan_test"
+    assert payload["context_bundle_summary"]["tools"] == ["search_nodes"]
+
+
 def test_ask_endpoint_returns_three_channel_contract(monkeypatch) -> None:
     client = TestClient(app)
 

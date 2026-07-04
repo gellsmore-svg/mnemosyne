@@ -41,6 +41,8 @@ _STEP_EVENT_TYPE: dict[str, str] = {
     "plan.step.completed": EventType.PROCESS_STEP,
     "plan.step.blocked": EventType.PROCESS_STEP,
     "plan.step.skipped": EventType.PROCESS_STEP,
+    "plan.loop.break": EventType.PROCESS_STEP,
+    "plan.loop.continue": EventType.PROCESS_STEP,
 }
 
 # small, safe scalar/identifier fields worth surfacing as event metadata.
@@ -76,6 +78,9 @@ _META_WHITELIST = (
     "signal",
     "selected_steps",
     "body",
+    "condition",
+    "skipped_parent",
+    "loop_break",
     "tool_count",
     "completed_count",
     "step_count",

@@ -53,6 +53,76 @@ def _normalize_signal(value: str) -> str:
     return " ".join(str(value or "").split()).lower().replace(" ", "_")
 
 
+def cascade_skip_dependents(
+    steps: list[PlanStep],
+    completed: set[str],
+    trace: list[dict[str, Any]],
+    *,
+    reason: str = "skipped_parent",
+) -> None:
+    """Skip pending steps that depend on a skipped ancestor (nested branch trees)."""
+    changed = True
+    while changed:
+        changed = False
+        for step in steps:
+            if step.status != "pending":
+                continue
+            parents = [next((row for row in steps if row.id == dep_id), None) for dep_id in step.depends_on]
+            if not parents or not all(parent is not None and parent.status == "skipped" for parent in parents):
+                continue
+            step.status = "skipped"
+            completed.add(step.id)
+            trace.append(
+                {
+                    "step": "plan.step.skipped",
+                    "step_id": step.id,
+                    "metadata": {
+                        "construct": step.construct,
+                        "reason": reason,
+                        "skipped_parents": [parent.id for parent in parents if parent is not None],
+                    },
+                }
+            )
+            changed = True
+
+
+def parse_loop_control(step: PlanStep) -> tuple[str | None, str | None]:
+    construct = (step.construct or "").upper()
+    if construct not in {"BREAK", "CONTINUE"}:
+        return None, None
+    text = " ".join([step.action, *step.success_criteria])
+    match = re.search(r"IF:\s*([^;\]]+)", text, re.I)
+    condition = match.group(1).strip().lower() if match else None
+    return construct.lower(), condition
+
+
+def evaluate_loop_control_condition(
+    condition: str | None,
+    *,
+    artifacts: dict[str, Any],
+    round_num: int,
+    body_blocked: bool,
+) -> bool:
+    if condition is None:
+        return True
+    normalized = " ".join(condition.split()).lower().replace(" ", "_")
+    if normalized in {"blocked", "body_blocked"}:
+        return body_blocked
+    if normalized == "has_matches":
+        bundle = ensure_bundle(artifacts)
+        return bool(latest_tool_matches(bundle, ("search_nodes", "expand_proximity", "semantic_candidates")))
+    if normalized == "context_ready":
+        bundle = ensure_bundle(artifacts)
+        tools = {str(row.get("tool")) for row in bundle.get("tool_results") or []}
+        return "compile_context" in tools or bool(artifacts.get("retrieval_package"))
+    if normalized.startswith("round>="):
+        try:
+            return round_num >= int(normalized.split(">=", 1)[1])
+        except ValueError:
+            return False
+    return False
+
+
 def iterate_until_satisfied(step: PlanStep, artifacts: dict[str, Any], *, round_num: int) -> bool:
     criteria = [
         item.split(":", 1)[1].strip().lower()
@@ -114,6 +184,7 @@ def execute_iterate_step(
         return {"status": "completed", "artifact": {"rounds": 0, "body": []}}
     max_rounds = parse_max_rounds(step)
     rounds_run = 0
+    loop_break = False
     for round_num in range(1, max_rounds + 1):
         rounds_run = round_num
         trace.append(
@@ -123,13 +194,81 @@ def execute_iterate_step(
                 "metadata": {"round": round_num, "max_rounds": max_rounds, "body": [item.id for item in body]},
             }
         )
+        body_blocked = False
         for body_step in body:
             if round_num > 1 and body_step.status in {"completed", "skipped"}:
-                body_step.status = "pending"
-                completed.discard(body_step.id)
+                if (body_step.construct or "").upper() not in {"BREAK", "CONTINUE"}:
+                    body_step.status = "pending"
+                    completed.discard(body_step.id)
             if body_step.status != "pending":
                 continue
             if not all(dep in completed or dep == step.id for dep in body_step.depends_on):
+                continue
+            control, condition = parse_loop_control(body_step)
+            if control == "break":
+                if evaluate_loop_control_condition(
+                    condition,
+                    artifacts=artifacts,
+                    round_num=round_num,
+                    body_blocked=body_blocked,
+                ):
+                    body_step.status = "completed"
+                    completed.add(body_step.id)
+                    trace.append(
+                        {
+                            "step": "plan.step.completed",
+                            "step_id": body_step.id,
+                            "metadata": {
+                                "construct": "BREAK",
+                                "reason": "loop_break",
+                                "round": round_num,
+                                "condition": condition,
+                            },
+                        }
+                    )
+                    loop_break = True
+                    break
+                body_step.status = "skipped"
+                completed.add(body_step.id)
+                trace.append(
+                    {
+                        "step": "plan.step.skipped",
+                        "step_id": body_step.id,
+                        "metadata": {"construct": "BREAK", "reason": "condition_not_met", "round": round_num},
+                    }
+                )
+                continue
+            if control == "continue":
+                if evaluate_loop_control_condition(
+                    condition,
+                    artifacts=artifacts,
+                    round_num=round_num,
+                    body_blocked=body_blocked,
+                ):
+                    body_step.status = "completed"
+                    completed.add(body_step.id)
+                    trace.append(
+                        {
+                            "step": "plan.step.completed",
+                            "step_id": body_step.id,
+                            "metadata": {
+                                "construct": "CONTINUE",
+                                "reason": "loop_continue",
+                                "round": round_num,
+                                "condition": condition,
+                            },
+                        }
+                    )
+                    break
+                body_step.status = "skipped"
+                completed.add(body_step.id)
+                trace.append(
+                    {
+                        "step": "plan.step.skipped",
+                        "step_id": body_step.id,
+                        "metadata": {"construct": "CONTINUE", "reason": "condition_not_met", "round": round_num},
+                    }
+                )
                 continue
             outcome = run_step(body_step)
             body_step.status = outcome["status"]
@@ -144,13 +283,22 @@ def execute_iterate_step(
                 completed.add(body_step.id)
                 if outcome.get("artifact") is not None:
                     artifacts[body_step.id] = outcome["artifact"]
+            if outcome["status"] == "blocked":
+                body_blocked = True
+        if loop_break:
+            break
         if iterate_until_satisfied(step, artifacts, round_num=round_num):
             break
         if any(body_step.status == "blocked" for body_step in body):
             break
     return {
         "status": "completed",
-        "artifact": {"rounds": rounds_run, "body": [item.id for item in body], "max_rounds": max_rounds},
+        "artifact": {
+            "rounds": rounds_run,
+            "body": [item.id for item in body],
+            "max_rounds": max_rounds,
+            "loop_break": loop_break,
+        },
     }
 
 
@@ -192,6 +340,7 @@ def execute_decision_step(
                 "metadata": {"construct": branch.construct, "reason": "decision_not_selected", "branch": chosen},
             }
         )
+    cascade_skip_dependents(steps, completed, trace, reason="decision_branch_skipped")
     trace.append(
         {
             "step": "plan.decision.selected",
