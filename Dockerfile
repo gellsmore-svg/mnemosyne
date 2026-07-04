@@ -7,13 +7,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
+    && apt-get install -y --no-install-recommends libgomp1 git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 
 RUN python -m pip install --upgrade pip \
+    && python -m pip install \
+      "git+https://github.com/gellsmore-svg/keturah.git" \
+      "git+https://github.com/gellsmore-svg/galeed.git" \
+      "git+https://github.com/gellsmore-svg/cairn.git" \
     && python -m pip install ".[profiles]"
 
 EXPOSE 8765
