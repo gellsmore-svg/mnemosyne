@@ -18,7 +18,7 @@ from tirzah.config import AppConfig, RuntimeConfig
 PLAN_STATUSES = {"draft", "active", "stable", "complete", "blocked"}
 STEP_STATUSES = {"pending", "active", "completed", "blocked", "skipped"}
 CONSTRUCTS = {
-    "STEP", "CALL", "ITERATE", "DECISION", "RECURSE", "PARALLEL", "MERGE", "BREAK", "CONTINUE", "RETRY",
+    "STEP", "CALL", "ITERATE", "DECISION", "RECURSE", "PARALLEL", "MERGE", "BREAK", "CONTINUE", "RETRY", "ERROR",
 }
 REVISION_DECISIONS = {"revise", "stable", "complete", "blocked"}
 ALLOWED_PLAN_TOOLS = {

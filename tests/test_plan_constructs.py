@@ -1,13 +1,16 @@
 from tirzah.config import AppConfig, RuntimeConfig
 from tirzah.planning.constructs import (
     cascade_skip_dependents,
+    error_signal_matches,
     evaluate_decision_branch,
     execute_decision_step,
+    execute_error_step,
     execute_iterate_step,
     execute_merge_step,
     execute_parallel_step,
     execute_retry_step,
     is_owned_by_pending_parent,
+    parse_error_handler,
     parse_max_rounds,
     suggest_plan_profile_hint,
 )
@@ -102,6 +105,171 @@ def test_decision_skips_unselected_branch():
     assert steps[1].status == "skipped"
     assert steps[2].status == "pending"
     assert "2a" in completed and "2a" not in outcome["artifact"]["selected_steps"]
+
+
+def test_parse_error_handler_reads_on_then_and_fallback():
+    step = PlanStep(
+        id="1",
+        action="ON: handler_failed THEN: fallback",
+        construct="ERROR",
+        success_criteria=["fallback:3", "on:handler_failed"],
+    )
+    parsed = parse_error_handler(step)
+    assert parsed["on"] == "handler_failed"
+    assert parsed["then"] == "fallback"
+    assert parsed["fallback_step_id"] == "3"
+    assert error_signal_matches("handler_failed", "handler_failed")
+
+
+def test_error_fallback_runs_recovery_step():
+    steps = [
+        PlanStep(
+            id="1",
+            action="ON: transient THEN: fallback",
+            construct="ERROR",
+            success_criteria=["fallback:3"],
+        ),
+        PlanStep(id="2", action="Risky", construct="CALL", depends_on=["1"]),
+        PlanStep(id="3", action="Recover", construct="CALL", depends_on=["1"]),
+    ]
+    artifacts: dict = {}
+    trace: list = []
+    completed: set[str] = set()
+    calls: list[str] = []
+
+    def run_step(body_step):
+        calls.append(body_step.id)
+        if body_step.id == "2":
+            return {"status": "blocked", "reason": "transient"}
+        return {"status": "completed", "artifact": {"ok": True, "step": body_step.id}}
+
+    outcome = execute_error_step(
+        steps[0],
+        steps=steps,
+        completed=completed,
+        artifacts=artifacts,
+        run_step=run_step,
+        trace=trace,
+    )
+    assert outcome["status"] == "completed"
+    assert outcome["artifact"]["fallback_step_id"] == "3"
+    assert calls == ["2", "3"]
+    assert steps[1].status == "skipped"
+    assert steps[2].status == "completed"
+    assert any(row["step"] == "plan.error.triggered" for row in trace)
+
+
+def test_error_propagate_returns_blocked_when_then_propagate():
+    steps = [
+        PlanStep(id="1", action="ON: fatal THEN: propagate", construct="ERROR"),
+        PlanStep(id="2", action="Risky", construct="CALL", depends_on=["1"]),
+    ]
+    outcome = execute_error_step(
+        steps[0],
+        steps=steps,
+        completed=set(),
+        artifacts={},
+        run_step=lambda _step: {"status": "blocked", "reason": "fatal"},
+        trace=[],
+    )
+    assert outcome["status"] == "blocked"
+    assert outcome["reason"] == "fatal"
+
+
+def test_interpret_plan_error_fallback_to_memory_search(monkeypatch):
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.execute_search_nodes_tool",
+        lambda *_db, query, **kwargs: (
+            {"matches": [{"node_id": "n1", "title": "Hit"}], "compiled_contexts": []},
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.answer_phases._begin_answer_request",
+        lambda *_args, **_kwargs: (RuntimeConfig(answer_adapter="mock"), [], "run1"),
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.build_agentic_answer_envelope",
+        lambda **_kwargs: {
+            "prompt_text": "prompt",
+            "budget": {},
+            "context_metadata": {
+                "retrieval_status": "matched_context",
+                "included": [{"node_id": "n1"}],
+                "evidence_summary": {},
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.inject_history_into_prompt",
+        lambda prompt, _history: prompt,
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.render_session_history_block",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.answer_phases.synthesize_from_context_bundle",
+        lambda _db, _config, **kwargs: {
+            "ok": True,
+            "answer": "fallback answer",
+            "used_node_ids": ["n1"],
+            "retrieval_status": "matched_context",
+        },
+    )
+
+    plan = _plan(
+        PlanStep(id="1", action="Interpret", construct="STEP"),
+        PlanStep(
+            id="2",
+            action="ON: web_research_disabled THEN: fallback",
+            construct="ERROR",
+            depends_on=["1"],
+            success_criteria=["fallback:3", "on:web_research_disabled"],
+        ),
+        PlanStep(
+            id="2a",
+            action="Web",
+            construct="CALL",
+            depends_on=["2"],
+            allowed_tools=["web_search"],
+        ),
+        PlanStep(
+            id="3",
+            action="Search memory",
+            construct="CALL",
+            depends_on=["2"],
+            allowed_tools=["search_nodes"],
+        ),
+        PlanStep(
+            id="4",
+            action="Answer",
+            construct="CALL",
+            depends_on=["3"],
+            allowed_tools=["answer_adapter"],
+        ),
+    )
+    handlers = build_default_handlers(
+        db=object(),
+        config=AppConfig(runtime=RuntimeConfig(web_research_enabled=False)),
+        answer_kwargs={"session_id": "s1"},
+        use_split_phases=True,
+    )
+    result = interpret_plan(
+        plan,
+        query="Q",
+        session_id="s1",
+        handlers=handlers,
+        config=AppConfig(runtime=RuntimeConfig(web_research_enabled=False)),
+        answer_kwargs={"session_id": "s1"},
+    )
+    statuses = {step.id: step.status for step in result.plan.steps}
+    assert statuses["2"] == "completed"
+    assert statuses["2a"] == "skipped"
+    assert statuses["3"] == "completed"
+    assert result.ok
+    assert result.primary_result["answer"] == "fallback answer"
+    assert any(row.get("step") == "plan.error.triggered" for row in result.context.trace)
 
 
 def test_isolated_parallel_preserves_parent_context_bundle():

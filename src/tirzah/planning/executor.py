@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 from tirzah.planning.constructs import (
     execute_decision_step,
+    execute_error_step,
     execute_iterate_step,
     execute_merge_step,
     execute_parallel_step,
@@ -629,6 +630,16 @@ def _execute_step(
             trace=context.trace,
             round_num=context.iterate_round,
         )
+    if construct == "ERROR":
+        return execute_error_step(
+            step,
+            steps=context.plan_steps,
+            completed=completed,
+            artifacts=context.artifacts,
+            run_step=lambda body_step: _execute_step(body_step, context, handlers, completed=completed),
+            trace=context.trace,
+            round_num=context.iterate_round,
+        )
     return {"status": "blocked", "reason": f"unknown_construct:{construct}"}
 
 
@@ -677,6 +688,16 @@ def _run_iterate_body_step(
         )
     if construct == "RETRY":
         return execute_retry_step(
+            step,
+            steps=context.plan_steps,
+            completed=context.completed_step_ids,
+            artifacts=context.artifacts,
+            run_step=lambda body_step: _run_iterate_body_step(body_step, context, handlers),
+            trace=context.trace,
+            round_num=context.iterate_round,
+        )
+    if construct == "ERROR":
+        return execute_error_step(
             step,
             steps=context.plan_steps,
             completed=context.completed_step_ids,

@@ -1,4 +1,4 @@
-"""ITERATE, DECISION, PARALLEL/MERGE, and RETRY expansion for interpretive PLAN execution (SPEC §4.6)."""
+"""ITERATE, DECISION, PARALLEL/MERGE, RETRY, and ERROR expansion for interpretive PLAN execution (SPEC §4.6)."""
 from __future__ import annotations
 
 import copy
@@ -77,7 +77,7 @@ def is_owned_by_pending_parent(step: PlanStep, steps: list[PlanStep], completed:
     for parent in steps:
         if parent.id not in step.depends_on:
             continue
-        if parent.construct in {"ITERATE", "DECISION", "PARALLEL", "RETRY"} and parent.id not in completed:
+        if parent.construct in {"ITERATE", "DECISION", "PARALLEL", "RETRY", "ERROR"} and parent.id not in completed:
             return True
     return False
 
@@ -624,6 +624,174 @@ def execute_merge_step(
         }
     )
     return {"status": "completed", "artifact": merged}
+
+
+def _normalize_error_signal(value: str) -> str:
+    return " ".join(str(value or "").split()).lower().replace(" ", "_")
+
+
+def parse_error_handler(step: PlanStep) -> dict[str, Any]:
+    text = " ".join([step.action, *step.success_criteria])
+    on_signal = "any"
+    then_mode = "propagate"
+    fallback_step_id: str | None = None
+    match = re.search(r"ON:\s*([^;]+?)(?:\s+THEN:|\s*;|$)", text, re.I)
+    if match:
+        on_signal = _normalize_error_signal(match.group(1))
+    then_match = re.search(r"THEN:\s*([A-Za-z_]+)", text, re.I)
+    if then_match:
+        then_mode = then_match.group(1).lower()
+    for item in step.success_criteria:
+        lowered = item.lower()
+        if lowered.startswith("on:"):
+            on_signal = _normalize_error_signal(item.split(":", 1)[1])
+        elif lowered.startswith("then:"):
+            then_mode = item.split(":", 1)[1].strip().lower()
+        elif lowered.startswith("fallback:"):
+            fallback_step_id = item.split(":", 1)[1].strip()
+    arrow = re.search(r"fallback\s*→\s*([^\];]+)", text, re.I)
+    if arrow and not fallback_step_id:
+        fallback_step_id = arrow.group(1).strip()
+    return {
+        "on": on_signal,
+        "then": then_mode,
+        "fallback_step_id": fallback_step_id,
+    }
+
+
+def error_signal_matches(on_signal: str, reason: str | None) -> bool:
+    if on_signal in {"any", "default", "*"}:
+        return True
+    normalized = _normalize_error_signal(reason or "")
+    if not normalized:
+        return False
+    return on_signal in normalized or normalized.startswith(on_signal) or normalized.endswith(on_signal)
+
+
+def execute_error_step(
+    step: PlanStep,
+    *,
+    steps: list[PlanStep],
+    completed: set[str],
+    artifacts: dict[str, Any],
+    run_step: StepRunner,
+    trace: list[dict[str, Any]],
+    round_num: int | None = None,
+) -> dict[str, Any]:
+    """Run guarded body steps; on blocked + matching ON, apply THEN handle/fallback/propagate."""
+    body = direct_body_steps(step.id, steps)
+    handler = parse_error_handler(step)
+    if not body:
+        return {"status": "completed", "artifact": {"guarded": True, **handler}}
+    failure: dict[str, Any] | None = None
+    for body_step in body:
+        if body_step.status != "pending":
+            continue
+        if not all(dep in completed or dep == step.id for dep in body_step.depends_on):
+            continue
+        outcome = run_step(body_step)
+        body_step.status = outcome["status"]
+        trace.append(
+            {
+                "step": f"plan.step.{outcome['status']}",
+                "step_id": body_step.id,
+                "metadata": {
+                    "construct": body_step.construct,
+                    "reason": outcome.get("reason"),
+                    "guarded_by": step.id,
+                    "round": round_num,
+                },
+            }
+        )
+        if outcome["status"] == "completed":
+            completed.add(body_step.id)
+            if outcome.get("artifact") is not None:
+                artifacts[body_step.id] = outcome["artifact"]
+            continue
+        if outcome["status"] == "blocked":
+            failure = outcome
+            if not error_signal_matches(handler["on"], outcome.get("reason")):
+                return outcome
+            break
+        return outcome
+    if failure is None:
+        return {"status": "completed", "artifact": {"guarded": True, **handler}}
+    then_mode = handler["then"]
+    trace.append(
+        {
+            "step": "plan.error.triggered",
+            "step_id": step.id,
+            "metadata": {
+                "on": handler["on"],
+                "then": then_mode,
+                "reason": failure.get("reason"),
+                "round": round_num,
+            },
+        }
+    )
+    if then_mode == "propagate":
+        return failure
+    for body_step in body:
+        if body_step.status == "blocked":
+            body_step.status = "skipped"
+            completed.add(body_step.id)
+            trace.append(
+                {
+                    "step": "plan.step.skipped",
+                    "step_id": body_step.id,
+                    "metadata": {"construct": body_step.construct, "reason": "error_guard_failed", "round": round_num},
+                }
+            )
+    if then_mode == "handle":
+        artifacts[f"error:{step.id}"] = {
+            "reason": failure.get("reason"),
+            "handled": True,
+            "on": handler["on"],
+        }
+        return {
+            "status": "completed",
+            "artifact": {"handled_error": failure.get("reason"), "on": handler["on"]},
+        }
+    if then_mode == "fallback":
+        fallback_id = handler.get("fallback_step_id")
+        if not fallback_id:
+            return {"status": "blocked", "reason": "error_fallback_unspecified"}
+        fallback = next((row for row in steps if row.id == fallback_id), None)
+        if fallback is None:
+            return {"status": "blocked", "reason": "error_fallback_missing", "fallback_step_id": fallback_id}
+        fallback_outcome = run_step(fallback)
+        fallback.status = fallback_outcome["status"]
+        trace.append(
+            {
+                "step": f"plan.step.{fallback_outcome['status']}",
+                "step_id": fallback.id,
+                "metadata": {
+                    "construct": fallback.construct,
+                    "reason": fallback_outcome.get("reason"),
+                    "error_fallback": True,
+                    "recovered_from": failure.get("reason"),
+                    "round": round_num,
+                },
+            }
+        )
+        if fallback_outcome["status"] == "completed":
+            completed.add(fallback.id)
+            if fallback_outcome.get("artifact") is not None:
+                artifacts[fallback.id] = fallback_outcome["artifact"]
+            artifacts[f"error:{step.id}"] = {
+                "reason": failure.get("reason"),
+                "fallback_step_id": fallback_id,
+                "recovered": True,
+            }
+            return {
+                "status": "completed",
+                "artifact": {
+                    "fallback_step_id": fallback_id,
+                    "recovered_from": failure.get("reason"),
+                },
+            }
+        return fallback_outcome
+    return {"status": "blocked", "reason": f"unknown_error_then:{then_mode}"}
 
 
 def execute_retry_step(
