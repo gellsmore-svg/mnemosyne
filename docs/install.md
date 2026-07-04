@@ -127,3 +127,9 @@ tirzah list-docs --format text --limit 5
 
 For the web UI, use the Developer toggle to inspect documents, active sessions,
 profile status, graph inspection, and process runs.
+
+## Native Linux reference configuration
+
+A verified **8 GB RAM / CPU-only Ollama** example (Debian 13, `gemma3:1b`,
+MongoDB, functional smokes + pytest) is documented in
+[`native-linux-compatibility-report.md`](native-linux-compatibility-report.md).
