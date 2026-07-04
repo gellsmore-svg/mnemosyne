@@ -4,6 +4,8 @@ from tirzah.planning.constructs import (
     evaluate_decision_branch,
     execute_decision_step,
     execute_iterate_step,
+    execute_merge_step,
+    execute_parallel_step,
     is_owned_by_pending_parent,
     parse_max_rounds,
     suggest_plan_profile_hint,
@@ -99,6 +101,216 @@ def test_decision_skips_unselected_branch():
     assert steps[1].status == "skipped"
     assert steps[2].status == "pending"
     assert "2a" in completed and "2a" not in outcome["artifact"]["selected_steps"]
+
+
+def test_parallel_runs_all_branch_subtrees():
+    steps = [
+        PlanStep(id="1", action="Gather branches STATE: shared", construct="PARALLEL"),
+        PlanStep(
+            id="1a",
+            action="Search",
+            construct="CALL",
+            depends_on=["1"],
+            allowed_tools=["search_nodes"],
+        ),
+        PlanStep(
+            id="1b",
+            action="Compile",
+            construct="CALL",
+            depends_on=["1"],
+            allowed_tools=["compile_context"],
+        ),
+    ]
+    artifacts: dict = {}
+    trace: list = []
+    completed: set[str] = set()
+    calls: list[str] = []
+
+    def branch_runner(body_step):
+        calls.append(body_step.id)
+        artifacts[body_step.id] = {
+            "ok": True,
+            "tool": body_step.allowed_tools[0],
+            "tool_result": {
+                "tool": body_step.allowed_tools[0],
+                "ok": True,
+                "output": {"matches": [{"node_id": body_step.id}]},
+                "arguments": {},
+            },
+        }
+        return {"status": "completed", "artifact": artifacts[body_step.id]}
+
+    outcome = execute_parallel_step(
+        steps[0],
+        steps=steps,
+        completed=completed,
+        artifacts=artifacts,
+        branch_runner=branch_runner,
+        trace=trace,
+    )
+    assert outcome["status"] == "completed"
+    assert set(calls) == {"1a", "1b"}
+    assert artifacts["parallel:1"]["branch_ids"] == ["1a", "1b"]
+    assert any(row["step"] == "plan.parallel.completed" for row in trace)
+
+
+def test_merge_collects_parallel_branch_tool_results():
+    steps = [
+        PlanStep(id="1", action="Parallel", construct="PARALLEL"),
+        PlanStep(id="1a", action="A", construct="CALL", depends_on=["1"]),
+        PlanStep(id="1b", action="B", construct="CALL", depends_on=["1"]),
+        PlanStep(
+            id="2",
+            action="Merge gathered context",
+            construct="MERGE",
+            depends_on=["1a", "1b"],
+            success_criteria=["merge:context_bundle"],
+        ),
+    ]
+    artifacts = {
+        "parallel:1": {"branch_ids": ["1a", "1b"], "branches": {}},
+        "1a": {
+            "ok": True,
+            "tool": "search_nodes",
+            "tool_result": {
+                "tool": "search_nodes",
+                "ok": True,
+                "output": {"matches": [{"node_id": "n1"}]},
+                "arguments": {"query": "q"},
+            },
+        },
+        "1b": {
+            "ok": True,
+            "tool": "compile_context",
+            "tool_result": {
+                "tool": "compile_context",
+                "ok": True,
+                "output": {"focus_node_id": "n1"},
+                "arguments": {"node_id": "n1"},
+            },
+        },
+    }
+    trace: list = []
+    outcome = execute_merge_step(steps[3], steps=steps, artifacts=artifacts, trace=trace)
+    assert outcome["status"] == "completed"
+    tools = [row["tool"] for row in artifacts["context_bundle"]["tool_results"]]
+    assert tools == ["search_nodes", "compile_context"]
+    assert any(row["step"] == "plan.parallel.merged" for row in trace)
+
+
+def test_interpret_plan_parallel_merge_and_answer(monkeypatch):
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.execute_search_nodes_tool",
+        lambda *_db, query, **kwargs: (
+            {"matches": [{"node_id": "n1", "title": "Hit"}], "compiled_contexts": []},
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        "tirzah.retrieval.queries.compile_context",
+        lambda _db, node_id, **_kwargs: {
+            "focus_node_id": node_id,
+            "document": {"title": "Doc"},
+            "records": [{"node_id": node_id, "role": "focus", "distance": 0, "text": "body"}],
+        },
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.answer_phases._begin_answer_request",
+        lambda *_args, **_kwargs: (RuntimeConfig(answer_adapter="mock"), [], "run1"),
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.build_agentic_answer_envelope",
+        lambda **_kwargs: {
+            "prompt_text": "prompt",
+            "budget": {},
+            "context_metadata": {
+                "retrieval_status": "matched_context",
+                "included": [{"node_id": "n1"}],
+                "evidence_summary": {},
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.inject_history_into_prompt",
+        lambda prompt, _history: prompt,
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.interaction.render_session_history_block",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        "tirzah.sessions.answer_phases.synthesize_from_context_bundle",
+        lambda _db, _config, **kwargs: {
+            "ok": True,
+            "answer": "parallel merged",
+            "used_node_ids": ["n1"],
+            "retrieval_status": "matched_context",
+        },
+    )
+
+    plan = _plan(
+        PlanStep(id="1", action="Interpret", construct="STEP"),
+        PlanStep(id="2", action="Parallel gather STATE: shared", construct="PARALLEL", depends_on=["1"]),
+        PlanStep(
+            id="2a",
+            action="Search",
+            construct="CALL",
+            depends_on=["2"],
+            allowed_tools=["search_nodes"],
+        ),
+        PlanStep(
+            id="2b",
+            action="Compile",
+            construct="CALL",
+            depends_on=["2"],
+            allowed_tools=["compile_context"],
+        ),
+        PlanStep(
+            id="3",
+            action="Merge",
+            construct="MERGE",
+            depends_on=["2a", "2b"],
+            success_criteria=["merge:context_bundle"],
+        ),
+        PlanStep(
+            id="4",
+            action="Answer",
+            construct="CALL",
+            depends_on=["3"],
+            allowed_tools=["answer_adapter"],
+        ),
+    )
+    handlers = build_default_handlers(
+        db=object(),
+        config=AppConfig(),
+        answer_kwargs={"focus_node_id": "focus-1", "session_id": "s1"},
+        use_split_phases=True,
+    )
+    result = interpret_plan(
+        plan,
+        query="Q",
+        session_id="s1",
+        handlers=handlers,
+        config=AppConfig(),
+        answer_kwargs={"focus_node_id": "focus-1", "session_id": "s1"},
+    )
+    statuses = {step.id: step.status for step in result.plan.steps}
+    assert statuses["2"] == "completed"
+    assert statuses["2a"] == "completed"
+    assert statuses["2b"] == "completed"
+    assert statuses["3"] == "completed"
+    assert result.ok
+    assert result.primary_result["answer"] == "parallel merged"
+    assert any(row.get("step") == "plan.parallel.merged" for row in result.context.trace)
+
+
+def test_owned_by_pending_parent_hides_parallel_branches():
+    steps = [
+        PlanStep(id="1", action="Parallel", construct="PARALLEL"),
+        PlanStep(id="2", action="Branch", construct="CALL", depends_on=["1"]),
+    ]
+    assert is_owned_by_pending_parent(steps[1], steps, set()) is True
+    assert is_owned_by_pending_parent(steps[1], steps, {"1"}) is False
 
 
 def test_interpret_plan_inline_decision_branches_inside_iterate(monkeypatch):

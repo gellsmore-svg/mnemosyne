@@ -1,4 +1,4 @@
-"""ITERATE and DECISION expansion for interpretive PLAN execution (SPEC §4.6)."""
+"""ITERATE, DECISION, and PARALLEL/MERGE expansion for interpretive PLAN execution (SPEC §4.6)."""
 from __future__ import annotations
 
 import re
@@ -76,7 +76,7 @@ def is_owned_by_pending_parent(step: PlanStep, steps: list[PlanStep], completed:
     for parent in steps:
         if parent.id not in step.depends_on:
             continue
-        if parent.construct in {"ITERATE", "DECISION"} and parent.id not in completed:
+        if parent.construct in {"ITERATE", "DECISION", "PARALLEL"} and parent.id not in completed:
             return True
     return False
 
@@ -365,8 +365,8 @@ def execute_iterate_step(
     }
 
 
-def execute_selected_branch_steps(
-    step: PlanStep,
+def execute_branch_subtree(
+    parent_step: PlanStep,
     *,
     steps: list[PlanStep],
     completed: set[str],
@@ -375,16 +375,19 @@ def execute_selected_branch_steps(
     branch_runner: BranchRunner,
     trace: list[dict[str, Any]],
     round_num: int | None = None,
+    inline_kind: str = "decision",
 ) -> dict[str, Any]:
-    """Run selected DECISION branch steps immediately (inside an active ITERATE round)."""
-    subtree = selected_branch_subtree(step.id, selected_ids, steps)
+    """Run a branch subtree under a DECISION or PARALLEL parent."""
+    subtree = selected_branch_subtree(parent_step.id, selected_ids, steps)
     metadata_base = {"round": round_num} if round_num is not None else {}
+    parent_key = "decision_id" if inline_kind == "decision" else "parallel_id"
+    inline_flag = "inline_decision_branch" if inline_kind == "decision" else "inline_parallel_branch"
     while True:
         progressed = False
         for branch_step in subtree:
             if branch_step.status != "pending":
                 continue
-            if not all(dep in completed or dep == step.id for dep in branch_step.depends_on):
+            if not all(dep in completed or dep == parent_step.id for dep in branch_step.depends_on):
                 continue
             outcome = branch_runner(branch_step)
             branch_step.status = outcome["status"]
@@ -395,8 +398,8 @@ def execute_selected_branch_steps(
                     "metadata": {
                         "construct": branch_step.construct,
                         "reason": outcome.get("reason"),
-                        "inline_decision_branch": True,
-                        "decision_id": step.id,
+                        inline_flag: True,
+                        parent_key: parent_step.id,
                         **metadata_base,
                     },
                 }
@@ -415,6 +418,170 @@ def execute_selected_branch_steps(
         if not progressed:
             break
     return {"status": "completed"}
+
+
+def execute_selected_branch_steps(
+    step: PlanStep,
+    *,
+    steps: list[PlanStep],
+    completed: set[str],
+    artifacts: dict[str, Any],
+    selected_ids: list[str],
+    branch_runner: BranchRunner,
+    trace: list[dict[str, Any]],
+    round_num: int | None = None,
+) -> dict[str, Any]:
+    """Run selected DECISION branch steps immediately (inside an active ITERATE round)."""
+    return execute_branch_subtree(
+        step,
+        steps=steps,
+        completed=completed,
+        artifacts=artifacts,
+        selected_ids=selected_ids,
+        branch_runner=branch_runner,
+        trace=trace,
+        round_num=round_num,
+        inline_kind="decision",
+    )
+
+
+def parse_parallel_state(step: PlanStep) -> str:
+    text = " ".join([step.action, *step.success_criteria])
+    match = re.search(r"STATE:\s*(isolated|shared)", text, re.I)
+    return match.group(1).lower() if match else "isolated"
+
+
+def parse_merge_rule(step: PlanStep) -> str:
+    for item in step.success_criteria:
+        lowered = item.lower()
+        if lowered.startswith("merge:"):
+            return item.split(":", 1)[1].strip().lower()
+    return "collect"
+
+
+def infer_parallel_parent(merge_step: PlanStep, steps: list[PlanStep]) -> str | None:
+    for dep_id in merge_step.depends_on:
+        parent = next((row for row in steps if row.id == dep_id), None)
+        if parent is not None and (parent.construct or "").upper() == "PARALLEL":
+            return parent.id
+    for dep_id in merge_step.depends_on:
+        branch = next((row for row in steps if row.id == dep_id), None)
+        if branch is None:
+            continue
+        for parent_id in branch.depends_on:
+            parent = next((row for row in steps if row.id == parent_id), None)
+            if parent is not None and (parent.construct or "").upper() == "PARALLEL":
+                return parent.id
+    return None
+
+
+def execute_parallel_step(
+    step: PlanStep,
+    *,
+    steps: list[PlanStep],
+    completed: set[str],
+    artifacts: dict[str, Any],
+    branch_runner: BranchRunner,
+    trace: list[dict[str, Any]],
+    round_num: int | None = None,
+) -> dict[str, Any]:
+    """Run every PARALLEL branch sequentially (v1 fan-out) and record branch artifacts."""
+    branches = direct_body_steps(step.id, steps)
+    if not branches:
+        return {"status": "completed", "artifact": {"branches": [], "state": parse_parallel_state(step)}}
+    state = parse_parallel_state(step)
+    branch_payload: dict[str, Any] = {}
+    for branch in branches:
+        trace.append(
+            {
+                "step": "plan.parallel.branch",
+                "step_id": step.id,
+                "metadata": {"branch": branch.id, "state": state, "round": round_num},
+            }
+        )
+        outcome = execute_branch_subtree(
+            step,
+            steps=steps,
+            completed=completed,
+            artifacts=artifacts,
+            selected_ids=[branch.id],
+            branch_runner=branch_runner,
+            trace=trace,
+            round_num=round_num,
+            inline_kind="parallel",
+        )
+        if outcome["status"] == "blocked":
+            return outcome
+        branch_payload[branch.id] = artifacts.get(branch.id)
+    parallel_artifact = {
+        "state": state,
+        "branch_ids": [branch.id for branch in branches],
+        "branches": branch_payload,
+    }
+    artifacts[f"parallel:{step.id}"] = parallel_artifact
+    trace.append(
+        {
+            "step": "plan.parallel.completed",
+            "step_id": step.id,
+            "metadata": {
+                "state": state,
+                "branch_ids": parallel_artifact["branch_ids"],
+                "round": round_num,
+            },
+        }
+    )
+    return {"status": "completed", "artifact": parallel_artifact}
+
+
+def execute_merge_step(
+    step: PlanStep,
+    *,
+    steps: list[PlanStep],
+    artifacts: dict[str, Any],
+    trace: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Join PARALLEL branch artifacts at a MERGE step."""
+    from tirzah.planning.context_bundle import append_tool_result
+
+    parallel_id = infer_parallel_parent(step, steps)
+    rule = parse_merge_rule(step)
+    parallel_data = artifacts.get(f"parallel:{parallel_id}") if parallel_id else {}
+    branch_ids = list(parallel_data.get("branch_ids") or step.depends_on)
+    branch_payload = {branch_id: artifacts.get(branch_id) for branch_id in branch_ids}
+    if rule == "context_bundle":
+        bundle = ensure_bundle(artifacts)
+        for artifact in branch_payload.values():
+            if not isinstance(artifact, dict):
+                continue
+            tool_result = artifact.get("tool_result")
+            if isinstance(tool_result, dict):
+                append_tool_result(
+                    bundle,
+                    tool=str(tool_result.get("tool") or artifact.get("tool") or "unknown"),
+                    output=tool_result.get("output") or {},
+                    arguments=dict(tool_result.get("arguments") or {}),
+                    details=dict(tool_result.get("details") or {}),
+                    ok=bool(tool_result.get("ok", artifact.get("ok", True))),
+                )
+    merged = {
+        "rule": rule,
+        "parallel_id": parallel_id,
+        "branches": branch_payload,
+    }
+    artifacts[f"merge:{step.id}"] = merged
+    trace.append(
+        {
+            "step": "plan.parallel.merged",
+            "step_id": step.id,
+            "metadata": {
+                "rule": rule,
+                "parallel_id": parallel_id,
+                "branch_ids": branch_ids,
+                "tool_count": len((ensure_bundle(artifacts).get("tool_results") or [])),
+            },
+        }
+    )
+    return {"status": "completed", "artifact": merged}
 
 
 def execute_decision_step(

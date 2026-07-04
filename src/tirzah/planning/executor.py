@@ -11,6 +11,8 @@ from typing import Any, Callable
 from tirzah.planning.constructs import (
     execute_decision_step,
     execute_iterate_step,
+    execute_merge_step,
+    execute_parallel_step,
     is_owned_by_pending_parent,
 )
 from tirzah.planning.context_bundle import (
@@ -597,6 +599,25 @@ def _execute_step(
             config=context.config,
             trace=context.trace,
         )
+    if construct == "PARALLEL":
+        return execute_parallel_step(
+            step,
+            steps=context.plan_steps,
+            completed=completed,
+            artifacts=context.artifacts,
+            branch_runner=lambda branch_step: _execute_step(
+                branch_step, context, handlers, completed=completed
+            ),
+            trace=context.trace,
+            round_num=context.iterate_round,
+        )
+    if construct == "MERGE":
+        return execute_merge_step(
+            step,
+            steps=context.plan_steps,
+            artifacts=context.artifacts,
+            trace=context.trace,
+        )
     return {"status": "blocked", "reason": f"unknown_construct:{construct}"}
 
 
@@ -625,6 +646,23 @@ def _run_iterate_body_step(
             trace=context.trace,
             branch_runner=lambda branch_step: _run_iterate_body_step(branch_step, context, handlers),
             round_num=context.iterate_round,
+        )
+    if construct == "PARALLEL":
+        return execute_parallel_step(
+            step,
+            steps=context.plan_steps,
+            completed=context.completed_step_ids,
+            artifacts=context.artifacts,
+            branch_runner=lambda branch_step: _run_iterate_body_step(branch_step, context, handlers),
+            trace=context.trace,
+            round_num=context.iterate_round,
+        )
+    if construct == "MERGE":
+        return execute_merge_step(
+            step,
+            steps=context.plan_steps,
+            artifacts=context.artifacts,
+            trace=context.trace,
         )
     return _execute_step(
         step,
