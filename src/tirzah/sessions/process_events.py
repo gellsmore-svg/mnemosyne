@@ -162,3 +162,44 @@ def emit_process_trace_events(
             step=name,
             **metadata,
         )
+
+
+def record_llm_calls_from_trace(
+    db: Any,
+    tracer: Tracer,
+    process_trace: list[dict[str, Any]] | None,
+) -> None:
+    """Record full In→Out documents (galeed ``llm_calls``) for the model calls
+    in a ``process_trace`` — Tirzah's entry in the family LLM debugging view.
+
+    The events emitted above stay lean by design; the ``llm_calls`` collection
+    is the sanctioned home for the heavy material (full prompt, full answer),
+    which `galeed trace` and Mizpah's LLM Calls tab read. One document per
+    ``answer_adapter`` step, correlated by the live trace/session ids.
+    Best-effort: recording never raises into the request path.
+    """
+    from galeed import record_llm_call
+
+    for step in process_trace or []:
+        if step.get("step") != "answer_adapter":
+            continue
+        step_in = step.get("input") if isinstance(step.get("input"), dict) else {}
+        step_out = step.get("output") if isinstance(step.get("output"), dict) else {}
+        failed = step_out.get("ok") is False
+        record_llm_call(
+            db,
+            trace_id=tracer.trace_id,
+            session_id=tracer.session_id,
+            source=tracer.source,
+            step_name="answer",
+            model=step_out.get("model") or step_in.get("model"),
+            prompt=step_in.get("prompt_text"),
+            output=None if failed else step_out.get("answer"),
+            error=str(step_out.get("error")) if failed else None,
+            metadata={
+                "adapter": step_out.get("adapter") or step_in.get("adapter"),
+                "used_node_count": len(step_out.get("used_node_ids") or []),
+                "request_id": tracer.request_id,
+            },
+            emit_event=False,  # model.response.completed already marks the spine
+        )

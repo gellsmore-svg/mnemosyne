@@ -17,7 +17,10 @@ from typing import Any, Callable
 from tirzah.config import AppConfig
 from tirzah.planning.recursive import process_frontend_request
 from tirzah.sessions.interaction import answer_query
-from tirzah.sessions.process_events import emit_process_trace_events
+from tirzah.sessions.process_events import (
+    emit_process_trace_events,
+    record_llm_calls_from_trace,
+)
 from galeed import EventType, Tracer
 
 
@@ -59,6 +62,7 @@ def run_traced_interaction(
         raise
     # Re-express the pipeline's existing process_trace as structured events.
     emit_process_trace_events(tracer, result.get("process_trace"))
+    record_llm_calls_from_trace(db, tracer, result.get("process_trace"))
     tracer.completed(
         EventType.ANSWER_FINALIZED,
         "Final answer ready",
