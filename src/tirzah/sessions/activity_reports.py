@@ -351,6 +351,7 @@ def human_step_name(step: str | None) -> str:
         "plan.parallel.merged": "Plan Parallel Merged",
         "plan.revision.proposed": "Plan Revision Proposed",
         "plan.revision.executed": "Plan Revision Executed",
+        "plan.retry.attempt": "Plan Retry Attempt",
         "plan.step.started": "Plan Step Started",
         "plan.step.completed": "Plan Step Completed",
         "plan.step.blocked": "Plan Step Blocked",

@@ -6,6 +6,7 @@ from tirzah.planning.constructs import (
     execute_iterate_step,
     execute_merge_step,
     execute_parallel_step,
+    execute_retry_step,
     is_owned_by_pending_parent,
     parse_max_rounds,
     suggest_plan_profile_hint,
@@ -101,6 +102,100 @@ def test_decision_skips_unselected_branch():
     assert steps[1].status == "skipped"
     assert steps[2].status == "pending"
     assert "2a" in completed and "2a" not in outcome["artifact"]["selected_steps"]
+
+
+def test_isolated_parallel_preserves_parent_context_bundle():
+    steps = [
+        PlanStep(id="1", action="Gather branches STATE: isolated", construct="PARALLEL"),
+        PlanStep(id="1a", action="A", construct="CALL", depends_on=["1"]),
+        PlanStep(id="1b", action="B", construct="CALL", depends_on=["1"]),
+    ]
+    artifacts = {"context_bundle": {"tool_results": [{"tool": "parent", "ok": True, "output": {}}]}}
+    trace: list = []
+    completed: set[str] = set()
+
+    def branch_runner(body_step):
+        artifacts["context_bundle"]["tool_results"].append(
+            {"tool": body_step.id, "ok": True, "output": {"branch": body_step.id}, "arguments": {}}
+        )
+        artifacts[body_step.id] = {"ok": True, "tool": body_step.id}
+        return {"status": "completed", "artifact": artifacts[body_step.id]}
+
+    outcome = execute_parallel_step(
+        steps[0],
+        steps=steps,
+        completed=completed,
+        artifacts=artifacts,
+        branch_runner=branch_runner,
+        trace=trace,
+    )
+    assert outcome["status"] == "completed"
+    assert [row["tool"] for row in artifacts["context_bundle"]["tool_results"]] == ["parent"]
+    isolated_a = artifacts["parallel:1"]["branches"]["1a"]["context_bundle"]["tool_results"]
+    isolated_b = artifacts["parallel:1"]["branches"]["1b"]["context_bundle"]["tool_results"]
+    assert len(isolated_a) == 1
+    assert len(isolated_b) == 1
+
+
+def test_merge_isolated_parallel_context_bundles():
+    steps = [
+        PlanStep(id="1", action="Parallel STATE: isolated", construct="PARALLEL"),
+        PlanStep(id="1a", action="A", construct="CALL", depends_on=["1"]),
+        PlanStep(
+            id="2",
+            action="Merge",
+            construct="MERGE",
+            depends_on=["1a"],
+            success_criteria=["merge:context_bundle"],
+        ),
+    ]
+    artifacts = {
+        "parallel:1": {
+            "state": "isolated",
+            "branch_ids": ["1a"],
+            "branches": {
+                "1a": {
+                    "context_bundle": {
+                        "tool_results": [
+                            {"tool": "search_nodes", "ok": True, "output": {"matches": []}, "arguments": {}},
+                        ],
+                    },
+                },
+            },
+        },
+    }
+    execute_merge_step(steps[2], steps=steps, artifacts=artifacts, trace=[])
+    assert artifacts["context_bundle"]["tool_results"][0]["tool"] == "search_nodes"
+
+
+def test_retry_reruns_blocked_body_until_success():
+    steps = [
+        PlanStep(id="1", action="Retry search MAX: 3", construct="RETRY"),
+        PlanStep(id="2", action="Search", construct="CALL", depends_on=["1"], allowed_tools=["search_nodes"]),
+    ]
+    artifacts: dict = {}
+    trace: list = []
+    completed: set[str] = set()
+    calls = {"count": 0}
+
+    def run_step(body_step):
+        calls["count"] += 1
+        if calls["count"] < 2:
+            return {"status": "blocked", "reason": "transient"}
+        return {"status": "completed", "artifact": {"ok": True}}
+
+    outcome = execute_retry_step(
+        steps[0],
+        steps=steps,
+        completed=completed,
+        artifacts=artifacts,
+        run_step=run_step,
+        trace=trace,
+    )
+    assert outcome["status"] == "completed"
+    assert outcome["artifact"]["attempts"] == 2
+    assert calls["count"] == 2
+    assert any(row["step"] == "plan.retry.attempt" for row in trace)
 
 
 def test_parallel_runs_all_branch_subtrees():

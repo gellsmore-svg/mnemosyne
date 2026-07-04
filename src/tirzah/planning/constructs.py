@@ -1,6 +1,7 @@
-"""ITERATE, DECISION, and PARALLEL/MERGE expansion for interpretive PLAN execution (SPEC §4.6)."""
+"""ITERATE, DECISION, PARALLEL/MERGE, and RETRY expansion for interpretive PLAN execution (SPEC §4.6)."""
 from __future__ import annotations
 
+import copy
 import re
 from typing import Any, Callable
 
@@ -76,9 +77,17 @@ def is_owned_by_pending_parent(step: PlanStep, steps: list[PlanStep], completed:
     for parent in steps:
         if parent.id not in step.depends_on:
             continue
-        if parent.construct in {"ITERATE", "DECISION", "PARALLEL"} and parent.id not in completed:
+        if parent.construct in {"ITERATE", "DECISION", "PARALLEL", "RETRY"} and parent.id not in completed:
             return True
     return False
+
+
+def parse_retry_max(step: PlanStep, *, default: int = 3, ceiling: int = 5) -> int:
+    text = " ".join([step.action, *step.success_criteria])
+    match = re.search(r"MAX:\s*(\d+)", text, re.I)
+    if match:
+        return max(1, min(int(match.group(1)), ceiling))
+    return max(1, min(default, ceiling))
 
 
 def parse_max_rounds(step: PlanStep, *, default: int = 3, ceiling: int = 10) -> int:
@@ -499,20 +508,35 @@ def execute_parallel_step(
                 "metadata": {"branch": branch.id, "state": state, "round": round_num},
             }
         )
-        outcome = execute_branch_subtree(
-            step,
-            steps=steps,
-            completed=completed,
-            artifacts=artifacts,
-            selected_ids=[branch.id],
-            branch_runner=branch_runner,
-            trace=trace,
-            round_num=round_num,
-            inline_kind="parallel",
-        )
+        saved_bundle = artifacts.get("context_bundle")
+        if state == "isolated":
+            artifacts["context_bundle"] = {"tool_results": []}
+        try:
+            outcome = execute_branch_subtree(
+                step,
+                steps=steps,
+                completed=completed,
+                artifacts=artifacts,
+                selected_ids=[branch.id],
+                branch_runner=branch_runner,
+                trace=trace,
+                round_num=round_num,
+                inline_kind="parallel",
+            )
+        finally:
+            if state == "isolated":
+                branch_payload[branch.id] = {
+                    **dict(artifacts.get(branch.id) or {}),
+                    "context_bundle": copy.deepcopy(artifacts.get("context_bundle") or {"tool_results": []}),
+                }
+                if saved_bundle is not None:
+                    artifacts["context_bundle"] = saved_bundle
+                else:
+                    artifacts.pop("context_bundle", None)
         if outcome["status"] == "blocked":
             return outcome
-        branch_payload[branch.id] = artifacts.get(branch.id)
+        if state != "isolated":
+            branch_payload[branch.id] = artifacts.get(branch.id)
     parallel_artifact = {
         "state": state,
         "branch_ids": [branch.id for branch in branches],
@@ -546,12 +570,29 @@ def execute_merge_step(
     parallel_id = infer_parallel_parent(step, steps)
     rule = parse_merge_rule(step)
     parallel_data = artifacts.get(f"parallel:{parallel_id}") if parallel_id else {}
+    parallel_state = str(parallel_data.get("state") or "shared")
     branch_ids = list(parallel_data.get("branch_ids") or step.depends_on)
-    branch_payload = {branch_id: artifacts.get(branch_id) for branch_id in branch_ids}
+    stored_branches = parallel_data.get("branches") or {}
+    branch_payload = {
+        branch_id: stored_branches.get(branch_id) or artifacts.get(branch_id) for branch_id in branch_ids
+    }
     if rule == "context_bundle":
         bundle = ensure_bundle(artifacts)
         for artifact in branch_payload.values():
             if not isinstance(artifact, dict):
+                continue
+            if parallel_state == "isolated":
+                for row in (artifact.get("context_bundle") or {}).get("tool_results") or []:
+                    if not isinstance(row, dict):
+                        continue
+                    append_tool_result(
+                        bundle,
+                        tool=str(row.get("tool") or "unknown"),
+                        output=row.get("output") or {},
+                        arguments=dict(row.get("arguments") or {}),
+                        details=dict(row.get("details") or {}),
+                        ok=bool(row.get("ok", True)),
+                    )
                 continue
             tool_result = artifact.get("tool_result")
             if isinstance(tool_result, dict):
@@ -578,10 +619,77 @@ def execute_merge_step(
                 "parallel_id": parallel_id,
                 "branch_ids": branch_ids,
                 "tool_count": len((ensure_bundle(artifacts).get("tool_results") or [])),
+                "parallel_state": parallel_state,
             },
         }
     )
     return {"status": "completed", "artifact": merged}
+
+
+def execute_retry_step(
+    step: PlanStep,
+    *,
+    steps: list[PlanStep],
+    completed: set[str],
+    artifacts: dict[str, Any],
+    run_step: StepRunner,
+    trace: list[dict[str, Any]],
+    round_num: int | None = None,
+) -> dict[str, Any]:
+    """Re-run direct body steps until they complete or MAX attempts are exhausted."""
+    body = direct_body_steps(step.id, steps)
+    if not body:
+        return {"status": "completed", "artifact": {"attempts": 0, "body": []}}
+    max_attempts = parse_retry_max(step)
+    attempts_run = 0
+    for attempt in range(1, max_attempts + 1):
+        attempts_run = attempt
+        trace.append(
+            {
+                "step": "plan.retry.attempt",
+                "step_id": step.id,
+                "metadata": {"attempt": attempt, "max_attempts": max_attempts, "round": round_num},
+            }
+        )
+        body_blocked = False
+        for body_step in body:
+            if attempt > 1 and body_step.status in {"completed", "blocked"}:
+                body_step.status = "pending"
+                completed.discard(body_step.id)
+            if body_step.status != "pending":
+                continue
+            if not all(dep in completed or dep == step.id for dep in body_step.depends_on):
+                continue
+            outcome = run_step(body_step)
+            body_step.status = outcome["status"]
+            trace.append(
+                {
+                    "step": f"plan.step.{outcome['status']}",
+                    "step_id": body_step.id,
+                    "metadata": {
+                        "construct": body_step.construct,
+                        "reason": outcome.get("reason"),
+                        "retry_attempt": attempt,
+                        "round": round_num,
+                    },
+                }
+            )
+            if outcome["status"] == "completed":
+                completed.add(body_step.id)
+                if outcome.get("artifact") is not None:
+                    artifacts[body_step.id] = outcome["artifact"]
+            if outcome["status"] == "blocked":
+                body_blocked = True
+        if not body_blocked and all(item.status == "completed" for item in body):
+            return {
+                "status": "completed",
+                "artifact": {"attempts": attempts_run, "body": [item.id for item in body], "max_attempts": max_attempts},
+            }
+    return {
+        "status": "blocked",
+        "reason": "retry_exhausted",
+        "artifact": {"attempts": attempts_run, "body": [item.id for item in body], "max_attempts": max_attempts},
+    }
 
 
 def execute_decision_step(

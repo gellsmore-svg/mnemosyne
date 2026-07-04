@@ -13,6 +13,7 @@ from tirzah.planning.constructs import (
     execute_iterate_step,
     execute_merge_step,
     execute_parallel_step,
+    execute_retry_step,
     is_owned_by_pending_parent,
 )
 from tirzah.planning.context_bundle import (
@@ -618,6 +619,16 @@ def _execute_step(
             artifacts=context.artifacts,
             trace=context.trace,
         )
+    if construct == "RETRY":
+        return execute_retry_step(
+            step,
+            steps=context.plan_steps,
+            completed=completed,
+            artifacts=context.artifacts,
+            run_step=lambda body_step: _execute_step(body_step, context, handlers, completed=completed),
+            trace=context.trace,
+            round_num=context.iterate_round,
+        )
     return {"status": "blocked", "reason": f"unknown_construct:{construct}"}
 
 
@@ -663,6 +674,16 @@ def _run_iterate_body_step(
             steps=context.plan_steps,
             artifacts=context.artifacts,
             trace=context.trace,
+        )
+    if construct == "RETRY":
+        return execute_retry_step(
+            step,
+            steps=context.plan_steps,
+            completed=context.completed_step_ids,
+            artifacts=context.artifacts,
+            run_step=lambda body_step: _run_iterate_body_step(body_step, context, handlers),
+            trace=context.trace,
+            round_num=context.iterate_round,
         )
     return _execute_step(
         step,
