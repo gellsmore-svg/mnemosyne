@@ -319,6 +319,56 @@ def test_trace_stream_route_and_frame_format() -> None:
     assert "/api/trace/stream" in {route.path for route in app.routes}
 
 
+def test_plan_execution_endpoints(monkeypatch) -> None:
+    client = TestClient(app)
+    monkeypatch.setattr(
+        "tirzah.web.app.list_plan_executions",
+        lambda _db, session_id, status=None, limit=20: [
+            {
+                "plan_id": "plan1",
+                "revision": 1,
+                "session_id": session_id,
+                "status": status or "running",
+                "artifacts": {"retrieval_package": {"query": "q"}},
+                "steps": [{"id": "1", "status": "completed"}, {"id": "2", "status": "pending"}],
+                "completed_step_ids": ["1"],
+            }
+        ],
+    )
+    response = client.get("/api/plan-executions", params={"session_id": "s1", "status": "running", "limit": 5})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["executions"][0]["plan_id"] == "plan1"
+    assert body["executions"][0]["artifact_keys"] == ["retrieval_package"]
+    assert body["executions"][0]["completed_count"] == 1
+    assert "artifacts" not in body["executions"][0]
+
+    monkeypatch.setattr(
+        "tirzah.web.app.get_plan_execution",
+        lambda _db, plan_id, revision, session_id: {
+            "plan_id": plan_id,
+            "revision": revision,
+            "session_id": session_id,
+            "status": "completed",
+            "artifacts": {"answer": {"text": "done"}},
+        },
+    )
+    response = client.get(
+        "/api/plan-executions/plan1",
+        params={"revision": 1, "session_id": "s1"},
+    )
+    assert response.status_code == 200
+    assert response.json()["execution"]["status"] == "completed"
+
+    monkeypatch.setattr("tirzah.web.app.get_plan_execution", lambda *_args, **_kwargs: None)
+    response = client.get(
+        "/api/plan-executions/missing",
+        params={"revision": 1, "session_id": "s1"},
+    )
+    assert response.status_code == 404
+
+
 def test_plan_revision_endpoints(monkeypatch) -> None:
     client = TestClient(app)
     monkeypatch.setattr(

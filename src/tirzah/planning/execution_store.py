@@ -19,14 +19,34 @@ def execution_key(plan_id: str, revision: int, session_id: str) -> dict[str, Any
     return {"plan_id": plan_id, "revision": int(revision), "session_id": session_id}
 
 
-def load_plan_execution(db, plan_id: str, revision: int, session_id: str) -> dict[str, Any] | None:
+def load_plan_execution(
+    db,
+    plan_id: str,
+    revision: int,
+    session_id: str,
+    *,
+    status: str | None = "running",
+) -> dict[str, Any] | None:
     collection = getattr(db, "plan_executions", None)
     if collection is None:
         return None
-    row = collection.find_one({**execution_key(plan_id, revision, session_id), "status": "running"})
+    query = execution_key(plan_id, revision, session_id)
+    if status:
+        query["status"] = status
+    row = collection.find_one(query)
     if not row:
         return None
     return serialize_execution_row(row)
+
+
+def get_plan_execution(
+    db,
+    plan_id: str,
+    revision: int,
+    session_id: str,
+) -> dict[str, Any] | None:
+    """Load execution regardless of status (for inspection APIs)."""
+    return load_plan_execution(db, plan_id, revision, session_id, status=None)
 
 
 def save_plan_execution(
@@ -109,4 +129,17 @@ def serialize_execution_row(row: dict[str, Any]) -> dict[str, Any]:
         data["updated_at"] = data["updated_at"].isoformat()
     if hasattr(data.get("created_at"), "isoformat"):
         data["created_at"] = data["created_at"].isoformat()
+    return data
+
+
+def compact_execution_summary(row: dict[str, Any]) -> dict[str, Any]:
+    """List-friendly projection without large artifact payloads."""
+    data = serialize_execution_row(row)
+    artifacts = data.pop("artifacts", None) or {}
+    data["artifact_keys"] = sorted(artifacts.keys())
+    data["completed_count"] = len(data.get("completed_step_ids") or [])
+    data["step_count"] = len(data.get("steps") or [])
+    data["pending_count"] = sum(
+        1 for step in (data.get("steps") or []) if isinstance(step, dict) and step.get("status") == "pending"
+    )
     return data

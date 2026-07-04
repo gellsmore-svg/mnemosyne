@@ -1,6 +1,22 @@
-from tirzah.planning.execution_store import load_plan_execution, resume_steps_and_context, save_plan_execution
+from tirzah.planning.execution_store import (
+    compact_execution_summary,
+    get_plan_execution,
+    list_plan_executions,
+    load_plan_execution,
+    resume_steps_and_context,
+    save_plan_execution,
+)
 from tirzah.planning.executor import build_default_handlers, interpret_plan
 from tirzah.planning.recursive import CairnPlan, PlanStep
+
+
+class Cursor(list):
+    def sort(self, field, direction):
+        super().sort(key=lambda row: row.get(field), reverse=direction < 0)
+        return self
+
+    def limit(self, value):
+        return Cursor(self[:value])
 
 
 class Collection:
@@ -16,6 +32,13 @@ class Collection:
         self.rows[key] = merged
 
     def find_one(self, query):
+        if "session_id" in query and "plan_id" not in query:
+            matches = [
+                row
+                for row in self.rows.values()
+                if all(row.get(key) == value for key, value in query.items())
+            ]
+            return matches[0] if matches else None
         key = (query["plan_id"], query["revision"], query["session_id"])
         row = self.rows.get(key)
         if row is None:
@@ -23,6 +46,14 @@ class Collection:
         if query.get("status") and row.get("status") != query["status"]:
             return None
         return row
+
+    def find(self, query, projection=None):
+        rows = [
+            {key: value for key, value in row.items() if key != "_id"}
+            for row in self.rows.values()
+            if all(row.get(key) == value for key, value in query.items())
+        ]
+        return Cursor(rows)
 
 
 class Db:
@@ -50,6 +81,30 @@ def _two_step_plan():
             ),
         ],
     )
+
+
+def test_list_and_get_plan_executions():
+    db = Db()
+    plan = _two_step_plan()
+    save_plan_execution(
+        db,
+        plan=plan,
+        session_id="s1",
+        query="q",
+        steps=plan.steps,
+        completed_step_ids=[],
+        artifacts={"retrieval_package": {"query": "q"}},
+        trace=[],
+        effects=[],
+        status="running",
+    )
+    listed = list_plan_executions(db, "s1", status="running", limit=5)
+    assert len(listed) == 1
+    summary = compact_execution_summary(listed[0])
+    assert summary["artifact_keys"] == ["retrieval_package"]
+    assert "artifacts" not in summary
+    assert get_plan_execution(db, plan.plan_id, plan.revision, "s1")["status"] == "running"
+    assert load_plan_execution(db, plan.plan_id, plan.revision, "s1", status="completed") is None
 
 
 def test_save_and_resume_execution_state():

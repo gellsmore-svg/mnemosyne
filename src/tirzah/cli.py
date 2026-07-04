@@ -1022,6 +1022,11 @@ def main() -> None:
     ask.add_argument("--model", default=None)
     ask.add_argument("--retrieval-mode", choices=["direct", "agentic", "deep"], default=None)
     ask.add_argument("--web", action="store_true", help="allow bounded web search/fetch; non-agentic mode is promoted to agentic")
+    ask.add_argument(
+        "--recursive-planning",
+        action="store_true",
+        help="wrap the request in Cairn plan propose/execute/revise (uses runtime planning flags)",
+    )
     ask.add_argument("--json", action="store_true")
 
     chat = subcommands.add_parser("chat")
@@ -1038,6 +1043,17 @@ def main() -> None:
     history.add_argument("--adapter", default=None)
     history.add_argument("--model", default=None)
     history.add_argument("--limit", type=int, default=10)
+
+    plan_executions = subcommands.add_parser("plan-executions")
+    plan_exec_sub = plan_executions.add_subparsers(dest="plan_exec_command", required=True)
+    plan_exec_list = plan_exec_sub.add_parser("list")
+    plan_exec_list.add_argument("--session-id", default="default")
+    plan_exec_list.add_argument("--status", default=None, choices=["running", "completed", "blocked"])
+    plan_exec_list.add_argument("--limit", type=int, default=20)
+    plan_exec_show = plan_exec_sub.add_parser("show")
+    plan_exec_show.add_argument("plan_id")
+    plan_exec_show.add_argument("--revision", type=int, required=True)
+    plan_exec_show.add_argument("--session-id", default="default")
 
     queue_recent = subcommands.add_parser("queue-recent")
     queue_recent.add_argument("--limit", type=int, default=10)
@@ -1978,6 +1994,46 @@ def main() -> None:
             print(json.dumps({"ok": True, "prompt": envelope}, indent=2))
         return
 
+    if args.command == "plan-executions":
+        ensure_indexes(db)
+        from tirzah.planning.execution_store import (
+            compact_execution_summary,
+            get_plan_execution,
+            list_plan_executions,
+        )
+
+        if args.plan_exec_command == "list":
+            rows = list_plan_executions(db, args.session_id, status=args.status, limit=args.limit)
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "session_id": args.session_id,
+                        "executions": [compact_execution_summary(row) for row in rows],
+                    },
+                    indent=2,
+                    default=str,
+                )
+            )
+            return
+        row = get_plan_execution(db, args.plan_id, args.revision, args.session_id)
+        if not row:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "reason": "unknown_plan_execution",
+                        "plan_id": args.plan_id,
+                        "revision": args.revision,
+                        "session_id": args.session_id,
+                    },
+                    indent=2,
+                )
+            )
+            sys.exit(1)
+        print(json.dumps({"ok": True, "execution": row}, indent=2, default=str))
+        return
+
     if args.command == "ask":
         ensure_indexes(db)
         result = run_traced_interaction(
@@ -1986,7 +2042,7 @@ def main() -> None:
             query=args.query,
             session_id=args.session_id,
             executor=answer_query,
-            planning_enabled=False,
+            planning_enabled=args.recursive_planning or None,
             source="tirzah-cli",
             focus_node_id=args.node_id,
             answer_adapter_name=args.adapter,

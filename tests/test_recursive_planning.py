@@ -3,11 +3,14 @@ import json
 from tirzah.config import AppConfig, RuntimeConfig
 from tirzah.planning.recursive import (
     create_initial_plan,
+    ensure_interpretive_plan_shape,
     fallback_plan,
+    interpretive_plan_template_hint,
     process_frontend_request,
     revise_plan_recursively,
     revise_saved_plan,
     list_plan_revisions,
+    PlanStep,
 )
 
 
@@ -93,9 +96,51 @@ def test_tirzah_plan_conforms_to_cairn_grammar():
 def test_malformed_planner_gets_bounded_fallback_plan():
     plan = create_initial_plan("Do the work", planner=lambda _prompt: "not json", max_steps=2)
     assert plan.revision_decision == "revise"
-    assert len(plan.steps) == 2
-    assert plan.steps[-1].construct == "CALL"
+    assert len(plan.steps) == 3
+    assert plan.steps[1].allowed_tools == ["tirzah_retrieval"]
+    assert plan.steps[2].allowed_tools == ["answer_adapter"]
     assert "planner fallback" in plan.revision_reason
+
+
+def test_ensure_interpretive_plan_shape_inserts_answer_adapter():
+    steps = [
+        PlanStep(id="1", action="Interpret", construct="STEP"),
+        PlanStep(
+            id="2",
+            action="Retrieve",
+            construct="CALL",
+            depends_on=["1"],
+            allowed_tools=["tirzah_retrieval"],
+        ),
+        PlanStep(id="3", action="Revise", construct="RECURSE", depends_on=["2"]),
+    ]
+    shaped = ensure_interpretive_plan_shape(steps)
+    assert len(shaped) == 4
+    synthesis = next(step for step in shaped if "answer_adapter" in step.allowed_tools)
+    assert synthesis.construct == "CALL"
+    assert synthesis.depends_on == ["2"]
+    recurse = next(step for step in shaped if step.construct == "RECURSE")
+    assert recurse.depends_on == [synthesis.id]
+
+
+def test_planner_prompts_include_interpretive_template_hint():
+    captured = {}
+
+    def planner(prompt):
+        captured["prompt"] = prompt
+        return payload()
+
+    create_initial_plan("Do X", planner=planner)
+    assert interpretive_plan_template_hint() in captured["prompt"]
+    assert "tirzah_retrieval" in captured["prompt"]
+    assert "answer_adapter" in captured["prompt"]
+
+
+def test_fallback_plan_includes_retrieval_and_synthesis_calls():
+    plan = fallback_plan("Research X", plan_id="plan_test", reason="test")
+    tools = [step.allowed_tools for step in plan.steps if step.allowed_tools]
+    assert ["tirzah_retrieval"] in tools
+    assert ["answer_adapter"] in tools
 
 
 def test_planner_with_no_valid_steps_falls_back_not_raises():

@@ -86,6 +86,19 @@ def make_planner(runtime: RuntimeConfig) -> PlannerFn:
     return plan
 
 
+def interpretive_plan_template_hint() -> str:
+    return "\n".join(
+        [
+            "Preferred interpretive backbone (use unless the request clearly needs another shape):",
+            '1. STEP — interpret the request and preserve constraints.',
+            '2. CALL allowed_tools=["tirzah_retrieval"] depends_on=["1"] — gather memory context only.',
+            '3. CALL allowed_tools=["answer_adapter"] depends_on=["2"] — synthesize a grounded answer.',
+            '4. RECURSE depends_on=["3"] — revise when new evidence changes required work.',
+            "The interpreter executes steps 2 and 3 separately; do not merge retrieval and synthesis.",
+        ]
+    )
+
+
 def build_initial_plan_prompt(request: str, max_steps: int, context: str = "") -> str:
     lines = [
         "You are Tirzah's process planner immediately below the front end.",
@@ -97,6 +110,8 @@ def build_initial_plan_prompt(request: str, max_steps: int, context: str = "") -
         "Each step has: id, action, construct, status, depends_on, success_criteria, allowed_tools.",
         "status is active; revision_decision is revise unless the request is already complete or blocked.",
         "Do not claim tools were executed. Do not grant tools or side effects not stated by the request/runtime.",
+        "",
+        interpretive_plan_template_hint(),
         "",
     ]
     if context:
@@ -115,6 +130,9 @@ def build_revision_prompt(plan: CairnPlan, new_information: dict[str, Any], max_
         "revision_decision must be revise, stable, complete, or blocked.",
         "Return only JSON with: objective, status, steps, stopping_conditions, unresolved_questions, revision_decision, revision_reason.",
         "Each step has: id, action, construct, status, depends_on, success_criteria, allowed_tools.",
+        "Preserve separate tirzah_retrieval and answer_adapter CALL steps when execution is interpretive.",
+        "",
+        interpretive_plan_template_hint(),
         "",
         "Current plan:",
         json.dumps(plan.to_dict(), indent=2, default=str),
@@ -377,8 +395,46 @@ def plan_from_payload(
     if revision == 1:
         for step in plan.steps:
             step.status = "pending"
+    plan.steps = ensure_interpretive_plan_shape(plan.steps)
     plan.cairn_text = render_cairn_plan(plan)
     return plan
+
+
+def ensure_interpretive_plan_shape(steps: list[PlanStep]) -> list[PlanStep]:
+    """Insert a synthesis CALL when retrieval is planned without answer_adapter."""
+    retrieval_steps = [step for step in steps if "tirzah_retrieval" in step.allowed_tools]
+    synthesis_steps = [step for step in steps if "answer_adapter" in step.allowed_tools]
+    if not retrieval_steps or synthesis_steps:
+        return steps
+    retrieval = retrieval_steps[-1]
+    new_id = _next_step_id(steps)
+    synthesis = PlanStep(
+        id=new_id,
+        action="Synthesize a grounded answer from the retrieved context package.",
+        construct="CALL",
+        status="pending",
+        depends_on=[retrieval.id],
+        allowed_tools=["answer_adapter"],
+        success_criteria=["Answer cites gathered context."],
+    )
+    updated = list(steps)
+    insert_at = updated.index(retrieval) + 1
+    updated.insert(insert_at, synthesis)
+    for step in updated:
+        if step.construct == "RECURSE" and retrieval.id in step.depends_on and new_id not in step.depends_on:
+            step.depends_on = [new_id if dep == retrieval.id else dep for dep in step.depends_on]
+            if retrieval.id in step.depends_on:
+                step.depends_on = [dep for dep in step.depends_on if dep != retrieval.id] + [new_id]
+    recurse_steps = [step for step in updated if step.construct == "RECURSE"]
+    for recurse in recurse_steps:
+        if retrieval.id in recurse.depends_on and new_id not in recurse.depends_on:
+            recurse.depends_on = [new_id if dep == retrieval.id else dep for dep in recurse.depends_on]
+    return updated
+
+
+def _next_step_id(steps: list[PlanStep]) -> str:
+    numeric = [int(step.id) for step in steps if str(step.id).isdigit()]
+    return str((max(numeric) if numeric else len(steps)) + 1)
 
 
 def normalize_steps(value: Any, *, max_steps: int) -> list[PlanStep]:
@@ -417,7 +473,13 @@ def fallback_plan(request: str, *, plan_id: str, reason: str, max_steps: int = 1
         "steps": [
             {"id": "1", "construct": "STEP", "action": "Interpret the request and preserve its constraints.", "success_criteria": ["Intent and boundaries are explicit."]},
             {"id": "2", "construct": "CALL", "action": "Gather relevant repository or web evidence through Tirzah's validated retrieval pipeline.", "depends_on": ["1"], "allowed_tools": ["tirzah_retrieval"]},
-            {"id": "3", "construct": "STEP", "action": "Produce the requested result from the validated context package.", "depends_on": ["2"]},
+            {
+                "id": "3",
+                "construct": "CALL",
+                "action": "Synthesize a grounded answer from the retrieved context package.",
+                "depends_on": ["2"],
+                "allowed_tools": ["answer_adapter"],
+            },
             {"id": "4", "construct": "RECURSE", "action": "Evaluate new evidence and revise this plan when it changes required work.", "depends_on": ["3"], "success_criteria": ["Stop when stable, complete, blocked, or at the revision limit."]},
         ],
         "stopping_conditions": ["The request is complete.", "The plan is stable.", "Required authority or information is unavailable.", "The configured revision limit is reached."],

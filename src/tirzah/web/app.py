@@ -94,6 +94,11 @@ from galeed import (
     list_trace_sessions,
     record_feedback,
 )
+from tirzah.planning.execution_store import (
+    compact_execution_summary,
+    get_plan_execution,
+    list_plan_executions,
+)
 from tirzah.planning.recursive import (
     list_plan_revisions,
     revise_saved_plan,
@@ -968,6 +973,30 @@ def create_app() -> FastAPI:
             retrieval_mode=request.retrieval_mode,
             web_research=request.web_research,
         )
+
+    @app.get("/api/plan-executions")
+    def plan_executions(
+        session_id: str,
+        status: str | None = None,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        rows = list_plan_executions(db, session_id, status=status, limit=limit)
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "executions": [compact_execution_summary(row) for row in rows],
+        }
+
+    @app.get("/api/plan-executions/{plan_id}")
+    def plan_execution_detail(
+        plan_id: str,
+        revision: int,
+        session_id: str,
+    ) -> dict[str, Any]:
+        row = get_plan_execution(db, plan_id, revision, session_id)
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Unknown plan execution: {plan_id}")
+        return {"ok": True, "execution": row}
 
     @app.get("/api/plans/{plan_id}")
     def plan_revisions(plan_id: str, limit: int = 20) -> dict[str, Any]:
