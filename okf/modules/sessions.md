@@ -11,6 +11,14 @@ timestamp: 2026-06-19T00:00:00Z
 
 The conversation layer — where [retrieval](retrieval.md) meets persistence:
 
+- **`answer_phases.py`** — the phased pipeline: retrieval and synthesis as
+  separate steps (`retrieve_for_answer` / `synthesize_from_retrieval`) so the
+  plan interpreter can drive them individually; carries the
+  `AnswerRetrievalPackage` between phases.
+- **`process_events.py`** — bridges `process_trace` to lean spine events, and
+  records each `answer_adapter` step's COMPLETE prompt/answer into galeed's
+  `llm_calls` (the LLM debugging view); live-marked plan entries are skipped
+  (already streamed by the executor).
 - **`interaction.py`** — the answer pipeline. `answer_query` dispatches to
   `direct` / `agentic` / `deep` ([retrieval modes](../concepts/retrieval-modes.md)),
   runs the memory-agent loop / deep flow, builds the prompt via

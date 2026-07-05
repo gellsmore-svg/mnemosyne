@@ -23,3 +23,4 @@ timestamp: 2026-06-19T00:00:00Z
 - **[Config](config.md)** (`config.py`) — `RuntimeConfig`, `RetrievalConfig`,
   `MongoConfig`.
 - **[Web](web.md)** (`web/app.py`) — the Ask workspace + developer mode.
+- **[planning](planning.md)** — recursive Cairn planning + the interpretive executor.

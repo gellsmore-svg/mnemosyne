@@ -26,3 +26,5 @@ the deep-retrieval design is [`docs/retrieval-agent-design.md`](https://github.c
   documents, and restart state.
 - **[Governance](governance.md)** — agent identities, process objects, and trust
   (observational in V1).
+- **[Interpretive plan execution](interpretive-planning.md)** — Cairn plans
+  walked live (SPEC §4.6): tool gating, constructs, mid-step revision, resume.
