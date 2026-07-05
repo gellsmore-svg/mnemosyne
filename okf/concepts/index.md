@@ -28,3 +28,5 @@ the deep-retrieval design is [`docs/retrieval-agent-design.md`](https://github.c
   (observational in V1).
 - **[Interpretive plan execution](interpretive-planning.md)** — Cairn plans
   walked live (SPEC §4.6): tool gating, constructs, mid-step revision, resume.
+- **[Human-defined Processes](processes.md)** — selectable process templates that
+  ground agentic work with configurable oversight (gates, deviations, audit).

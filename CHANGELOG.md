@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Human-defined Processes** (`tirzah/process/`): versioned plain-text process
+  templates (history preserved), instances that bind a template version to a
+  task (process body frozen at bind time), and three seeded presets
+  (Governed / Fluid / Emergency). The active process conditions the interpretive
+  planner as its top-level guide; gates pause the instance (resumable),
+  deviations are flagged for approval, emergency override requires a
+  justification. Retrospectives, usage metrics, and similar-task history.
+  Surfaced via 17 `/api/process/*` routes, a `tirzah process` CLI, and Mahlah's
+  process bar. Process actions emit onto the Galeed spine.
+
+### Added
 - **Interpretive Cairn plan execution (SPEC §4.6)** — gated by
   `TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED`: the recursive planner's machine
   plan is walked step-by-step (dependency order, allowed_tools gating) with the

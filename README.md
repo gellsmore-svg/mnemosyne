@@ -106,6 +106,25 @@ if Milcah is not importable or the call fails. Real Milcah specialist execution
 uses Hoglah under the hood, so run the Hoglah worker described below when you
 want live model-backed results.
 
+## Human-defined Processes
+
+Processes are first-class, selectable templates that ground agentic work with
+the right amount of oversight. A **template** is versioned plain-text prose
+(its gates and loops stated in English); an **instance** binds a template
+version to a task and carries its own state + audit trace. When a conversation
+runs under a process, its text becomes the planner's top-level guide: the
+planner plans *within* it and emits AWAIT gate steps where it says to pause for
+approval. Gates pause the instance (resumable on approval), deviations are
+flagged for approval, and an emergency override needs a justification.
+
+Three presets ship seeded: **Governed** (gates before apply/ship), **Fluid**
+(log-only oversight), **Emergency** (act-first, mandatory retrospective).
+Manage them in Mahlah's process bar, or via `tirzah process …`
+(seed-presets/templates/new-template/start/gate/override/complete/
+retrospective/metrics/history) and the `/api/process/*` routes. Every instance
+is fully audit-queryable (retrospective, usage metrics, and a "how were similar
+tasks handled?" history query).
+
 ## Interpretive plan execution & debugging
 
 Set `TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED=true` and planned requests are
