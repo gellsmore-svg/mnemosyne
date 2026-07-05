@@ -300,6 +300,24 @@ class CompleteInstanceRequest(BaseModel):
     note: str | None = None
 
 
+class ReviewProcessRequest(BaseModel):
+    body: str
+    intended_use: str = ""
+    use_model: bool = True
+
+
+class TrialProcessRequest(BaseModel):
+    body: str
+    sample_task: str
+
+
+class SuggestProcessRequest(BaseModel):
+    task: str
+    risk_level: str | None = None
+    scope: str | None = None
+    use_model: bool = False
+
+
 def create_app() -> FastAPI:
     config = load_config()
     db = get_database(config.mongo)
@@ -1298,6 +1316,27 @@ def create_app() -> FastAPI:
             "ok": True,
             "history": proc_retro.similar_task_history(db, task=task, template_id=template_id, limit=limit),
         }
+
+    from tirzah.process import refinement as proc_ref
+    from tirzah.process import selection as proc_sel
+
+    @app.post("/api/process/review")
+    def review_process_template(request: ReviewProcessRequest) -> dict[str, Any]:
+        ask = proc_ref.default_ask(config) if request.use_model else None
+        return {"ok": True, "review": proc_ref.review_process(
+            request.body, ask=ask, intended_use=request.intended_use)}
+
+    @app.post("/api/process/trial")
+    def trial_process_template(request: TrialProcessRequest) -> dict[str, Any]:
+        return {"ok": True, "trial": proc_ref.trial_process(
+            db, config, body=request.body, sample_task=request.sample_task)}
+
+    @app.post("/api/process/suggest")
+    def suggest_process_template(request: SuggestProcessRequest) -> dict[str, Any]:
+        ask = proc_ref.default_ask(config) if request.use_model else None
+        return {"ok": True, "suggestion": proc_sel.suggest_process(
+            db, task=request.task, risk_level=request.risk_level,
+            scope=request.scope, ask=ask)}
 
     # --- LLM debugging (galeed llm_calls; same shapes as `galeed serve`) -----
     @app.get("/api/llm-calls")

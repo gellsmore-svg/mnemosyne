@@ -98,3 +98,25 @@ def test_history_query(client) -> None:
     tasks = [row["task"] for row in history]
     assert "Write docs" not in tasks
     assert any("login" in t for t in tasks)
+
+
+def test_review_and_suggest_and_trial_routes(client) -> None:
+    # Structural review (no model) flags a missing gate.
+    review = client.post("/api/process/review", json={
+        "body": "do the thing", "use_model": False,
+    }).json()["review"]
+    assert any(f["kind"] == "missing_gate" for f in review["findings"])
+
+    # Auto-suggest picks Emergency for an urgent task.
+    suggestion = client.post("/api/process/suggest", json={
+        "task": "Prod is down — urgent hotfix",
+    }).json()["suggestion"]
+    assert suggestion["suggested_template_name"] == "Emergency"
+    assert "urgent" in suggestion["signals"]
+
+    # Trial run returns a gate-match verdict (planner may be mock/stub).
+    trial = client.post("/api/process/trial", json={
+        "body": "1. plan\n2. PAUSE FOR APPROVAL before ship",
+        "sample_task": "Ship a change",
+    }).json()["trial"]
+    assert "gate_expected" in trial and trial["gate_expected"] is True

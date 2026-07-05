@@ -78,3 +78,8 @@ __all__ += [
     "similar_task_history",
     "usage_metrics",
 ]
+
+from tirzah.process.refinement import review_process, trial_process  # noqa: E402
+from tirzah.process.selection import suggest_process  # noqa: E402
+
+__all__ += ["review_process", "trial_process", "suggest_process"]

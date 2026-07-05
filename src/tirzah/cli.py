@@ -1096,6 +1096,18 @@ def main() -> None:
     p_history = process_sub.add_parser("history")
     p_history.add_argument("--task", required=True)
     p_history.add_argument("--limit", type=int, default=10)
+    p_review = process_sub.add_parser("review", help="Tirzah reviews a draft process body.")
+    p_review.add_argument("--body", required=True, help="Process text, or '-' for stdin.")
+    p_review.add_argument("--intended-use", default="")
+    p_review.add_argument("--no-model", action="store_true", help="Structural review only.")
+    p_trial = process_sub.add_parser("trial", help="Dry-run a process against a sample task.")
+    p_trial.add_argument("--body", required=True, help="Process text, or '-' for stdin.")
+    p_trial.add_argument("--sample-task", required=True)
+    p_suggest = process_sub.add_parser("suggest", help="Suggest a process for a task.")
+    p_suggest.add_argument("--task", required=True)
+    p_suggest.add_argument("--risk", default=None, choices=["low", "medium", "high"])
+    p_suggest.add_argument("--scope", default=None)
+    p_suggest.add_argument("--use-model", action="store_true")
 
     queue_recent = subcommands.add_parser("queue-recent")
     queue_recent.add_argument("--limit", type=int, default=10)
@@ -2104,6 +2116,29 @@ def main() -> None:
             return
         if cmd == "history":
             _emit({"ok": True, "history": proc_retro.similar_task_history(db, task=args.task, limit=args.limit)})
+            return
+        if cmd == "review":
+            from tirzah.process import refinement as proc_ref
+
+            body = sys.stdin.read() if args.body == "-" else args.body
+            ask = None if args.no_model else proc_ref.default_ask(config)
+            _emit({"ok": True, "review": proc_ref.review_process(
+                body, ask=ask, intended_use=args.intended_use)})
+            return
+        if cmd == "trial":
+            from tirzah.process import refinement as proc_ref
+
+            body = sys.stdin.read() if args.body == "-" else args.body
+            _emit({"ok": True, "trial": proc_ref.trial_process(
+                db, config, body=body, sample_task=args.sample_task)})
+            return
+        if cmd == "suggest":
+            from tirzah.process import refinement as proc_ref
+            from tirzah.process import selection as proc_sel
+
+            ask = proc_ref.default_ask(config) if args.use_model else None
+            _emit({"ok": True, "suggestion": proc_sel.suggest_process(
+                db, task=args.task, risk_level=args.risk, scope=args.scope, ask=ask)})
             return
         return
 
