@@ -83,3 +83,11 @@ from tirzah.process.refinement import review_process, trial_process  # noqa: E40
 from tirzah.process.selection import suggest_process  # noqa: E402
 
 __all__ += ["review_process", "trial_process", "suggest_process"]
+
+from tirzah.process.evolution import (  # noqa: E402
+    analyze_template_evolution,
+    apply_evolution,
+    propose_evolution,
+)
+
+__all__ += ["analyze_template_evolution", "apply_evolution", "propose_evolution"]

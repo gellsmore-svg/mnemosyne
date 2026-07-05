@@ -1108,6 +1108,10 @@ def main() -> None:
     p_suggest.add_argument("--risk", default=None, choices=["low", "medium", "high"])
     p_suggest.add_argument("--scope", default=None)
     p_suggest.add_argument("--use-model", action="store_true")
+    p_evolve = process_sub.add_parser("evolve", help="Propose (or apply) an evolved template from usage.")
+    p_evolve.add_argument("template_id")
+    p_evolve.add_argument("--use-model", action="store_true", help="LLM rewrite for the proposal.")
+    p_evolve.add_argument("--apply", action="store_true", help="Apply the proposed body as a new version.")
 
     queue_recent = subcommands.add_parser("queue-recent")
     queue_recent.add_argument("--limit", type=int, default=10)
@@ -2139,6 +2143,21 @@ def main() -> None:
             ask = proc_ref.default_ask(config) if args.use_model else None
             _emit({"ok": True, "suggestion": proc_sel.suggest_process(
                 db, task=args.task, risk_level=args.risk, scope=args.scope, ask=ask)})
+            return
+        if cmd == "evolve":
+            from tirzah.process import evolution as proc_evo
+            from tirzah.process import refinement as proc_ref
+
+            ask = proc_ref.default_ask(config) if args.use_model else None
+            proposal = proc_evo.propose_evolution(db, args.template_id, ask=ask)
+            if not args.apply or not proposal.get("ready"):
+                _emit({"ok": True, "proposal": proposal})
+                return
+            applied = proc_evo.apply_evolution(
+                db, args.template_id, body=proposal["proposed_body"],
+                rationale=proposal["rationale"], based_on_instances=proposal["instance_count"],
+            )
+            _emit({"ok": True, "applied": applied})
             return
         return
 

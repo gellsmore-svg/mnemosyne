@@ -318,6 +318,13 @@ class SuggestProcessRequest(BaseModel):
     use_model: bool = False
 
 
+class ApplyEvolutionRequest(BaseModel):
+    body: str
+    rationale: str = "evolved from usage"
+    based_on_instances: int = 0
+    created_by: str = "operator"
+
+
 def create_app() -> FastAPI:
     config = load_config()
     db = get_database(config.mongo)
@@ -1337,6 +1344,24 @@ def create_app() -> FastAPI:
         return {"ok": True, "suggestion": proc_sel.suggest_process(
             db, task=request.task, risk_level=request.risk_level,
             scope=request.scope, ask=ask)}
+
+    from tirzah.process import evolution as proc_evo
+
+    @app.get("/api/process/templates/{template_id}/evolution")
+    def process_evolution(template_id: str, use_model: bool = False) -> dict[str, Any]:
+        ask = proc_ref.default_ask(config) if use_model else None
+        return {"ok": True, "proposal": proc_evo.propose_evolution(db, template_id, ask=ask)}
+
+    @app.post("/api/process/templates/{template_id}/evolve")
+    def apply_process_evolution(template_id: str, request: ApplyEvolutionRequest) -> dict[str, Any]:
+        try:
+            template = proc_evo.apply_evolution(
+                db, template_id, body=request.body, rationale=request.rationale,
+                based_on_instances=request.based_on_instances, created_by=request.created_by,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"ok": True, "template": template}
 
     # --- LLM debugging (galeed llm_calls; same shapes as `galeed serve`) -----
     @app.get("/api/llm-calls")

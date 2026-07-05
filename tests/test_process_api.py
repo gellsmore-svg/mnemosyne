@@ -120,3 +120,27 @@ def test_review_and_suggest_and_trial_routes(client) -> None:
         "sample_task": "Ship a change",
     }).json()["trial"]
     assert "gate_expected" in trial and trial["gate_expected"] is True
+
+
+def test_evolution_proposal_and_apply(client) -> None:
+    # A custom template with a recurring approved deviation across instances.
+    tid = client.post("/api/process/templates", json={
+        "name": "Evolvable", "body": "1. plan\n2. PAUSE FOR APPROVAL", "risk_level": "medium",
+    }).json()["template"]["template_id"]
+    for _ in range(3):
+        inst = client.post("/api/process/instances", json={"template_id": tid, "task": "t"}).json()["instance"]
+        iid = inst["instance_id"]
+        client.post(f"/api/process/instances/{iid}/deviation", json={"description": "attach test output"})
+        client.post(f"/api/process/instances/{iid}/deviation/resolve", json={"approved": True})
+        client.post(f"/api/process/instances/{iid}/complete", json={"outcome": "shipped"})
+
+    proposal = client.get(f"/api/process/templates/{tid}/evolution").json()["proposal"]
+    assert proposal["ready"] is True
+    assert "attach test output" in proposal["proposed_body"]
+
+    applied = client.post(f"/api/process/templates/{tid}/evolve", json={
+        "body": proposal["proposed_body"], "rationale": proposal["rationale"],
+        "based_on_instances": proposal["instance_count"],
+    }).json()["template"]
+    assert applied["version"] == 2
+    assert applied["provenance"]["kind"] == "evolution"

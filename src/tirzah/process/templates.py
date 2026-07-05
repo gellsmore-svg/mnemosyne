@@ -81,6 +81,7 @@ def revise_template(
     risk_level: str | None = None,
     scope: str | None = None,
     created_by: str = "operator",
+    provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Append a new version to an existing template (history preserved).
 
@@ -105,6 +106,9 @@ def revise_template(
         "created_by": created_by,
         "created_at": _utcnow(),
     }
+    if provenance is not None:
+        # e.g. {"kind": "evolution", "rationale": …, "based_on_instances": N}.
+        document["provenance"] = dict(provenance)
     db.process_templates.insert_one({**document})
     return serialize_governance_row(document)
 
