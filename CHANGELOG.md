@@ -15,8 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   planner as its top-level guide; gates pause the instance (resumable),
   deviations are flagged for approval, emergency override requires a
   justification. Retrospectives, usage metrics, and similar-task history.
-  Surfaced via 17 `/api/process/*` routes, a `tirzah process` CLI, and Mahlah's
+  Surfaced via `/api/process/*` routes, a `tirzah process` CLI, and Mahlah's
   process bar. Process actions emit onto the Galeed spine.
+- **Process authoring + selection assistants**: `review_process`
+  (structural + optional LLM findings, clarifying questions, suggested
+  rewrite), `trial_process` (dry-run a draft against a sample task), and
+  `suggest_process` (recommend a process from task risk/scope/urgency, with an
+  optional LLM re-rank) — via `/api/process/{review,trial,suggest}`, the
+  `tirzah process {review,trial,suggest}` CLI, and the process bar (auto-suggest
+  on open, "Review with Tirzah").
 
 ### Added
 - **Interpretive Cairn plan execution (SPEC §4.6)** — gated by

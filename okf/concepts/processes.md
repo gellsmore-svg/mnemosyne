@@ -27,3 +27,16 @@ Three presets span the spectrum: Governed (gates before apply/ship), Fluid
 per-instance retrospective, usage metrics (adherence, deviation/override rates,
 outcomes), and a "how were similar tasks handled?" history query. Process
 actions also emit onto the Galeed spine, watchable in Mizpah.
+
+## Assisted authoring and selection
+
+Authoring is Tirzah-assisted: `review_process` runs model-free structural checks
+(missing gate, too short, unnumbered steps) plus optional LLM clarifying
+questions / findings / a suggested rewrite, and `trial_process` dry-runs a draft
+against a sample task to confirm the planner places the gates it demands.
+Selection is smart-but-advisory: `suggest_process` ranks templates by inferred
+risk, scope, and urgency/keyword signals (deterministic, explainable), with an
+optional LLM re-rank among the top candidates. The operator can always override;
+the instance records `selection_reason` (manual / suggested / default) for the
+audit trail.
+

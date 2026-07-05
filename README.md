@@ -125,6 +125,15 @@ retrospective/metrics/history) and the `/api/process/*` routes. Every instance
 is fully audit-queryable (retrospective, usage metrics, and a "how were similar
 tasks handled?" history query).
 
+Authoring and selection are assisted. **`tirzah process review`** (or the
+process bar's *Review with Tirzah*) checks a draft for missing gates,
+ambiguity, and gaps — structural checks always, plus model-generated
+clarifying questions and an optional suggested rewrite; **`tirzah process
+trial`** dry-runs a draft against a sample task to confirm the planner places
+the gates it asks for. **`tirzah process suggest`** (and the process bar on
+open) recommends a fitting process from the task's risk/scope/urgency signals —
+advisory, and the choice is recorded as `selection_reason` for the audit.
+
 ## Interpretive plan execution & debugging
 
 Set `TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED=true` and planned requests are

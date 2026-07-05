@@ -21,6 +21,12 @@ timestamp: 2026-07-05T00:00:00Z
   events.
 - **`retrospective.py`** — `build_retrospective`, `usage_metrics`,
   `similar_task_history`.
+- **`refinement.py`** — Tirzah-assisted authoring: `review_process`
+  (structural + optional model findings/questions/rewrite), `trial_process`
+  (dry-run a draft against a sample task).
+- **`selection.py`** — `suggest_process`: deterministic risk/scope/urgency
+  ranking with an optional LLM re-rank; advisory (recorded as
+  `selection_reason`).
 
 Surfaces: `/api/process/*` (17 routes), `tirzah process` CLI, Mahlah's process
 bar. See the [concept](../concepts/processes.md).
