@@ -132,7 +132,12 @@ clarifying questions and an optional suggested rewrite; **`tirzah process
 trial`** dry-runs a draft against a sample task to confirm the planner places
 the gates it asks for. **`tirzah process suggest`** (and the process bar on
 open) recommends a fitting process from the task's risk/scope/urgency signals —
-advisory, and the choice is recorded as `selection_reason` for the audit.
+advisory, and the choice is recorded as `selection_reason` for the audit. And processes are living
+artifacts: **`tirzah process evolve <id>`** mines a template's past runs for
+recurring approved deviations, gate friction, heavy override, or high
+abandonment, and *proposes* a revised body with rationale — applied only on
+approval (`--apply`), as a new version with provenance. Active instances keep
+their frozen process, so evolution is backward-compatible.
 
 ## Interpretive plan execution & debugging
 

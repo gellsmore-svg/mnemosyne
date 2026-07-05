@@ -40,3 +40,15 @@ optional LLM re-rank among the top candidates. The operator can always override;
 the instance records `selection_reason` (manual / suggested / default) for the
 audit trail.
 
+## Evolving from usage
+
+Processes improve from real-world data. `analyze_template_evolution` mines a
+template's past instances for patterns — deviations flagged AND approved
+repeatedly (fold them in), gates that keep getting rejected (unclear criteria),
+a high emergency-override rate (gates too heavy), high abandonment (too onerous)
+— and `propose_evolution` turns them into a revised body with a rationale
+(deterministic notes, or an LLM integrated rewrite). Nothing auto-applies:
+`apply_evolution` lands the approved body as a new version with provenance,
+human-gated, and — because instances freeze their body at bind time — active
+work is never disturbed.
+

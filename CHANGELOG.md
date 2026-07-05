@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   optional LLM re-rank) — via `/api/process/{review,trial,suggest}`, the
   `tirzah process {review,trial,suggest}` CLI, and the process bar (auto-suggest
   on open, "Review with Tirzah").
+- **Template auto-evolution**: `analyze_template_evolution` / `propose_evolution`
+  mine a template's instances (recurring approved deviations, gate rejections,
+  override/abandonment rates) and propose a revised body with rationale;
+  `apply_evolution` lands it as a new version with provenance on human approval
+  (active instances unaffected). Via `/api/process/templates/{id}/evolution|evolve`
+  and `tirzah process evolve <id> [--apply]`.
 
 ### Added
 - **Interpretive Cairn plan execution (SPEC §4.6)** — gated by

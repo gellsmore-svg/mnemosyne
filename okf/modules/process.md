@@ -27,6 +27,9 @@ timestamp: 2026-07-05T00:00:00Z
 - **`selection.py`** — `suggest_process`: deterministic risk/scope/urgency
   ranking with an optional LLM re-rank; advisory (recorded as
   `selection_reason`).
+- **`evolution.py`** — `analyze_template_evolution` / `propose_evolution` mine
+  instances for patterns and propose a revised body; `apply_evolution` lands it
+  as a provenance-tagged new version on human approval.
 
 Surfaces: `/api/process/*` (17 routes), `tirzah process` CLI, Mahlah's process
 bar. See the [concept](../concepts/processes.md).
