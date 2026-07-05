@@ -239,6 +239,67 @@ class RequeueEmbeddingBackfillJobRequest(BaseModel):
     actor: str = "web"
 
 
+# --- Process management -----------------------------------------------------
+
+
+class CreateProcessTemplateRequest(BaseModel):
+    name: str
+    body: str
+    description: str = ""
+    category: str | None = None
+    risk_level: str | None = None
+    scope: str | None = None
+    created_by: str = "operator"
+
+
+class ReviseProcessTemplateRequest(BaseModel):
+    body: str | None = None
+    name: str | None = None
+    description: str | None = None
+    category: str | None = None
+    risk_level: str | None = None
+    scope: str | None = None
+    created_by: str = "operator"
+
+
+class StartProcessInstanceRequest(BaseModel):
+    template_id: str
+    task: str
+    session_id: str | None = None
+    version: int | None = None
+    selected_by: str = "operator"
+    selection_reason: str = "manual"
+
+
+class GateDecisionRequest(BaseModel):
+    step_id: str
+    approved: bool
+    approver: str = "operator"
+    note: str | None = None
+
+
+class DeviationRequest(BaseModel):
+    description: str
+    step_id: str | None = None
+    proposed_by: str = "agent"
+
+
+class DeviationDecisionRequest(BaseModel):
+    approved: bool
+    approver: str = "operator"
+    note: str | None = None
+
+
+class OverrideRequest(BaseModel):
+    justification: str
+    actor: str = "operator"
+
+
+class CompleteInstanceRequest(BaseModel):
+    outcome: str = "completed"
+    note: str | None = None
+
+
 def create_app() -> FastAPI:
     config = load_config()
     db = get_database(config.mongo)
@@ -1087,6 +1148,156 @@ def create_app() -> FastAPI:
                         yield ": keepalive\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    # --- Process management -------------------------------------------------
+    from tirzah.process import enforcement as proc_enf
+    from tirzah.process import instances as proc_inst
+    from tirzah.process import retrospective as proc_retro
+    from tirzah.process import templates as proc_tmpl
+
+    proc_tmpl.seed_presets(db)  # idempotent — presets available from first serve
+
+    @app.get("/api/process/templates")
+    def process_templates(
+        category: str | None = None,
+        risk_level: str | None = None,
+        scope: str | None = None,
+        include_presets: bool = True,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "templates": proc_tmpl.list_templates(
+                db, category=category, risk_level=risk_level, scope=scope,
+                include_presets=include_presets, limit=limit,
+            ),
+        }
+
+    @app.post("/api/process/templates")
+    def create_process_template(request: CreateProcessTemplateRequest) -> dict[str, Any]:
+        try:
+            template = proc_tmpl.create_template(
+                db, name=request.name, body=request.body, description=request.description,
+                category=request.category, risk_level=request.risk_level, scope=request.scope,
+                created_by=request.created_by,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"ok": True, "template": template}
+
+    @app.get("/api/process/templates/{template_id}")
+    def process_template(template_id: str, version: int | None = None) -> dict[str, Any]:
+        template = proc_tmpl.get_template(db, template_id, version=version)
+        if template is None:
+            raise HTTPException(status_code=404, detail=f"unknown template: {template_id}")
+        return {"ok": True, "template": template, "versions": proc_tmpl.template_versions(db, template_id)}
+
+    @app.post("/api/process/templates/{template_id}/revise")
+    def revise_process_template(template_id: str, request: ReviseProcessTemplateRequest) -> dict[str, Any]:
+        try:
+            template = proc_tmpl.revise_template(
+                db, template_id, body=request.body, name=request.name,
+                description=request.description, category=request.category,
+                risk_level=request.risk_level, scope=request.scope, created_by=request.created_by,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"ok": True, "template": template}
+
+    @app.get("/api/process/instances")
+    def process_instances(
+        template_id: str | None = None,
+        status: str | None = None,
+        session_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "instances": proc_inst.list_instances(
+                db, template_id=template_id, status=status, session_id=session_id, limit=limit,
+            ),
+        }
+
+    @app.post("/api/process/instances")
+    def start_process_instance(request: StartProcessInstanceRequest) -> dict[str, Any]:
+        try:
+            instance = proc_inst.start_instance(
+                db, template_id=request.template_id, task=request.task,
+                session_id=request.session_id, version=request.version,
+                selected_by=request.selected_by, selection_reason=request.selection_reason,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"ok": True, "instance": instance}
+
+    @app.get("/api/process/instances/{instance_id}")
+    def process_instance(instance_id: str) -> dict[str, Any]:
+        instance = proc_inst.get_instance(db, instance_id)
+        if instance is None:
+            raise HTTPException(status_code=404, detail=f"unknown instance: {instance_id}")
+        return {"ok": True, "instance": instance}
+
+    @app.get("/api/process/active")
+    def active_process(session_id: str) -> dict[str, Any]:
+        return {"ok": True, "instance": proc_inst.active_instance_for_session(db, session_id)}
+
+    @app.post("/api/process/instances/{instance_id}/gate")
+    def resolve_process_gate(instance_id: str, request: GateDecisionRequest) -> dict[str, Any]:
+        instance = proc_enf.resolve_gate(
+            db, instance_id, step_id=request.step_id, approved=request.approved,
+            approver=request.approver, note=request.note,
+        )
+        return {"ok": instance is not None, "instance": instance}
+
+    @app.post("/api/process/instances/{instance_id}/deviation")
+    def flag_process_deviation(instance_id: str, request: DeviationRequest) -> dict[str, Any]:
+        instance = proc_enf.flag_deviation(
+            db, instance_id, description=request.description,
+            step_id=request.step_id, proposed_by=request.proposed_by,
+        )
+        return {"ok": instance is not None, "instance": instance}
+
+    @app.post("/api/process/instances/{instance_id}/deviation/resolve")
+    def resolve_process_deviation(instance_id: str, request: DeviationDecisionRequest) -> dict[str, Any]:
+        instance = proc_enf.resolve_deviation(
+            db, instance_id, approved=request.approved, approver=request.approver, note=request.note,
+        )
+        return {"ok": instance is not None, "instance": instance}
+
+    @app.post("/api/process/instances/{instance_id}/override")
+    def override_process(instance_id: str, request: OverrideRequest) -> dict[str, Any]:
+        try:
+            instance = proc_enf.record_override(
+                db, instance_id, justification=request.justification, actor=request.actor,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"ok": instance is not None, "instance": instance}
+
+    @app.post("/api/process/instances/{instance_id}/complete")
+    def complete_process_instance(instance_id: str, request: CompleteInstanceRequest) -> dict[str, Any]:
+        instance = proc_inst.complete_instance(
+            db, instance_id, outcome=request.outcome, note=request.note,
+        )
+        return {"ok": instance is not None, "instance": instance}
+
+    @app.get("/api/process/instances/{instance_id}/retrospective")
+    def process_retrospective(instance_id: str) -> dict[str, Any]:
+        retrospective = proc_retro.build_retrospective(db, instance_id)
+        if retrospective is None:
+            raise HTTPException(status_code=404, detail=f"unknown instance: {instance_id}")
+        return {"ok": True, "retrospective": retrospective}
+
+    @app.get("/api/process/metrics")
+    def process_metrics(template_id: str | None = None) -> dict[str, Any]:
+        return {"ok": True, "metrics": proc_retro.usage_metrics(db, template_id=template_id)}
+
+    @app.get("/api/process/history")
+    def process_history(task: str, template_id: str | None = None, limit: int = 10) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "history": proc_retro.similar_task_history(db, task=task, template_id=template_id, limit=limit),
+        }
 
     # --- LLM debugging (galeed llm_calls; same shapes as `galeed serve`) -----
     @app.get("/api/llm-calls")

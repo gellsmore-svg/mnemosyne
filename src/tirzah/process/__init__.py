@@ -36,3 +36,45 @@ __all__ = [
     "seed_presets",
     "template_versions",
 ]
+
+from tirzah.process.instances import (  # noqa: E402
+    abandon_instance,
+    active_instance_for_session,
+    complete_instance,
+    get_instance,
+    list_instances,
+    record_event,
+    start_instance,
+)
+from tirzah.process.enforcement import (  # noqa: E402
+    flag_deviation,
+    reach_gate,
+    record_override,
+    render_process_constraint,
+    resolve_deviation,
+    resolve_gate,
+)
+from tirzah.process.retrospective import (  # noqa: E402
+    build_retrospective,
+    similar_task_history,
+    usage_metrics,
+)
+
+__all__ += [
+    "abandon_instance",
+    "active_instance_for_session",
+    "complete_instance",
+    "get_instance",
+    "list_instances",
+    "record_event",
+    "start_instance",
+    "flag_deviation",
+    "reach_gate",
+    "record_override",
+    "render_process_constraint",
+    "resolve_deviation",
+    "resolve_gate",
+    "build_retrospective",
+    "similar_task_history",
+    "usage_metrics",
+]

@@ -1055,6 +1055,48 @@ def main() -> None:
     plan_exec_show.add_argument("--revision", type=int, required=True)
     plan_exec_show.add_argument("--session-id", default="default")
 
+    process_p = subcommands.add_parser("process", help="Human-defined process templates + instances.")
+    process_sub = process_p.add_subparsers(dest="process_command", required=True)
+    process_sub.add_parser("seed-presets")
+    p_templates = process_sub.add_parser("templates")
+    p_templates.add_argument("--include-presets", action="store_true", default=True)
+    p_new = process_sub.add_parser("new-template")
+    p_new.add_argument("name")
+    p_new.add_argument("--body", required=True, help="Process text, or '-' to read stdin.")
+    p_new.add_argument("--description", default="")
+    p_new.add_argument("--category", default=None)
+    p_new.add_argument("--risk", default=None, choices=["low", "medium", "high"])
+    p_new.add_argument("--scope", default=None)
+    p_start = process_sub.add_parser("start")
+    p_start.add_argument("template_id")
+    p_start.add_argument("--task", required=True)
+    p_start.add_argument("--session-id", default=None)
+    p_start.add_argument("--version", type=int, default=None)
+    p_inst = process_sub.add_parser("instances")
+    p_inst.add_argument("--session-id", default=None)
+    p_inst.add_argument("--status", default=None)
+    p_inst.add_argument("--limit", type=int, default=20)
+    p_gate = process_sub.add_parser("gate")
+    p_gate.add_argument("instance_id")
+    p_gate.add_argument("--step-id", required=True)
+    p_gate.add_argument("--approve", dest="approved", action="store_true")
+    p_gate.add_argument("--reject", dest="approved", action="store_false")
+    p_gate.set_defaults(approved=True)
+    p_gate.add_argument("--note", default=None)
+    p_override = process_sub.add_parser("override")
+    p_override.add_argument("instance_id")
+    p_override.add_argument("--justification", required=True)
+    p_complete = process_sub.add_parser("complete")
+    p_complete.add_argument("instance_id")
+    p_complete.add_argument("--outcome", default="completed")
+    p_retro = process_sub.add_parser("retrospective")
+    p_retro.add_argument("instance_id")
+    p_metrics = process_sub.add_parser("metrics")
+    p_metrics.add_argument("--template-id", default=None)
+    p_history = process_sub.add_parser("history")
+    p_history.add_argument("--task", required=True)
+    p_history.add_argument("--limit", type=int, default=10)
+
     queue_recent = subcommands.add_parser("queue-recent")
     queue_recent.add_argument("--limit", type=int, default=10)
     queue_recent.add_argument("--status", default=None)
@@ -1992,6 +2034,77 @@ def main() -> None:
             print(envelope["prompt_text"])
         else:
             print(json.dumps({"ok": True, "prompt": envelope}, indent=2))
+        return
+
+    if args.command == "process":
+        ensure_indexes(db)
+        from tirzah.process import enforcement as proc_enf
+        from tirzah.process import instances as proc_inst
+        from tirzah.process import retrospective as proc_retro
+        from tirzah.process import templates as proc_tmpl
+
+        def _emit(payload: dict) -> None:
+            print(json.dumps(payload, indent=2, default=str))
+
+        cmd = args.process_command
+        if cmd == "seed-presets":
+            _emit({"ok": True, "created": [p["name"] for p in proc_tmpl.seed_presets(db)]})
+            return
+        if cmd == "templates":
+            _emit({"ok": True, "templates": proc_tmpl.list_templates(db, include_presets=args.include_presets)})
+            return
+        if cmd == "new-template":
+            body = sys.stdin.read() if args.body == "-" else args.body
+            try:
+                template = proc_tmpl.create_template(
+                    db, name=args.name, body=body, description=args.description,
+                    category=args.category, risk_level=args.risk, scope=args.scope,
+                )
+            except ValueError as error:
+                _emit({"ok": False, "error": str(error)})
+                return
+            _emit({"ok": True, "template": template})
+            return
+        if cmd == "start":
+            try:
+                instance = proc_inst.start_instance(
+                    db, template_id=args.template_id, task=args.task,
+                    session_id=args.session_id, version=args.version,
+                )
+            except ValueError as error:
+                _emit({"ok": False, "error": str(error)})
+                return
+            _emit({"ok": True, "instance": instance})
+            return
+        if cmd == "instances":
+            _emit({"ok": True, "instances": proc_inst.list_instances(
+                db, session_id=args.session_id, status=args.status, limit=args.limit)})
+            return
+        if cmd == "gate":
+            _emit({"ok": True, "instance": proc_enf.resolve_gate(
+                db, args.instance_id, step_id=args.step_id, approved=args.approved, note=args.note)})
+            return
+        if cmd == "override":
+            try:
+                instance = proc_enf.record_override(db, args.instance_id, justification=args.justification)
+            except ValueError as error:
+                _emit({"ok": False, "error": str(error)})
+                return
+            _emit({"ok": True, "instance": instance})
+            return
+        if cmd == "complete":
+            _emit({"ok": True, "instance": proc_inst.complete_instance(db, args.instance_id, outcome=args.outcome)})
+            return
+        if cmd == "retrospective":
+            retro = proc_retro.build_retrospective(db, args.instance_id)
+            _emit({"ok": retro is not None, "retrospective": retro})
+            return
+        if cmd == "metrics":
+            _emit({"ok": True, "metrics": proc_retro.usage_metrics(db, template_id=args.template_id)})
+            return
+        if cmd == "history":
+            _emit({"ok": True, "history": proc_retro.similar_task_history(db, task=args.task, limit=args.limit)})
+            return
         return
 
     if args.command == "plan-executions":

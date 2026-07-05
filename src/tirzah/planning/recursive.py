@@ -403,6 +403,22 @@ def process_frontend_request(
         planning_context = render_planning_context(db, config, answer_kwargs.get("session_id"), query)
     except Exception:
         planning_context = ""
+    # Process enforcement: if the session is running under an active Process
+    # instance, its process text is the TOP-LEVEL planning guide (prepended so
+    # the planner plans within it and places gate steps where it demands them).
+    active_process = None
+    try:
+        from tirzah.process import enforcement as _proc_enf
+        from tirzah.process import instances as _proc_inst
+
+        session = answer_kwargs.get("session_id")
+        if session and db is not None:
+            active_process = _proc_inst.active_instance_for_session(db, session)
+            if active_process:
+                constraint = _proc_enf.render_process_constraint(active_process)
+                planning_context = (constraint + "\n\n" + planning_context).strip()
+    except Exception:
+        active_process = None
     # Advertise enabled specialist tools to the planner, sourced from the Keturah
     # manifest (single source of truth) rather than a hardcoded string.
     try:
@@ -429,6 +445,19 @@ def process_frontend_request(
     )
     session_id = answer_kwargs.get("session_id", "web")
     save_plan_revision(db, initial, session_id=session_id)
+    if active_process is not None:
+        try:
+            from tirzah.process import enforcement as _proc_enf
+
+            has_gate = any(
+                (step.construct or "").upper() == "AWAIT" for step in initial.steps
+            )
+            _proc_enf.note_plan_shaped(
+                db, active_process["instance_id"],
+                plan_id=initial.plan_id, has_gate_steps=has_gate,
+            )
+        except Exception:
+            pass
     interpretive = config.runtime.plan_interpretive_execution_enabled
     revisions: list[CairnPlan] = []
     if interpretive:
