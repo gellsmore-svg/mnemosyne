@@ -29,6 +29,13 @@ description of Tirzah's concepts, modules, and CLI.
 - **[Modules](modules/index.md)** — the code: retrieval, ingestion, sessions,
   storage, adapters, config, and the web app.
 - **[CLI](cli/index.md)** — the `tirzah` commands, grouped by purpose.
+- **Planning & interpretation** — recursive Cairn request planning plus the
+  interpretive executor (SPEC §4.6, `TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED`):
+  dependency-gated step walking with the full construct set, mid-step revision,
+  resumable persisted executions, and live plan streaming into the process panel.
+- **Observability** — request traces on the Galeed spine, and every answer
+  adapter call's complete In→Out captured into the `llm_calls` debugging store
+  (viewable via `galeed trace` / Mizpah).
 
 ## At a glance
 
