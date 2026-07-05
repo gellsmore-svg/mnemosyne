@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Interpretive Cairn plan execution (SPEC §4.6)** — gated by
+  `TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED`: the recursive planner's machine
+  plan is walked step-by-step (dependency order, allowed_tools gating) with the
+  full construct set — ITERATE, DECISION, PARALLEL/MERGE (isolated or shared
+  scopes, CONCURRENT threads), RETRY with backoff, ERROR fallback recovery,
+  AWAIT/SERVICE, BREAK/CONTINUE — plus **mid-step revision**
+  (`plan_mid_revision_enabled`, default on): the plan adapts after each
+  completed call. Executions persist for resume (`plan_executions`;
+  `/api/plan-executions`, `tirzah plan-executions`).
+- **Live plan streaming** — with the request tracer attached, every plan trace
+  entry publishes to the bus the moment it happens; Mahlah's process panel
+  shows the running plan (construct badges) live, auto-expanding on the first
+  plan event.
+- **LLM debugging capture** — every `answer_adapter` step records its COMPLETE
+  prompt and answer into galeed's `llm_calls` (deep mode included via
+  `build_synthesis_prompt`), correlated to the live trace/session. Viewable in
+  `galeed trace` / Mizpah's LLM Calls tab.
+- **Answer pipeline phases** — retrieval and synthesis split
+  (`sessions/answer_phases.py`) so plans can drive them as separate steps.
+
+### Changed
+- Analytics helpers moved out of `web/app.py` into `adapters/discovery.py` and
+  `ingestion/status.py` (no behaviour change).
+- Depends on **cairn-lang** (renamed distribution; `import cairn` unchanged).
+
+### Fixed
+- Three live-Mongo defects in the plan path: pymongo Database truth-testing,
+  PosixPath in persisted runtime config (bson), and the interpretive result
+  overwriting the phases' trace (which dropped the answer capture).
+
 ### Changed
 - **Web UI moved to a `tirzah[web]` extra** — `fastapi`/`uvicorn` are no longer core
   dependencies, so library/CLI installs stay lean and never import the web stack

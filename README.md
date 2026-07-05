@@ -106,6 +106,16 @@ if Milcah is not importable or the call fails. Real Milcah specialist execution
 uses Hoglah under the hood, so run the Hoglah worker described below when you
 want live model-backed results.
 
+## Interpretive plan execution & debugging
+
+Set `TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED=true` and planned requests are
+*executed* step-by-step by the Cairn interpreter (SPEC §4.6): dependency-gated
+steps, tool gating via `allowed_tools`, ITERATE/DECISION/PARALLEL/RETRY/ERROR
+constructs, resumable persisted executions, and **mid-step revision** — the plan
+adapts after each completed call. The running plan streams live into Mahlah's
+process panel, and every model call's full In→Out lands in galeed's `llm_calls`
+debugging store (`galeed trace`, or Mizpah's LLM Calls tab).
+
 ## Web UI
 
 ```bash
