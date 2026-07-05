@@ -231,3 +231,42 @@ def test_saved_plan_can_be_revised_from_later_information():
     assert revised.revision == 2 and revised.parent_revision == 1
     assert revised.steps[1].action == "Use later evidence"
     assert [row["revision"] for row in list_plan_revisions(db, initial.plan_id)] == [1, 2]
+
+
+def test_planner_consultations_are_captured_when_traced():
+    """With a live tracer, every planner call records its full prompt → raw
+    plan text into galeed's llm_calls (plan_r0, plan_r1, …)."""
+    from galeed.recorder import Tracer
+
+    class TracedDb(Db):
+        def __init__(self):
+            super().__init__()
+            self._collections = {}
+
+        def __getitem__(self, name):
+            return self._collections.setdefault(name, Collection())
+
+    db = TracedDb()
+    tracer = Tracer(session_id="s1", db=None, source="tirzah")
+    answers = iter([payload(), payload(decision="stable", status="stable")])
+
+    process_frontend_request(
+        db,
+        AppConfig(runtime=RuntimeConfig(recursive_planning_enabled=True)),
+        query="Research X",
+        executor=lambda _db, _config, **kwargs: {
+            "ok": True, "answer": "result", "used_node_ids": [],
+            "process_trace": [{"step": "answer_adapter", "input": {}, "output": {"ok": True}}],
+        },
+        planner=lambda _prompt: next(answers),
+        session_id="s1",
+        tracer=tracer,
+    )
+
+    calls = db["llm_calls"].rows
+    steps = [row["step_name"] for row in calls]
+    assert steps == ["plan_r0", "plan_r1"]
+    assert all(row["trace_id"] == tracer.trace_id for row in calls)
+    assert calls[0]["prompt"]  # the full planning prompt
+    assert calls[0]["output"].startswith("{")  # the raw plan payload
+    assert calls[0]["metadata"]["role"] == "planner"

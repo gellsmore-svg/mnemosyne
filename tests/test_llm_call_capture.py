@@ -85,3 +85,27 @@ def test_non_adapter_steps_and_broken_db_are_harmless() -> None:
     record_llm_calls_from_trace(BrokenDb(), tracer, _trace({
         "step": "answer_adapter", "input": {"prompt_text": "p"}, "output": {"ok": True, "answer": "a"},
     }))
+
+
+def test_memory_agent_iterations_become_llm_call_documents() -> None:
+    db = FakeDb()
+    tracer = Tracer(session_id="s", db=None, source="tirzah")
+    record_llm_calls_from_trace(db, tracer, [
+        {"step": "memory_agent_iteration",
+         "input": {"iteration": 1, "model": "gemma3:1b", "adapter": "ollama_cli",
+                   "prompt_text": "AGENT PROMPT round 1"},
+         "output": {"raw_answer": '{"status": "continue", "tool_calls": []}'}},
+        {"step": "memory_agent_iteration",
+         "input": {"iteration": 2, "model": "gemma3:1b", "adapter": "ollama_cli",
+                   "prompt_text": "AGENT PROMPT round 2"},
+         "output": {"ok": False, "decision": {"error": "adapter timed out"}}},
+        {"step": "answer_adapter",
+         "input": {"model": "gemma3:1b", "prompt_text": "final prompt"},
+         "output": {"ok": True, "answer": "final answer"}},
+    ])
+    calls = db["llm_calls"].rows
+    assert [c["step_name"] for c in calls] == ["memory_agent_1", "memory_agent_2", "answer"]
+    assert calls[0]["prompt"] == "AGENT PROMPT round 1"
+    assert calls[0]["output"].startswith('{"status"')
+    assert calls[0]["metadata"]["role"] == "memory_agent"
+    assert calls[1]["status"] == "failed" and "timed out" in calls[1]["error"]

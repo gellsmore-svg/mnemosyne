@@ -321,6 +321,47 @@ def _revision_trace_event(step: str, plan: CairnPlan) -> dict[str, Any]:
     }
 
 
+def _capturing_planner(planner: PlannerFn, db: Any, tracer: Any) -> PlannerFn:
+    """Record every planner consultation (full prompt → raw plan text) into
+    galeed's llm_calls — the planner's own thinking is part of the debugging
+    story. Steps name chronologically: plan_r0 (initial), plan_r1, … (revisions
+    and mid-step revisions alike). Best-effort; never affects planning."""
+    from itertools import count
+
+    counter = count()
+
+    def plan(prompt: str) -> str:
+        index = next(counter)
+        output: str | None = None
+        error: str | None = None
+        try:
+            output = planner(prompt)
+            return output
+        except Exception as exc:  # noqa: BLE001 — captured, then re-raised
+            error = str(exc)
+            raise
+        finally:
+            try:
+                from galeed import record_llm_call
+
+                record_llm_call(
+                    db,
+                    trace_id=tracer.trace_id,
+                    session_id=tracer.session_id,
+                    source=tracer.source,
+                    step_name=f"plan_r{index}",
+                    prompt=prompt,
+                    output=output,
+                    error=error,
+                    metadata={"request_id": tracer.request_id, "role": "planner"},
+                    emit_event=False,  # plan.revision/plan_execution events mark the spine
+                )
+            except Exception:
+                pass
+
+    return plan
+
+
 def process_frontend_request(
     db,
     config: AppConfig,
@@ -336,6 +377,8 @@ def process_frontend_request(
     if not enabled:
         return executor(db, config, query=query, **answer_kwargs)
     planner = planner or make_planner(config.runtime)
+    if tracer is not None and db is not None:
+        planner = _capturing_planner(planner, db, tracer)
     # Phase 5: make planning context-aware with relevant prior decisions/open items.
     planning_context = ""
     try:

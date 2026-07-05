@@ -230,25 +230,51 @@ def record_llm_calls_from_trace(
     from galeed import record_llm_call
 
     for step in process_trace or []:
-        if step.get("step") != "answer_adapter":
+        name = step.get("step")
+        if name not in ("answer_adapter", "memory_agent_iteration"):
             continue
         step_in = step.get("input") if isinstance(step.get("input"), dict) else {}
         step_out = step.get("output") if isinstance(step.get("output"), dict) else {}
-        failed = step_out.get("ok") is False
-        record_llm_call(
-            db,
-            trace_id=tracer.trace_id,
-            session_id=tracer.session_id,
-            source=tracer.source,
-            step_name="answer",
-            model=step_out.get("model") or step_in.get("model"),
-            prompt=step_in.get("prompt_text"),
-            output=None if failed else step_out.get("answer"),
-            error=str(step_out.get("error")) if failed else None,
-            metadata={
-                "adapter": step_out.get("adapter") or step_in.get("adapter"),
-                "used_node_count": len(step_out.get("used_node_ids") or []),
-                "request_id": tracer.request_id,
-            },
-            emit_event=False,  # model.response.completed already marks the spine
-        )
+        if name == "answer_adapter":
+            failed = step_out.get("ok") is False
+            record_llm_call(
+                db,
+                trace_id=tracer.trace_id,
+                session_id=tracer.session_id,
+                source=tracer.source,
+                step_name="answer",
+                model=step_out.get("model") or step_in.get("model"),
+                prompt=step_in.get("prompt_text"),
+                output=None if failed else step_out.get("answer"),
+                error=str(step_out.get("error")) if failed else None,
+                metadata={
+                    "adapter": step_out.get("adapter") or step_in.get("adapter"),
+                    "used_node_count": len(step_out.get("used_node_ids") or []),
+                    "request_id": tracer.request_id,
+                },
+                emit_event=False,  # model.response.completed already marks the spine
+            )
+        else:
+            # Memory-agent rounds are LLM calls too: the step carries the full
+            # agent prompt and the raw decision text.
+            raw = (step_out.get("raw_answer")
+                   or (step_out.get("decision") or {}).get("raw_answer"))
+            error = step_out.get("error") or (step_out.get("decision") or {}).get("error")
+            record_llm_call(
+                db,
+                trace_id=tracer.trace_id,
+                session_id=tracer.session_id,
+                source=tracer.source,
+                step_name=f"memory_agent_{step_in.get('iteration', '?')}",
+                model=step_in.get("model"),
+                prompt=step_in.get("prompt_text"),
+                output=raw,
+                error=None if raw else (str(error) if error else None),
+                metadata={
+                    "adapter": step_in.get("adapter"),
+                    "iteration": step_in.get("iteration"),
+                    "request_id": tracer.request_id,
+                    "role": "memory_agent",
+                },
+                emit_event=False,
+            )
