@@ -251,6 +251,22 @@ def revise_plan_recursively(
     return revisions
 
 
+class _SpecialistAlreadyRan(Exception):
+    """Control-flow marker: the interpretive executor already ran the specialist."""
+
+
+def _lift_specialist_artifact(execution: Any, result: dict[str, Any]) -> None:
+    """Surface a specialist plan-step artifact as result["specialist"] so the
+    post-execution trigger doesn't invoke Milcah a second time."""
+    try:
+        for artifact in (execution.context.artifacts or {}).values():
+            if isinstance(artifact, dict) and isinstance(artifact.get("specialist"), dict):
+                result["specialist"] = artifact["specialist"]
+                return
+    except Exception:
+        pass
+
+
 def _interpretive_result_from_execution(
     execution: Any,
     plan: CairnPlan,
@@ -448,6 +464,7 @@ def process_frontend_request(
         result = _interpretive_result_from_execution(
             execution, current_plan, db=db, query=query, session_id=session_id
         )
+        _lift_specialist_artifact(execution, result)
         revisions = [current_plan]
         information = information_from_result(result)
         while len(revisions) < max(1, config.runtime.planning_max_revisions):
@@ -484,6 +501,7 @@ def process_frontend_request(
             fresh = _interpretive_result_from_execution(
                 execution, current_plan, db=db, query=query, session_id=session_id
             )
+            _lift_specialist_artifact(execution, fresh)
             result = _merge_interpretive_results(result, fresh)
             result.setdefault("process_trace", []).append(
                 _revision_trace_event("plan.revision.executed", current_plan)
@@ -517,10 +535,15 @@ def process_frontend_request(
         for revision in revisions
     ]
     result["process_trace"] = plan_trace[:1] + (result.get("process_trace") or []) + plan_trace[1:]
-    # Trigger: if the plan derived a specialist (coherence/research) need, invoke Milcah.
+    # Trigger: if the plan derived a specialist (coherence/research) need, invoke
+    # Milcah — unless the interpretive executor already ran it as a plan step
+    # (its artifact is lifted into result["specialist"]), which would double the
+    # call, the latency, and the trace events.
     try:
         from tirzah.coherence import make_client, run_planned_specialist
 
+        if "specialist" in result:
+            raise _SpecialistAlreadyRan
         mode, specialist = run_planned_specialist(
             initial, query, client=make_client(config.runtime), session_id=answer_kwargs.get("session_id")
         )
@@ -538,6 +561,8 @@ def process_frontend_request(
                     },
                 }
             )
+    except _SpecialistAlreadyRan:
+        pass
     except Exception:
         pass
     result["request_plan"] = revisions[-1].to_dict()

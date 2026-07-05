@@ -16,7 +16,6 @@ from tirzah.config import AppConfig
 from tirzah.db.governance import create_process_run, list_agent_identities, update_process_run
 from tirzah.db.repositories import document_tree
 from tirzah.domains.registry import (
-    DEFAULT_PROJECT_DOMAIN_ID,
     clean_domain_id,
     conversation_domain_id_for_session,
 )

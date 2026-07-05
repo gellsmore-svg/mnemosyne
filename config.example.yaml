@@ -90,3 +90,11 @@ retrieval:
   prompt_token_budget: 2000
   reserved_response_tokens: 500
   memory_agent_max_iterations: 4
+
+  # --- Interpretive Cairn plan execution (SPEC §4.6) -----------------------
+  # Walk machine plans step-by-step (constructs, tool gating, resumable
+  # executions, live plan streaming). Env: TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED.
+  # plan_interpretive_execution_enabled: false
+  # Consult the planner after each completed step and swap in a revised plan
+  # when it says revise. Env: TIRZAH_PLAN_MID_REVISION_ENABLED.
+  # plan_mid_revision_enabled: true

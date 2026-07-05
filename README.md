@@ -122,13 +122,15 @@ debugging store (`galeed trace`, or Mizpah's LLM Calls tab).
 tirzah serve            # http://127.0.0.1:8765/
 ```
 
-The default **Ask** workspace is work-first: create/select a session, enter a
-prompt, choose an Ollama model, press Ask, and read the response and a plain
-activity log — a normal local LLM client.
-
-Toggle **Developer** mode (or `?developer=1`) to reveal Browse/Ingestion tabs,
-focus-node and adapter overrides, retrieval-mode selection, raw prompt/trace
-output, queue/status controls, and semantic-edge review.
+The served UI is **[Mahlah](https://github.com/gellsmore-svg/Mahlah)** — a
+ChatGPT-style chat client with a strict three-channel split: the **answer** in
+the chat, the live **process panel** on the right (running plan steps stream in
+during interpretive execution), and a **dev-log popup** with the full request
+trace. Model/adapter/retrieval-mode selectors sit under the composer. Build and
+install it with `scripts/build_ui.sh` (Noa's `install_tirzah_ui` does this on
+stack machines); without it the root serves a pointer page and the API stays
+fully live. Ingestion and queue/status controls are CLI/API-only
+(`tirzah process-inbox`, `/api/ingestion/status`, …).
 
 ## Restart state
 

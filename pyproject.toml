@@ -107,3 +107,11 @@ pythonpath = ["src"]
 markers = [
   "real_mongo: tests that require a reachable MongoDB service and exercise real collections/indexes",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# E402/E731/E741 are established style in this codebase (late imports for
+# optional deps, seam lambdas, math-ish single letters); churn > value.
+ignore = ["E402", "E731", "E741"]

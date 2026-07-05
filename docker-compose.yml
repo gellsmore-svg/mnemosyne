@@ -5,7 +5,10 @@ services:
     volumes:
       - mongo-data:/data/db
     ports:
-      - "27017:27017"
+      # Loopback-only on the HOST: the API and Mongo are unauthenticated
+      # (SECURITY.md) — front with an authenticating proxy to expose beyond
+      # this machine.
+      - "127.0.0.1:27017:27017"
 
   app:
     build: .
@@ -13,7 +16,7 @@ services:
     depends_on:
       - mongo
     ports:
-      - "8765:8765"
+      - "127.0.0.1:8765:8765"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

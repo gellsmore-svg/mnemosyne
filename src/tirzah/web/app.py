@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from tirzah.config import load_config
 from tirzah.adapters.embedding import embedding_adapter
-from tirzah.adapters.discovery import (
+from tirzah.adapters.discovery import (  # noqa: F401 — re-exported for tests/backwards-compat
     FALLBACK_KNOWN_MODELS,
     model_options_with_fallbacks,
     ollama_model_rows,
@@ -25,7 +25,7 @@ from tirzah.adapters.discovery import (
     runtime_embedding_adapter_allowed,
     runtime_memory_agent_adapter_name,
 )
-from tirzah.ingestion.status import (
+from tirzah.ingestion.status import (  # noqa: F401 — re-exported for tests/backwards-compat
     annotate_embedding_coverage,
     embedding_backfill_batch_failure_reason,
     embedding_backfill_batch_step_ids,
@@ -89,7 +89,9 @@ from galeed import (
     EventType,
     Tracer,
     get_bus,
+    get_llm_call,
     list_feedback,
+    list_llm_calls,
     list_trace_events,
     list_trace_sessions,
     record_feedback,
@@ -1085,6 +1087,42 @@ def create_app() -> FastAPI:
                         yield ": keepalive\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    # --- LLM debugging (galeed llm_calls; same shapes as `galeed serve`) -----
+    @app.get("/api/llm-calls")
+    def llm_calls(
+        trace_id: str | None = None,
+        session_id: str | None = None,
+        source: str | None = None,
+        step_name: str | None = None,
+        status: str | None = None,
+        since: str | None = None,
+        limit: int = 200,
+        payloads: bool = True,
+    ) -> dict[str, Any]:
+        """Captured full-In→Out model calls (Mizpah's LLM Calls tab can point
+        here as well as at `galeed serve`)."""
+        return {
+            "ok": True,
+            "calls": list_llm_calls(
+                db,
+                trace_id=trace_id,
+                session_id=session_id,
+                source=source,
+                step_name=step_name,
+                status=status,
+                since=since,
+                limit=limit,
+                include_payloads=payloads,
+            ),
+        }
+
+    @app.get("/api/llm-calls/{call_id}")
+    def llm_call_detail(call_id: str) -> dict[str, Any]:
+        call = get_llm_call(db, call_id)
+        if call is None:
+            raise HTTPException(status_code=404, detail=f"call not found: {call_id}")
+        return {"ok": True, "call": call}
 
     # --- Feedback (free-text brain-dump tied to the current trace) ----------
     @app.post("/api/feedback")

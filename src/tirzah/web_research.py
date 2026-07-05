@@ -1,7 +1,11 @@
 """Bounded web research with provenance and SSRF controls."""
 
 from __future__ import annotations
-import html, ipaddress, json, re, socket
+import html
+import ipaddress
+import json
+import re
+import socket
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from html.parser import HTMLParser

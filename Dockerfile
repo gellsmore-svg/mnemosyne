@@ -18,7 +18,7 @@ RUN python -m pip install --upgrade pip \
       "git+https://github.com/gellsmore-svg/keturah.git" \
       "git+https://github.com/gellsmore-svg/galeed.git" \
       "git+https://github.com/gellsmore-svg/cairn.git" \
-    && python -m pip install ".[profiles]"
+    && python -m pip install ".[profiles,web]"
 
 EXPOSE 8765
 

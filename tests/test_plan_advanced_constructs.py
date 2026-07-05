@@ -94,7 +94,7 @@ def test_await_timeout_blocks():
         action="Wait EVENT: signal TIMEOUT: 0.01s THEN: blocked",
         construct="AWAIT",
     )
-    artifacts = {f"await:1": {"event": "signal", "status": "pending", "started_at": time.time() - 1}}
+    artifacts = {"await:1": {"event": "signal", "status": "pending", "started_at": time.time() - 1}}
     trace: list = []
     completed: set[str] = set()
     step.status = "awaiting"
