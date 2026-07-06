@@ -90,10 +90,16 @@ def build_handlers(*, db: Any = None, client: Any = None) -> dict[str, Callable[
         results = [_compact_node(n) for n in nodes]
         return {"query": query, "count": len(results), "results": results}
 
-    def review(text: str = "", intent: str = "", **_kw: Any) -> dict[str, Any]:
-        """Pressure-test a diff/design/claim for coherence via Milcah."""
-        if not str(text).strip():
-            return {"error": "text to review is required"}
+    def coherence_check(
+        query: str = "", context: str = "", mode: str = "coherence", **_kw: Any
+    ) -> dict[str, Any]:
+        """Pressure-test a claim/diff/design for coherence via Milcah.
+
+        Matches the manifest's ``coherence_check`` tool so it is both discoverable
+        (tools/list) and executable (tools/call).
+        """
+        if not str(query).strip() and not str(context).strip():
+            return {"error": "a query or context to check is required"}
         milcah = client
         if milcah is None:
             config = _default_config()
@@ -104,17 +110,17 @@ def build_handlers(*, db: Any = None, client: Any = None) -> dict[str, Callable[
             except Exception:  # noqa: BLE001
                 milcah = None
         if milcah is None:
-            return {"error": "milcah review is unavailable (not enabled/reachable)"}
+            return {"error": "milcah coherence check is unavailable (not enabled/reachable)"}
         try:
             from tirzah.coherence import SpecialistRequest
 
             request = SpecialistRequest(
-                query=f"Pressure-test the coherence of this work. Intent: {intent or 'n/a'}.",
-                mode="coherence", context=str(text)[:6000], max_iterations=2,
+                query=str(query) or "Pressure-test the coherence of the supplied work.",
+                mode=str(mode) or "coherence", context=str(context)[:6000], max_iterations=2,
             )
             result = milcah.run(request)
         except Exception as exc:  # noqa: BLE001
-            return {"error": f"review failed: {type(exc).__name__}: {exc}"}
+            return {"error": f"coherence check failed: {type(exc).__name__}: {exc}"}
         get = (lambda k, d=None: result.get(k, d)) if isinstance(result, dict) else (
             lambda k, d=None: getattr(result, k, d)
         )
@@ -129,6 +135,6 @@ def build_handlers(*, db: Any = None, client: Any = None) -> dict[str, Callable[
     return {
         "tirzah.search_memory": search_memory,
         "search_memory": search_memory,
-        "tirzah.review": review,
-        "review": review,
+        "tirzah.coherence_check": coherence_check,
+        "coherence_check": coherence_check,
     }

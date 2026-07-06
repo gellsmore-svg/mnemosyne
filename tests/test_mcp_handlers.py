@@ -52,12 +52,14 @@ def test_search_memory_surfaces_search_error(monkeypatch) -> None:
     assert "error" in out and "search failed" in out["error"]
 
 
-def test_review_requires_text() -> None:
-    handler = mcp_handlers.build_handlers(client=object())["review"]
-    assert "error" in handler(text="   ")
+def test_coherence_check_requires_input() -> None:
+    handler = mcp_handlers.build_handlers(client=object())["coherence_check"]
+    assert "error" in handler(query="   ", context="")
+    # exposed under the manifest-matching namespaced name too
+    assert "tirzah.coherence_check" in mcp_handlers.build_handlers(client=object())
 
 
-def test_review_compacts_milcah_verdict() -> None:
+def test_coherence_check_compacts_milcah_verdict() -> None:
     class FakeResult:
         objections = ["contradicts the retrieval contract"]
         claims = ["the diff changes the executor loop"]
@@ -74,14 +76,14 @@ def test_review_compacts_milcah_verdict() -> None:
             return FakeResult()
 
     fake = FakeClient()
-    handler = mcp_handlers.build_handlers(client=fake)["review"]
-    out = handler(text="a diff", intent="check the QUEUE change")
+    handler = mcp_handlers.build_handlers(client=fake)["coherence_check"]
+    out = handler(query="check the QUEUE change", context="a diff")
     assert out["objections"] == ["contradicts the retrieval contract"]
     assert out["confidence"] == 0.42 and out["terminal_reason"] == "converged"
     assert fake.seen.mode == "coherence" and "a diff" in fake.seen.context
 
 
-def test_review_reports_unavailable(monkeypatch) -> None:
+def test_coherence_check_reports_unavailable(monkeypatch) -> None:
     monkeypatch.setattr(mcp_handlers, "_default_config", lambda: None)
-    handler = mcp_handlers.build_handlers()["review"]
-    assert "unavailable" in handler(text="x")["error"]
+    handler = mcp_handlers.build_handlers()["coherence_check"]
+    assert "unavailable" in handler(query="x")["error"]
