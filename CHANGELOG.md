@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `tirzah.mcp_handlers.build_handlers()` — Tirzah's MCP tool handlers (the
+  "memory in" seam for coding agents). Ships a `search_memory` tool (graph-memory
+  search over `search_nodes`) for Keturah's stdio MCP server to dispatch to.
+  Defensive: importing never needs a live DB; a call with no reachable Mongo
+  returns a structured error instead of raising into the agent. Part of the
+  Codex-CLI integration (see `Noa/docs/codex-integration-plan.md`).
 - Outcomes-validation loop: Milcah judgement tier. `validate_outcomes` gained a
   generic `judge` callable ((outcomes, work_text) → {id: status}); a loop with
   `judge: "milcah"` frames each outcome as a claim, pressure-tests it via Milcah
