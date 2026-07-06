@@ -133,6 +133,25 @@ def test_model_status_overrides_but_records_deterministic() -> None:
     assert result["drifting"] is True
 
 
+def test_judge_callable_overrides_and_is_defensive() -> None:
+    instance = _instance_with(_OUTCOMES)
+    # a judge callable (e.g. the Milcah adapter) takes precedence over `ask`
+    result = oc.validate_outcomes(
+        instance,
+        {"answer": "fatigue dataset named in evidence; order-effect magnitude lens"},
+        judge=lambda _o, _w: {"O1": "unmet", "O2": "unmet"},
+        ask=lambda _p: "unused",
+    )
+    assert result["drift_score"] == 1.0
+    assert next(o for o in result["per_outcome"] if o["id"] == "O1")["deterministic_status"] == "met"
+    # a raising / garbage judge falls back to the deterministic floor
+    safe = oc.validate_outcomes(
+        instance, {"answer": "fatigue dataset named in evidence; order-effect magnitude lens"},
+        judge=lambda _o, _w: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    assert safe["drifting"] is False
+
+
 def test_bad_model_output_falls_back_to_deterministic() -> None:
     instance = _instance_with(_OUTCOMES)
     result = oc.validate_outcomes(
