@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Outcomes-validation loop, phase 1 (the pure engine): process templates and
+  instances can declare structured `outcomes` (+ an `outcomes_loop` cadence /
+  drift-threshold / on-drift config), frozen into the instance at bind time.
+  `process.validate_outcomes` scores accumulated work against them with a
+  deterministic keyword-coverage floor plus an optional model judgement tier
+  (Milcah/LLM), returning per-outcome status and a drift score;
+  `render_reanchor_constraint` names drifted outcomes for the planner. Not yet
+  wired into the live revise loop (phase 2). Backward-compatible: no outcomes ⇒
+  no loop. Design: `docs/outcomes-loop-design.md`.
+
 ### Fixed
 - Closed the v1.4.0 review bugs around QUEUE normalization, specialist tool
   dispatch, process gate resume wiring, plan persistence warnings, Mahalath and

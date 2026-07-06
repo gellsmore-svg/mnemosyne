@@ -60,6 +60,8 @@ def start_instance(
         "template_version": int(template["version"]),
         "template_name": template["name"],
         "process_body": template["body"],  # frozen at bind time
+        "process_outcomes": list(template.get("outcomes") or []),  # frozen at bind time
+        "outcomes_loop": template.get("outcomes_loop"),  # frozen at bind time
         "task": task,
         "session_id": session_id,
         "status": "active",
