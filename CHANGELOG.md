@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Outcomes-validation loop, phase 2 (live enforcement): the recursive planner now
+  drives an armed outcomes loop. `planning/outcomes_control.py` validates the
+  accumulated work after each execution and, on drift, **re-anchors** the next
+  revision (names the drifted outcomes back to the planner) and **gates**
+  premature completion — when a revision proposes complete/stabilise while the
+  work still drifts, it raises a human gate (resolved with the ordinary process
+  gate approve/reject; approve accepts despite drift) and sets
+  `result["outcomes_gate"]`. The gate fires only when the deterministic floor
+  also finds an outcome unmet (never on a model judgement alone). Fully guarded:
+  no change to the planner path unless a template author armed a loop.
 - Outcomes-validation loop, phase 1 (the pure engine): process templates and
   instances can declare structured `outcomes` (+ an `outcomes_loop` cadence /
   drift-threshold / on-drift config), frozen into the instance at bind time.
