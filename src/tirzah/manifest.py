@@ -205,6 +205,29 @@ def build_manifest() -> Manifest:
                 },
                 tags=["qa", "memory", "primary"],
             ),
+            capability(
+                "search_memory",
+                "Search Tirzah's graph memory for nodes matching a query — lightweight "
+                "retrieval (node id, labels, text snippet, document id). Use `ask` for a "
+                "synthesized answer; use this to pull raw prior context/decisions.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "text to match against memory nodes"},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                    },
+                    "required": ["query"],
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "count": {"type": "integer"},
+                        "results": {"type": "array", "items": {"type": "object"}},
+                    },
+                },
+                tags=["memory", "retrieval"],
+            ),
             _specialist_capability(),
             _semantic_capability(),
             capability(

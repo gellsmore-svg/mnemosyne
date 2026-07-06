@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- MCP tool discovery/execution now align: the manifest declares a `search_memory`
+  capability, and the Milcah handler is registered under the already-declared
+  `coherence_check` tool (query/context args) — both appear in the MCP `tools/list`
+  and dispatch on `tools/call`.
 - `tirzah.mcp_handlers` now also exposes a `review` MCP tool — a Milcah
   coherence pressure-test of a diff/design/claim for coding agents (guarded;
   no Milcah → structured error).
