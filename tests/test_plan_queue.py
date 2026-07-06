@@ -8,7 +8,7 @@ from tirzah.planning.constructs import (
     parse_queue_rounds,
 )
 from tirzah.planning.executor import build_default_handlers, interpret_plan
-from tirzah.planning.recursive import CairnPlan, PlanStep
+from tirzah.planning.recursive import CairnPlan, PlanStep, normalize_steps
 
 
 def _plan(*steps: PlanStep) -> CairnPlan:
@@ -23,6 +23,15 @@ def _queue(step_id, action, criteria=None, participants=()):
         PlanStep(id=step_id, action=action, construct="QUEUE", success_criteria=criteria or []),
         *participants,
     ]
+
+
+def test_queue_construct_survives_normalization() -> None:
+    normalized = normalize_steps(
+        [{"id": "q1", "action": "discuss", "construct": "QUEUE", "status": "pending"}],
+        max_steps=10,
+    )
+    assert len(normalized) == 1
+    assert normalized[0].construct == "QUEUE"
 
 
 def test_parsers() -> None:
