@@ -263,6 +263,22 @@ class ReviseProcessTemplateRequest(BaseModel):
     created_by: str = "operator"
 
 
+class SetOutcomesRequest(BaseModel):
+    outcomes: list[Any] = []
+    outcomes_loop: dict[str, Any] | None = None
+    created_by: str = "operator"
+
+
+class ValidateOutcomesRequest(BaseModel):
+    work: dict[str, Any] = {}
+
+
+class PreviewOutcomesRequest(BaseModel):
+    outcomes: list[Any] = []
+    outcomes_loop: dict[str, Any] | None = None
+    work: dict[str, Any] = {}
+
+
 class StartProcessInstanceRequest(BaseModel):
     template_id: str
     task: str
@@ -1302,6 +1318,60 @@ def create_app() -> FastAPI:
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return {"ok": True, "template": template}
+
+    @app.get("/api/process/templates/{template_id}/outcomes")
+    def get_process_outcomes(template_id: str) -> dict[str, Any]:
+        template = proc_tmpl.get_template(db, template_id)
+        if template is None:
+            raise HTTPException(status_code=404, detail=f"unknown template: {template_id}")
+        return {
+            "ok": True,
+            "outcomes": template.get("outcomes", []),
+            "outcomes_loop": template.get("outcomes_loop"),
+        }
+
+    @app.put("/api/process/templates/{template_id}/outcomes")
+    def set_process_outcomes(template_id: str, request: SetOutcomesRequest) -> dict[str, Any]:
+        try:
+            template = proc_tmpl.revise_template(
+                db, template_id, outcomes=request.outcomes,
+                outcomes_loop=request.outcomes_loop, created_by=request.created_by,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"ok": True, "template": template}
+
+    @app.post("/api/process/instances/{instance_id}/outcomes/validate")
+    def validate_process_outcomes(
+        instance_id: str, request: ValidateOutcomesRequest
+    ) -> dict[str, Any]:
+        from tirzah.process import outcomes as proc_oc
+
+        instance = proc_inst.get_instance(db, instance_id)
+        if instance is None:
+            raise HTTPException(status_code=404, detail=f"unknown instance: {instance_id}")
+        return {"ok": True, "validation": proc_oc.validate_outcomes(instance, request.work)}
+
+    @app.post("/api/process/outcomes/preview")
+    def preview_process_outcomes(request: PreviewOutcomesRequest) -> dict[str, Any]:
+        """Validate authored outcomes against sample work — no stored instance
+        needed, so the authoring UI can preview drift before saving."""
+        from tirzah.process import outcomes as proc_oc
+
+        try:
+            pseudo = {
+                "process_outcomes": proc_oc.normalize_outcomes(request.outcomes),
+                "outcomes_loop": proc_oc.normalize_outcomes_loop(request.outcomes_loop),
+            }
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"ok": True, "validation": proc_oc.validate_outcomes(pseudo, request.work)}
+
+    @app.get("/process/outcomes", response_class=HTMLResponse)
+    def outcomes_composer() -> str:
+        from tirzah.web.outcomes_ui import OUTCOMES_COMPOSER_HTML
+
+        return OUTCOMES_COMPOSER_HTML
 
     @app.get("/api/process/instances")
     def process_instances(

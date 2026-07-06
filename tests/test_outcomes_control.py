@@ -120,6 +120,26 @@ def test_raise_drift_gate_pauses_instance() -> None:
     assert inst.get_instance(db, instance["instance_id"])["status"] == "awaiting_gate"
 
 
+def test_llm_judge_wires_ask_from_config(monkeypatch) -> None:
+    """A loop with judge='llm' builds the model ask from config; falls back to
+    the deterministic floor when no config is given."""
+    db = FakeDb()
+    t = tmpl.create_template(
+        db, name="Judged", body="do", outcomes=_OUTCOMES,
+        outcomes_loop={"on_drift": "gate", "judge": "llm"},
+    )
+    inst.start_instance(db, template_id=t["template_id"], task="t", session_id="sj")
+
+    monkeypatch.setattr(
+        "tirzah.process.refinement.default_ask",
+        lambda _config: (lambda _p: '[{"id":"O1","status":"unmet"},{"id":"O2","status":"unmet"}]'),
+    )
+    ctrl = active_outcomes_controller(db, "sj", config=object())
+    assert ctrl.ask is not None
+    # deterministic judge (no config) → no ask
+    assert active_outcomes_controller(db, "sj").ask is None
+
+
 # --- integration: the guarded hooks in the recursive planner ---------------
 
 
@@ -150,7 +170,7 @@ def test_recursive_planner_gates_drifting_completion(monkeypatch):
 
     monkeypatch.setattr(
         "tirzah.planning.recursive._init_outcomes_controller",
-        lambda _db, _sid: StubController(),
+        lambda _db, _sid, _cfg=None: StubController(),
     )
 
     def fake_interpret(plan, **kwargs):

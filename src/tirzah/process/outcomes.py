@@ -30,6 +30,7 @@ AskFn = Callable[[str], str]
 CADENCES = ("every_revision", "on_complete", "every_n_calls")
 ON_DRIFT_ACTIONS = ("log", "reanchor", "gate", "reanchor_then_gate")
 OUTCOME_STATUSES = ("met", "partial", "unmet")
+JUDGES = ("deterministic", "llm")  # judgement tier; "milcah" is a planned addition
 
 DEFAULT_CADENCE = "every_revision"
 DEFAULT_ON_DRIFT = "reanchor_then_gate"
@@ -112,7 +113,13 @@ def normalize_outcomes_loop(raw: Any) -> dict[str, Any] | None:
         n = max(1, int(n))
     except (TypeError, ValueError) as exc:
         raise ValueError("n must be a positive integer") from exc
-    return {"cadence": cadence, "n": n, "drift_threshold": threshold, "on_drift": on_drift}
+    judge = str(raw.get("judge") or "deterministic")
+    if judge not in JUDGES:
+        raise ValueError(f"invalid judge {judge!r}; allowed: {list(JUDGES)}")
+    return {
+        "cadence": cadence, "n": n, "drift_threshold": threshold,
+        "on_drift": on_drift, "judge": judge,
+    }
 
 
 # --- validation ------------------------------------------------------------

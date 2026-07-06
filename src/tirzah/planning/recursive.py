@@ -509,7 +509,7 @@ def process_frontend_request(
         _lift_specialist_artifact(execution, result)
         revisions = [current_plan]
         information = information_from_result(result)
-        outcomes_ctrl = _init_outcomes_controller(db, session_id)
+        outcomes_ctrl = _init_outcomes_controller(db, session_id, config)
         outcomes_validation = outcomes_ctrl.assess(result) if outcomes_ctrl else None
         while len(revisions) < max(1, config.runtime.planning_max_revisions):
             if outcomes_ctrl is not None:
@@ -928,14 +928,14 @@ def serialize_value(value: Any) -> Any:
     return value
 
 
-def _init_outcomes_controller(db: Any, session_id: str | None) -> Any:
+def _init_outcomes_controller(db: Any, session_id: str | None, config: Any = None) -> Any:
     """The outcomes-loop controller for this request, or None. Never raises —
     the planner path is unchanged unless a template author armed an outcomes
     loop on the active process instance."""
     try:
         from tirzah.planning.outcomes_control import active_outcomes_controller
 
-        return active_outcomes_controller(db, session_id)
+        return active_outcomes_controller(db, session_id, config=config)
     except Exception:
         return None
 
