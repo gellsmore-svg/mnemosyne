@@ -50,3 +50,38 @@ def test_search_memory_surfaces_search_error(monkeypatch) -> None:
     handler = mcp_handlers.build_handlers(db=object())["search_memory"]
     out = handler(query="x")
     assert "error" in out and "search failed" in out["error"]
+
+
+def test_review_requires_text() -> None:
+    handler = mcp_handlers.build_handlers(client=object())["review"]
+    assert "error" in handler(text="   ")
+
+
+def test_review_compacts_milcah_verdict() -> None:
+    class FakeResult:
+        objections = ["contradicts the retrieval contract"]
+        claims = ["the diff changes the executor loop"]
+        evidence = ["executor.py:512"]
+        confidence = 0.42
+        terminal_reason = "converged"
+
+    class FakeClient:
+        def __init__(self):
+            self.seen = None
+
+        def run(self, req):
+            self.seen = req
+            return FakeResult()
+
+    fake = FakeClient()
+    handler = mcp_handlers.build_handlers(client=fake)["review"]
+    out = handler(text="a diff", intent="check the QUEUE change")
+    assert out["objections"] == ["contradicts the retrieval contract"]
+    assert out["confidence"] == 0.42 and out["terminal_reason"] == "converged"
+    assert fake.seen.mode == "coherence" and "a diff" in fake.seen.context
+
+
+def test_review_reports_unavailable(monkeypatch) -> None:
+    monkeypatch.setattr(mcp_handlers, "_default_config", lambda: None)
+    handler = mcp_handlers.build_handlers()["review"]
+    assert "unavailable" in handler(text="x")["error"]
