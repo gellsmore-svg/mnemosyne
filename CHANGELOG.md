@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `tirzah.mcp_handlers` now also exposes a `review` MCP tool — a Milcah
+  coherence pressure-test of a diff/design/claim for coding agents (guarded;
+  no Milcah → structured error).
 - `tirzah.mcp_handlers.build_handlers()` — Tirzah's MCP tool handlers (the
   "memory in" seam for coding agents). Ships a `search_memory` tool (graph-memory
   search over `search_nodes`) for Keturah's stdio MCP server to dispatch to.
