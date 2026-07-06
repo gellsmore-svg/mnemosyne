@@ -1112,6 +1112,17 @@ def main() -> None:
     p_evolve.add_argument("template_id")
     p_evolve.add_argument("--use-model", action="store_true", help="LLM rewrite for the proposal.")
     p_evolve.add_argument("--apply", action="store_true", help="Apply the proposed body as a new version.")
+    p_outcomes = process_sub.add_parser("outcomes", help="Author/inspect a template's outcomes loop.")
+    outcomes_sub = p_outcomes.add_subparsers(dest="outcomes_command", required=True)
+    o_show = outcomes_sub.add_parser("show", help="Show a template's outcomes + loop config.")
+    o_show.add_argument("template_id")
+    o_set = outcomes_sub.add_parser("set", help="Set outcomes + loop on a template (new version).")
+    o_set.add_argument("template_id")
+    o_set.add_argument("--from", dest="from_file", required=True,
+                       help="JSON file with {outcomes, outcomes_loop}, or '-' for stdin.")
+    o_validate = outcomes_sub.add_parser("validate", help="Validate work against an instance's outcomes.")
+    o_validate.add_argument("instance_id")
+    o_validate.add_argument("--answer", default=None, help="Work text, or '-' for stdin.")
 
     queue_recent = subcommands.add_parser("queue-recent")
     queue_recent.add_argument("--limit", type=int, default=10)
@@ -2129,6 +2140,44 @@ def main() -> None:
                 rationale=proposal["rationale"], based_on_instances=proposal["instance_count"],
             )
             _emit({"ok": True, "applied": applied})
+            return
+        if cmd == "outcomes":
+            ocmd = args.outcomes_command
+            if ocmd == "show":
+                template = proc_tmpl.get_template(db, args.template_id)
+                if template is None:
+                    _emit({"ok": False, "error": f"unknown template: {args.template_id}"})
+                    return
+                _emit({"ok": True, "outcomes": template.get("outcomes", []),
+                       "outcomes_loop": template.get("outcomes_loop")})
+                return
+            if ocmd == "set":
+                import json as _json
+
+                raw = sys.stdin.read() if args.from_file == "-" else Path(args.from_file).read_text()
+                spec = _json.loads(raw)
+                try:
+                    template = proc_tmpl.revise_template(
+                        db, args.template_id,
+                        outcomes=spec.get("outcomes", []),
+                        outcomes_loop=spec.get("outcomes_loop"),
+                    )
+                except ValueError as error:
+                    _emit({"ok": False, "error": str(error)})
+                    return
+                _emit({"ok": True, "template": template})
+                return
+            if ocmd == "validate":
+                from tirzah.process import outcomes as proc_oc
+
+                instance = proc_inst.get_instance(db, args.instance_id)
+                if instance is None:
+                    _emit({"ok": False, "error": f"unknown instance: {args.instance_id}"})
+                    return
+                answer = sys.stdin.read() if args.answer == "-" else args.answer
+                validation = proc_oc.validate_outcomes(instance, {"answer": answer or ""})
+                _emit({"ok": True, "validation": validation})
+                return
             return
         return
 

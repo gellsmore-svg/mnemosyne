@@ -39,6 +39,7 @@ def test_normalize_loop_defaults_and_validation() -> None:
     assert loop == {
         "cadence": "every_revision", "n": 2,
         "drift_threshold": oc.DEFAULT_DRIFT_THRESHOLD, "on_drift": "reanchor_then_gate",
+        "judge": "deterministic",
     }
     with pytest.raises(ValueError, match="cadence"):
         oc.normalize_outcomes_loop({"cadence": "hourly"})
@@ -46,6 +47,13 @@ def test_normalize_loop_defaults_and_validation() -> None:
         oc.normalize_outcomes_loop({"on_drift": "explode"})
     with pytest.raises(ValueError, match="threshold"):
         oc.normalize_outcomes_loop({"drift_threshold": 5})
+
+
+def test_normalize_loop_judge_field() -> None:
+    assert oc.normalize_outcomes_loop({})["judge"] == "deterministic"
+    assert oc.normalize_outcomes_loop({"judge": "llm"})["judge"] == "llm"
+    with pytest.raises(ValueError, match="judge"):
+        oc.normalize_outcomes_loop({"judge": "oracle"})
 
 
 # --- template / instance freezing ------------------------------------------

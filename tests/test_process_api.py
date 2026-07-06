@@ -144,3 +144,62 @@ def test_evolution_proposal_and_apply(client) -> None:
     }).json()["template"]
     assert applied["version"] == 2
     assert applied["provenance"]["kind"] == "evolution"
+
+
+# --- outcomes loop (phase 3 surfaces) --------------------------------------
+
+
+def test_outcomes_get_set_and_preview(client) -> None:
+    tid = client.post("/api/process/templates", json={
+        "name": "Anchored", "body": "1. do\n2. validate outcomes",
+    }).json()["template"]["template_id"]
+
+    # initially empty
+    assert client.get(f"/api/process/templates/{tid}/outcomes").json()["outcomes"] == []
+
+    # set outcomes + loop (new version)
+    put = client.put(f"/api/process/templates/{tid}/outcomes", json={
+        "outcomes": [{"id": "O1", "statement": "cite the fatigue dataset",
+                      "check": "fatigue dataset named"}],
+        "outcomes_loop": {"on_drift": "gate", "judge": "deterministic"},
+    }).json()
+    assert put["ok"] is True and put["template"]["version"] == 2
+
+    got = client.get(f"/api/process/templates/{tid}/outcomes").json()
+    assert got["outcomes"][0]["id"] == "O1"
+    assert got["outcomes_loop"]["on_drift"] == "gate"
+
+    # preview: aligned vs drifted work
+    aligned = client.post("/api/process/outcomes/preview", json={
+        "outcomes": got["outcomes"], "work": {"answer": "we cite the fatigue dataset named in evidence"},
+    }).json()["validation"]
+    assert aligned["drifting"] is False
+
+    drifted = client.post("/api/process/outcomes/preview", json={
+        "outcomes": got["outcomes"], "work": {"answer": "unrelated chatter about gardening"},
+    }).json()["validation"]
+    assert drifted["drifting"] is True
+
+
+def test_outcomes_preview_rejects_bad_loop(client) -> None:
+    resp = client.post("/api/process/outcomes/preview", json={
+        "outcomes": [{"statement": "x"}], "outcomes_loop": {"on_drift": "explode"},
+    })
+    assert resp.status_code == 400
+
+
+def test_instance_outcomes_validate(client) -> None:
+    tid = client.post("/api/process/templates", json={"name": "A", "body": "do"}).json()["template"]["template_id"]
+    client.put(f"/api/process/templates/{tid}/outcomes", json={
+        "outcomes": [{"id": "O1", "statement": "mention the weather report", "check": "weather report"}],
+        "outcomes_loop": {"on_drift": "log"},
+    })
+    iid = client.post("/api/process/instances", json={"template_id": tid, "task": "t"}).json()["instance"]["instance_id"]
+    v = client.post(f"/api/process/instances/{iid}/outcomes/validate",
+                    json={"work": {"answer": "a detailed weather report follows"}}).json()["validation"]
+    assert v["ready"] is True and v["drift_score"] == 0.0
+
+
+def test_outcomes_composer_page_served(client) -> None:
+    page = client.get("/process/outcomes")
+    assert page.status_code == 200 and "outcomes-validation loop" in page.text

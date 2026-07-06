@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Outcomes-validation loop, phase 3 (authoring surfaces + judgement tier): a
+  single-file authoring composer at `GET /process/outcomes` (author outcomes +
+  loop, preview drift against a sample answer, save to a template); process API
+  routes (`GET`/`PUT /api/process/templates/{id}/outcomes`,
+  `POST /api/process/instances/{id}/outcomes/validate`,
+  `POST /api/process/outcomes/preview`); a `tirzah process outcomes
+  show|set|validate` CLI; and an authorable `judge` field on the loop
+  (`deterministic` default, or `llm` to wire the model judgement tier from the
+  process `default_ask`, best-effort with the deterministic floor as fallback).
 - Outcomes-validation loop, phase 2 (live enforcement): the recursive planner now
   drives an armed outcomes loop. `planning/outcomes_control.py` validates the
   accumulated work after each execution and, on drift, **re-anchors** the next

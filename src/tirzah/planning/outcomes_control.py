@@ -130,9 +130,14 @@ class OutcomesController:
 
 
 def active_outcomes_controller(
-    db: Any, session_id: str | None, *, ask: AskFn | None = None
+    db: Any, session_id: str | None, *, ask: AskFn | None = None, config: Any = None
 ) -> OutcomesController | None:
-    """A controller iff an active instance for the session has an armed loop."""
+    """A controller iff an active instance for the session has an armed loop.
+
+    When the loop's ``judge`` is ``llm`` and ``config`` is provided, the model
+    judgement tier is wired from the process refinement ``default_ask`` (best
+    effort; the deterministic floor always stands if it is unavailable).
+    """
     if db is None or not session_id:
         return None
     try:
@@ -143,6 +148,15 @@ def active_outcomes_controller(
         return None
     if not (instance.get("process_outcomes") and instance.get("outcomes_loop")):
         return None
+    if ask is None and config is not None:
+        judge = str((instance.get("outcomes_loop") or {}).get("judge") or "deterministic")
+        if judge == "llm":
+            try:
+                from tirzah.process.refinement import default_ask
+
+                ask = default_ask(config)
+            except Exception:  # noqa: BLE001 - fall back to the deterministic floor
+                ask = None
     return OutcomesController(db, instance, ask=ask)
 
 
