@@ -30,7 +30,7 @@ AskFn = Callable[[str], str]
 CADENCES = ("every_revision", "on_complete", "every_n_calls")
 ON_DRIFT_ACTIONS = ("log", "reanchor", "gate", "reanchor_then_gate")
 OUTCOME_STATUSES = ("met", "partial", "unmet")
-JUDGES = ("deterministic", "llm")  # judgement tier; "milcah" is a planned addition
+JUDGES = ("deterministic", "llm", "milcah")  # judgement tier for the model pass
 
 DEFAULT_CADENCE = "every_revision"
 DEFAULT_ON_DRIFT = "reanchor_then_gate"
@@ -198,13 +198,37 @@ def _model_statuses(
         return {}
 
 
+JudgeFn = Callable[[list[dict[str, Any]], str], dict[str, str]]
+
+
+def _safe_judge(judge: JudgeFn, outcomes: list[dict[str, Any]], work_text: str) -> dict[str, str]:
+    """Run a judge callable defensively, keeping only valid per-outcome statuses."""
+    try:
+        raw = judge(outcomes, work_text) or {}
+    except Exception:  # noqa: BLE001 - judgement tier is best-effort
+        return {}
+    return {
+        str(k): str(v)
+        for k, v in raw.items()
+        if str(v) in OUTCOME_STATUSES
+    }
+
+
 def validate_outcomes(
-    instance: dict[str, Any], work: Any, *, ask: AskFn | None = None
+    instance: dict[str, Any],
+    work: Any,
+    *,
+    ask: AskFn | None = None,
+    judge: JudgeFn | None = None,
 ) -> dict[str, Any]:
     """Score the work against an instance's frozen outcomes.
 
-    Returns ``{ready, per_outcome, drift_score, drifting, threshold}``. When the
-    instance declares no outcomes, ``ready`` is False and drift is zero.
+    The optional model tier is either ``judge`` (a callable taking
+    ``(outcomes, work_text)`` and returning ``{id: status}`` — e.g. the Milcah
+    coherence adapter) or ``ask`` (an LLM ``str -> str`` the module prompts
+    itself). ``judge`` wins if both are given. Returns
+    ``{ready, per_outcome, drift_score, drifting, threshold}``; with no declared
+    outcomes ``ready`` is False and drift is zero.
     """
     outcomes = instance.get("process_outcomes") or []
     loop = instance.get("outcomes_loop") or {}
@@ -221,9 +245,12 @@ def validate_outcomes(
 
     work_text = _work_text(work)
     blob_tokens = _tokens(work_text)
-    model_statuses = (
-        _model_statuses(outcomes, work_text, ask) if ask is not None else {}
-    )
+    if judge is not None:
+        model_statuses = _safe_judge(judge, outcomes, work_text)
+    elif ask is not None:
+        model_statuses = _model_statuses(outcomes, work_text, ask)
+    else:
+        model_statuses = {}
 
     per_outcome: list[dict[str, Any]] = []
     unmet = 0

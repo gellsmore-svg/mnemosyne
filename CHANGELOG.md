@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Outcomes-validation loop: Milcah judgement tier. `validate_outcomes` gained a
+  generic `judge` callable ((outcomes, work_text) → {id: status}); a loop with
+  `judge: "milcah"` frames each outcome as a claim, pressure-tests it via Milcah
+  coherence, and maps the verdict (objections + confidence + terminal_reason) to
+  met/partial/unmet (`make_milcah_judge` / `verdict_to_status`). Best-effort:
+  falls back to the deterministic floor when Milcah is unavailable, and the gate
+  still requires the floor to agree.
 - Outcomes-validation loop, phase 3 (authoring surfaces + judgement tier): a
   single-file authoring composer at `GET /process/outcomes` (author outcomes +
   loop, preview drift against a sample answer, save to a template); process API

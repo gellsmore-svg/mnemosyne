@@ -37,7 +37,12 @@ class OutcomesController:
     """Per-request live control over an instance's armed outcomes loop."""
 
     def __init__(
-        self, db: Any, instance: dict[str, Any], *, ask: AskFn | None = None
+        self,
+        db: Any,
+        instance: dict[str, Any],
+        *,
+        ask: AskFn | None = None,
+        judge: Any = None,
     ) -> None:
         self.db = db
         self.instance = instance
@@ -45,6 +50,7 @@ class OutcomesController:
         self.loop = instance.get("outcomes_loop") or {}
         self.on_drift = str(self.loop.get("on_drift") or _oc.DEFAULT_ON_DRIFT)
         self.ask = ask
+        self.judge = judge
         self.last: dict[str, Any] | None = None
         self.gated = False
 
@@ -58,7 +64,7 @@ class OutcomesController:
             "artifacts": result.get("artifacts"),
             "trace": result.get("process_trace"),
         }
-        validation = _oc.validate_outcomes(self.instance, work, ask=self.ask)
+        validation = _oc.validate_outcomes(self.instance, work, ask=self.ask, judge=self.judge)
         self.last = validation
         detail = {
             "drift_score": validation.get("drift_score"),
@@ -148,6 +154,7 @@ def active_outcomes_controller(
         return None
     if not (instance.get("process_outcomes") and instance.get("outcomes_loop")):
         return None
+    judge_fn = None
     if ask is None and config is not None:
         judge = str((instance.get("outcomes_loop") or {}).get("judge") or "deterministic")
         if judge == "llm":
@@ -157,7 +164,57 @@ def active_outcomes_controller(
                 ask = default_ask(config)
             except Exception:  # noqa: BLE001 - fall back to the deterministic floor
                 ask = None
-    return OutcomesController(db, instance, ask=ask)
+        elif judge == "milcah":
+            judge_fn = make_milcah_judge(config)
+    return OutcomesController(db, instance, ask=ask, judge=judge_fn)
+
+
+def make_milcah_judge(config: Any) -> Any:
+    """A judge callable backed by Milcah coherence pressure, or None if Milcah is
+    unavailable (the deterministic floor then stands).
+
+    Each outcome is framed as a claim — *"the work satisfies this outcome"* — and
+    pressure-tested; the coherence verdict (objections + confidence +
+    terminal_reason) is mapped to met / partial / unmet.
+    """
+    try:
+        from tirzah.coherence import SpecialistRequest, make_client
+
+        client = make_client(getattr(config, "runtime", config))
+    except Exception:  # noqa: BLE001
+        client = None
+    if client is None:
+        return None
+
+    def judge(outcomes: list[dict[str, Any]], work_text: str) -> dict[str, str]:
+        statuses: dict[str, str] = {}
+        for outcome in outcomes:
+            claim = f"The work satisfies this required outcome: {outcome['statement']}."
+            request = SpecialistRequest(
+                query=claim, mode="coherence", context=work_text[:4000], max_iterations=2
+            )
+            try:
+                statuses[outcome["id"]] = verdict_to_status(client.run(request))
+            except Exception:  # noqa: BLE001 - skip → deterministic floor for this one
+                continue
+        return statuses
+
+    return judge
+
+
+def verdict_to_status(result: Any) -> str:
+    """Map a Milcah coherence result to a met / partial / unmet outcome status."""
+    get = (lambda k, d=None: result.get(k, d)) if isinstance(result, dict) else (
+        lambda k, d=None: getattr(result, k, d)
+    )
+    objections = len(get("objections", []) or [])
+    confidence = float(get("confidence", 0.0) or 0.0)
+    terminal = str(get("terminal_reason", "") or "")
+    if terminal == "no_objections" or (objections == 0 and confidence >= 0.6):
+        return "met"
+    if objections and confidence < 0.4:
+        return "unmet"
+    return "partial"
 
 
 def _record(db: Any, instance_id: str, event: str, detail: dict[str, Any]) -> None:

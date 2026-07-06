@@ -215,3 +215,71 @@ def test_recursive_planner_gates_drifting_completion(monkeypatch):
     assert result.get("outcomes_gate", {}).get("gate") == "outcomes_drift"
     assert reanchor_calls  # re-anchor was injected before the completing revision
     assert any(row.get("step") == "outcomes.gate" for row in result.get("process_trace", []))
+
+
+# --- Milcah judgement tier -------------------------------------------------
+
+
+def test_verdict_to_status_mapping() -> None:
+    from tirzah.planning.outcomes_control import verdict_to_status
+
+    assert verdict_to_status({"objections": [], "confidence": 0.9,
+                              "terminal_reason": "no_objections"}) == "met"
+    assert verdict_to_status({"objections": [], "confidence": 0.7,
+                              "terminal_reason": "converged"}) == "met"
+    assert verdict_to_status({"objections": ["a", "b"], "confidence": 0.2,
+                              "terminal_reason": "converged"}) == "unmet"
+    assert verdict_to_status({"objections": ["a"], "confidence": 0.5,
+                              "terminal_reason": "max_iterations"}) == "partial"
+
+
+def test_make_milcah_judge_frames_claims_and_maps(monkeypatch) -> None:
+    from tirzah.planning import outcomes_control as octl
+
+    seen_queries: list[str] = []
+
+    class FakeResult:
+        def __init__(self, objections, confidence, terminal):
+            self.objections, self.confidence, self.terminal_reason = objections, confidence, terminal
+
+    class FakeClient:
+        def run(self, request):
+            seen_queries.append(request.query)
+            # O1 coheres (met), O2 draws objections (unmet)
+            if "fatigue" in request.query:
+                return FakeResult([], 0.9, "no_objections")
+            return FakeResult(["contradiction"], 0.1, "converged")
+
+    monkeypatch.setattr("tirzah.coherence.make_client", lambda _cfg: FakeClient())
+    judge = octl.make_milcah_judge(config=object())
+    statuses = judge(
+        [{"id": "O1", "statement": "cite the fatigue dataset"},
+         {"id": "O2", "statement": "frame magnitude as a lens"}],
+        "some work text",
+    )
+    assert statuses == {"O1": "met", "O2": "unmet"}
+    assert any("satisfies this required outcome" in q for q in seen_queries)
+
+
+def test_make_milcah_judge_none_when_unavailable(monkeypatch) -> None:
+    from tirzah.planning import outcomes_control as octl
+
+    monkeypatch.setattr("tirzah.coherence.make_client", lambda _cfg: None)
+    assert octl.make_milcah_judge(config=object()) is None
+
+
+def test_controller_wires_milcah_judge(monkeypatch) -> None:
+    db = FakeDb()
+    t = tmpl.create_template(
+        db, name="M", body="do", outcomes=_OUTCOMES,
+        outcomes_loop={"on_drift": "gate", "judge": "milcah"},
+    )
+    inst.start_instance(db, template_id=t["template_id"], task="t", session_id="sm")
+    monkeypatch.setattr(
+        "tirzah.planning.outcomes_control.make_milcah_judge",
+        lambda _cfg: (lambda _o, _w: {"O1": "unmet", "O2": "unmet"}),
+    )
+    ctrl = active_outcomes_controller(db, "sm", config=object())
+    assert ctrl.judge is not None
+    validation = ctrl.assess(_ALIGNED)  # judge overrides floor → drift
+    assert validation["drifting"] is True
