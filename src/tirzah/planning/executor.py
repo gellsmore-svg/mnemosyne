@@ -17,6 +17,7 @@ from tirzah.planning.constructs import (
     execute_iterate_step,
     execute_merge_step,
     execute_parallel_step,
+    execute_queue_step,
     execute_retry_step,
     execute_service_step,
     is_owned_by_pending_parent,
@@ -764,6 +765,23 @@ def _execute_step(
             ),
             trace=context.trace,
             answer_kwargs=context.answer_kwargs,
+            round_num=context.iterate_round,
+        )
+    if construct == "QUEUE":
+        return execute_queue_step(
+            step,
+            steps=context.plan_steps,
+            completed=completed,
+            artifacts=context.artifacts,
+            run_step=lambda body_step: _execute_step(
+                body_step,
+                context,
+                handlers,
+                completed=completed,
+                shared_parallel_lock=shared_parallel_lock,
+                isolated_branch_runner=isolated_branch_runner,
+            ),
+            trace=context.trace,
             round_num=context.iterate_round,
         )
     if construct == "CONCURRENT":

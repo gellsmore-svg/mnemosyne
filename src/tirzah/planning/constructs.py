@@ -91,6 +91,7 @@ def is_owned_by_pending_parent(step: PlanStep, steps: list[PlanStep], completed:
             "AWAIT",
             "SERVICE",
             "CONCURRENT",
+            "QUEUE",
         } and parent.id not in completed:
             return True
     return False
@@ -1477,3 +1478,186 @@ def suggest_plan_profile_hint(query: str, answer_kwargs: dict[str, Any], config:
     if word_count >= 14:
         return "Long request: consider granular gather steps with explicit ITERATE bounds instead of one monolithic retrieval."
     return "Prefer monolithic tirzah_retrieval → answer_adapter unless the request needs scoped DB/web steps or revision-friendly gather."
+
+# --- QUEUE (turn-based / round-robin multi-agent discussion) ---------------
+
+
+def parse_queue_order(step: PlanStep) -> str:
+    """FIFO (default) | PRIORITY | ROUND_ROBIN, read from the step text."""
+    text = " ".join([step.action, *step.success_criteria]).upper()
+    match = re.search(r"ORDER:\s*(ROUND[_ ]?ROBIN|PRIORITY|FIFO)", text)
+    if match:
+        return match.group(1).replace(" ", "_")
+    if "ROUND_ROBIN" in text or "ROUND ROBIN" in text or "ROUND-ROBIN" in text:
+        return "ROUND_ROBIN"
+    if "PRIORITY" in text:
+        return "PRIORITY"
+    return "FIFO"
+
+
+def parse_queue_rounds(step: PlanStep, *, default: int = 1, ceiling: int = 10) -> int:
+    """Number of full round-robin cycles (ROUNDS: n, else MAX: n, else default)."""
+    text = " ".join([step.action, *step.success_criteria])
+    match = re.search(r"(?:ROUNDS|MAX):\s*(\d+)", text, re.I)
+    if match:
+        return max(1, min(int(match.group(1)), ceiling))
+    return max(1, min(default, ceiling))
+
+
+def participant_priority(step: PlanStep) -> int:
+    """Higher runs earlier under ORDER: PRIORITY (priority:N in success_criteria)."""
+    for item in step.success_criteria:
+        match = re.match(r"\s*priority:\s*(-?\d+)", item, re.I)
+        if match:
+            return int(match.group(1))
+    return 0
+
+
+def _ordered_participants(step: PlanStep, participants: list[PlanStep]) -> list[PlanStep]:
+    order = parse_queue_order(step)
+    if order == "PRIORITY":
+        return sorted(
+            participants,
+            key=lambda p: (-participant_priority(p), participants.index(p)),
+        )
+    return list(participants)  # FIFO / ROUND_ROBIN keep document order
+
+
+def _queue_converged(step: PlanStep, artifacts: dict[str, Any]) -> bool:
+    """Early-stop for a bounded discussion: honoured only when the process asks
+    for it (UNTIL: consensus/converged/done). A round converges when a turn's
+    artifact carries a truthy converged/consensus/done/stop flag, OR its output
+    text contains a convergence marker."""
+    until = [
+        item.split(":", 1)[1].strip().lower()
+        for item in step.success_criteria
+        if item.lower().startswith("until:")
+    ]
+    wants_convergence = any(
+        token in {"consensus", "converged", "convergence", "done", "agreement"}
+        for token in until
+    )
+    if not wants_convergence:
+        return False
+    state = artifacts.get(f"queue:{step.id}") or {}
+    for turn in state.get("last_round_turns") or []:
+        artifact = turn.get("artifact") or {}
+        if any(bool(artifact.get(flag)) for flag in ("converged", "consensus", "done", "stop")):
+            return True
+        text = str(artifact.get("output") or artifact.get("answer") or "").lower()
+        if any(marker in text for marker in ("consensus reached", "we agree", "converged", "no further")):
+            return True
+    return False
+
+
+def execute_queue_step(
+    step: PlanStep,
+    *,
+    steps: list[PlanStep],
+    completed: set[str],
+    artifacts: dict[str, Any],
+    run_step: StepRunner,
+    trace: list[dict[str, Any]],
+    round_num: int | None = None,
+) -> dict[str, Any]:
+    """Run the QUEUE's participants turn-by-turn (Cairn §5 QUEUE).
+
+    Semantics for round-robin multi-agent discussion:
+    - Direct body steps are the *participants* (each turn is a CALL to an agent).
+    - ONE_AT_A_TIME: turns run serially, so each turn sees prior turns' outputs
+      (state is SHARED across the queue — this is what makes it a discussion, in
+      contrast to PARALLEL's isolated branches).
+    - ORDER: FIFO (document order, one pass), PRIORITY (by priority:N), or
+      ROUND_ROBIN (cycle every participant for up to ROUNDS/MAX rounds).
+    - UNTIL: consensus/converged/done stops the discussion early once a turn
+      signals it (bounded convergence); otherwise it runs the full round count.
+    A running transcript of every turn is accumulated in the queue artifact so
+    the outcome is auditable and downstream steps can read the discussion.
+    """
+    participants = direct_body_steps(step.id, steps)
+    if not participants:
+        return {"status": "completed", "artifact": {"order": parse_queue_order(step), "participants": [], "transcript": []}}
+
+    order = parse_queue_order(step)
+    ordered = _ordered_participants(step, participants)
+    rounds = parse_queue_rounds(step) if order == "ROUND_ROBIN" else 1
+
+    transcript: list[dict[str, Any]] = []
+    blocked = False
+    rounds_run = 0
+    converged = False
+
+    for round_index in range(1, rounds + 1):
+        rounds_run = round_index
+        last_round_turns: list[dict[str, Any]] = []
+        trace.append({
+            "step": "plan.queue.round",
+            "step_id": step.id,
+            "metadata": {"round": round_index, "order": order, "of": rounds},
+        })
+        for turn_index, participant in enumerate(ordered, start=1):
+            # Re-run participants each round (round-robin turns); state carried in
+            # `artifacts` means each turn reads the accumulating discussion.
+            if participant.status in {"completed", "skipped", "blocked"} and round_index > 1:
+                participant.status = "pending"
+                completed.discard(participant.id)
+            if participant.status != "pending":
+                continue
+            if not all(dep in completed or dep == step.id for dep in participant.depends_on):
+                continue
+            trace.append({
+                "step": "plan.queue.turn",
+                "step_id": step.id,
+                "metadata": {"participant": participant.id, "round": round_index, "turn": turn_index},
+            })
+            outcome = run_step(participant)
+            participant.status = outcome["status"]
+            entry = {
+                "participant": participant.id,
+                "round": round_index,
+                "turn": turn_index,
+                "status": outcome["status"],
+                "artifact": outcome.get("artifact"),
+            }
+            transcript.append(entry)
+            last_round_turns.append(entry)
+            trace.append({
+                "step": f"plan.step.{outcome['status']}",
+                "step_id": participant.id,
+                "metadata": {"construct": participant.construct, "reason": outcome.get("reason"),
+                             "queue_round": round_index},
+            })
+            if outcome["status"] == "completed":
+                completed.add(participant.id)
+                if outcome.get("artifact") is not None:
+                    artifacts[participant.id] = outcome["artifact"]
+            if outcome["status"] == "blocked":
+                blocked = True
+
+        # Persist the round so _queue_converged can read it, then check.
+        artifacts[f"queue:{step.id}"] = {
+            "order": order, "rounds_run": rounds_run, "transcript": transcript,
+            "last_round_turns": last_round_turns, "participant_ids": [p.id for p in ordered],
+        }
+        if blocked:
+            break
+        if order == "ROUND_ROBIN" and _queue_converged(step, artifacts):
+            converged = True
+            trace.append({
+                "step": "plan.queue.converged",
+                "step_id": step.id,
+                "metadata": {"round": round_index},
+            })
+            break
+
+    payload = {
+        "order": order,
+        "participant_ids": [p.id for p in ordered],
+        "rounds_run": rounds_run,
+        "converged": converged,
+        "transcript": transcript,
+    }
+    artifacts[f"queue:{step.id}"] = payload
+    if blocked:
+        return {"status": "blocked", "reason": "queue_turn_blocked", "artifact": payload}
+    return {"status": "completed", "artifact": payload}

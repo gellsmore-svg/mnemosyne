@@ -134,7 +134,10 @@ def build_initial_plan_prompt(
         "Create a first-pass plan for the request. Do not answer or execute the request.",
         "Represent a Cairn PROCESS as strict JSON. Python will validate and execute it.",
         f"Use at most {max_steps} steps. Every loop or recursion must have an explicit bound.",
-        "Allowed constructs: STEP, CALL, ITERATE, DECISION, RECURSE.",
+        "Allowed constructs: STEP, CALL, ITERATE, DECISION, RECURSE, PARALLEL, QUEUE. "
+        "Use QUEUE [ORDER: ROUND_ROBIN; ROUNDS: n] with CALL body steps for "
+        "turn-based multi-agent discussion (agents taking turns; add UNTIL: "
+        "consensus to stop early).",
         "Return only JSON with: objective, status, steps, stopping_conditions, unresolved_questions, revision_decision, revision_reason.",
         "Each step has: id, action, construct, status, depends_on, success_criteria, allowed_tools.",
         "status is active; revision_decision is revise unless the request is already complete or blocked.",
