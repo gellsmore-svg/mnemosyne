@@ -45,14 +45,23 @@ def create_template(
     created_by: str = "operator",
     is_preset: bool = False,
     template_id: str | None = None,
+    outcomes: Any = None,
+    outcomes_loop: Any = None,
 ) -> dict[str, Any]:
-    """Create version 1 of a new template. Returns the stored version document."""
+    """Create version 1 of a new template. Returns the stored version document.
+
+    ``outcomes`` (a list of ``{id, statement, check}``) and ``outcomes_loop``
+    (cadence / drift_threshold / on_drift) are optional; when present they arm the
+    outcomes-validation loop for instances of this template.
+    """
     if not name.strip():
         raise ValueError("template name is required")
     if not body.strip():
         raise ValueError("template body is required")
     if risk_level is not None and risk_level not in RISK_LEVELS:
         raise ValueError(f"invalid risk_level: {risk_level!r} (allowed: {list(RISK_LEVELS)})")
+    from tirzah.process.outcomes import normalize_outcomes, normalize_outcomes_loop
+
     document = {
         "template_id": template_id or _new_template_id(),
         "version": 1,
@@ -62,6 +71,8 @@ def create_template(
         "risk_level": risk_level,
         "scope": scope,
         "body": body,
+        "outcomes": normalize_outcomes(outcomes),
+        "outcomes_loop": normalize_outcomes_loop(outcomes_loop),
         "is_preset": is_preset,
         "created_by": created_by,
         "created_at": _utcnow(),
@@ -82,6 +93,8 @@ def revise_template(
     scope: str | None = None,
     created_by: str = "operator",
     provenance: dict[str, Any] | None = None,
+    outcomes: Any = None,
+    outcomes_loop: Any = None,
 ) -> dict[str, Any]:
     """Append a new version to an existing template (history preserved).
 
@@ -93,6 +106,8 @@ def revise_template(
         raise ValueError(f"unknown template: {template_id}")
     if risk_level is not None and risk_level not in RISK_LEVELS:
         raise ValueError(f"invalid risk_level: {risk_level!r} (allowed: {list(RISK_LEVELS)})")
+    from tirzah.process.outcomes import normalize_outcomes, normalize_outcomes_loop
+
     document = {
         "template_id": template_id,
         "version": int(current["version"]) + 1,
@@ -102,6 +117,16 @@ def revise_template(
         "risk_level": risk_level if risk_level is not None else current.get("risk_level"),
         "scope": scope if scope is not None else current.get("scope"),
         "body": body if body is not None else current["body"],
+        "outcomes": (
+            normalize_outcomes(outcomes)
+            if outcomes is not None
+            else current.get("outcomes", [])
+        ),
+        "outcomes_loop": (
+            normalize_outcomes_loop(outcomes_loop)
+            if outcomes_loop is not None
+            else current.get("outcomes_loop")
+        ),
         "is_preset": current.get("is_preset", False),
         "created_by": created_by,
         "created_at": _utcnow(),

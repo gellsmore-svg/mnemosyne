@@ -91,3 +91,17 @@ from tirzah.process.evolution import (  # noqa: E402
 )
 
 __all__ += ["analyze_template_evolution", "apply_evolution", "propose_evolution"]
+
+from tirzah.process.outcomes import (  # noqa: E402
+    normalize_outcomes,
+    normalize_outcomes_loop,
+    render_reanchor_constraint,
+    validate_outcomes,
+)
+
+__all__ += [
+    "normalize_outcomes",
+    "normalize_outcomes_loop",
+    "render_reanchor_constraint",
+    "validate_outcomes",
+]
