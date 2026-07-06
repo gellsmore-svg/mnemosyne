@@ -509,7 +509,11 @@ def process_frontend_request(
         _lift_specialist_artifact(execution, result)
         revisions = [current_plan]
         information = information_from_result(result)
+        outcomes_ctrl = _init_outcomes_controller(db, session_id)
+        outcomes_validation = outcomes_ctrl.assess(result) if outcomes_ctrl else None
         while len(revisions) < max(1, config.runtime.planning_max_revisions):
+            if outcomes_ctrl is not None:
+                information = outcomes_ctrl.reanchor_information(information, outcomes_validation)
             proposed = revise_plan(
                 revisions[-1],
                 information,
@@ -525,6 +529,16 @@ def process_frontend_request(
             )
             result.setdefault("process_trace", []).append(_revision_trace_event("plan.revision.proposed", proposed))
             if proposed.revision_decision in {"stable", "complete", "blocked"}:
+                if (
+                    outcomes_ctrl is not None
+                    and proposed.revision_decision in {"stable", "complete"}
+                    and outcomes_ctrl.should_gate_completion(outcomes_validation)
+                ):
+                    gate = outcomes_ctrl.raise_drift_gate(outcomes_validation)
+                    result["outcomes_gate"] = gate
+                    result.setdefault("process_trace", []).append(
+                        {"step": "outcomes.gate", "input": {}, "output": gate}
+                    )
                 break
             execution = interpret_plan(
                 proposed,
@@ -555,6 +569,8 @@ def process_frontend_request(
                 _revision_trace_event("plan.revision.executed", current_plan)
             )
             information = information_from_result(result)
+            if outcomes_ctrl is not None:
+                outcomes_validation = outcomes_ctrl.assess(result)
         initial = revisions[-1]
     else:
         result = executor(db, config, query=query, **answer_kwargs)
@@ -910,6 +926,18 @@ def serialize_value(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: serialize_value(item) for key, item in value.items() if key != "_id"}
     return value
+
+
+def _init_outcomes_controller(db: Any, session_id: str | None) -> Any:
+    """The outcomes-loop controller for this request, or None. Never raises —
+    the planner path is unchanged unless a template author armed an outcomes
+    loop on the active process instance."""
+    try:
+        from tirzah.planning.outcomes_control import active_outcomes_controller
+
+        return active_outcomes_controller(db, session_id)
+    except Exception:
+        return None
 
 
 def information_from_result(result: dict[str, Any]) -> dict[str, Any]:
