@@ -72,6 +72,12 @@ def resolved_runtime(runtime: Any) -> dict[str, Any]:
     return {
         "adapters": {"model": model, "answer": answer, "embedding": embed},
         "adapter_capabilities": {"model": c_model, "answer": c_answer, "embedding": c_embed},
+        "available_answer_adapters": sorted(
+            name for name, caps in _ADAPTER_CAPS.items() if caps.get("can_answer")
+        ),
+        "available_embedding_adapters": sorted(
+            name for name, caps in _ADAPTER_CAPS.items() if caps.get("can_embed")
+        ),
         "models": {
             "ollama_model": getattr(runtime, "ollama_model", None),
             "embedding_model": getattr(runtime, "embedding_model", None),

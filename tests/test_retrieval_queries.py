@@ -1717,6 +1717,28 @@ def test_build_prompt_envelope_with_resolver_injects_block_and_keys() -> None:
     assert "the form of the law" in env["context_text"]  # context still present
 
 
+def test_build_prompt_envelope_surfaces_semantic_unavailable() -> None:
+    class Resolver:
+        last_error = None
+        last_error_type = None
+
+        def resolve(self, terms):
+            self.last_error = "mahalath down"
+            self.last_error_type = "ServerSelectionTimeoutError"
+            return []
+
+    env = build_prompt_envelope(
+        _semantic_context(),
+        query="what is form?",
+        token_budget=400,
+        reserved_response_tokens=25,
+        resolver=Resolver(),
+    )
+    assert env["semantic"] == []
+    assert env["semantic_status"] == "unavailable"
+    assert env["semantic_diagnostic"]["reason"] == "mahalath_unavailable"
+
+
 def test_render_context_document_uses_full_context_text() -> None:
     long_text = "A" * 350 + " full-tail"
     rendered = render_context_document(

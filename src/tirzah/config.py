@@ -9,8 +9,7 @@ from pydantic import BaseModel, Field
 
 class MongoConfig(BaseModel):
     uri: str = "mongodb://localhost:27017"
-    # Kept during the rename transition so existing local corpora remain visible.
-    database: str = "mnemosyne_dev"
+    database: str = "tirzah_dev"
 
 
 class PathConfig(BaseModel):
@@ -55,6 +54,9 @@ class RuntimeConfig(BaseModel):
     web_max_content_bytes: int = 500_000
     web_max_content_chars: int = 8_000
     web_allow_private_search_endpoint: bool = False
+    web_api_token: str = ""
+    web_localhost_only: bool = False
+    web_max_upload_bytes: int = Field(default=1_000_000, ge=1)
     # Blend lexical + query-vector similarity in node search (ADR-020). On by
     # default as of the real-corpus validation; only takes effect with a real
     # (non-mock) embedding adapter and degrades safely to lexical otherwise, so
@@ -180,6 +182,9 @@ _ENV_OVERRIDES: dict[str, tuple[str, str]] = {
     "TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED": ("runtime", "plan_interpretive_execution_enabled"),
     "TIRZAH_PLAN_MID_REVISION_ENABLED": ("runtime", "plan_mid_revision_enabled"),
     "TIRZAH_WEB_SEARCH_BASE_URL": ("runtime", "web_search_base_url"),
+    "TIRZAH_WEB_API_TOKEN": ("runtime", "web_api_token"),
+    "TIRZAH_WEB_LOCALHOST_ONLY": ("runtime", "web_localhost_only"),
+    "TIRZAH_WEB_MAX_UPLOAD_BYTES": ("runtime", "web_max_upload_bytes"),
     # The Mahalath seam — so `.env` alone enables/points it (no config file needed;
     # a missing config file can no longer silently disable semantic precision).
     "MAHALATH_ENABLED": ("runtime", "mahalath_enabled"),

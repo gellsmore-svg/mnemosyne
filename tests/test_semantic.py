@@ -135,3 +135,4 @@ def test_mahalath_resolver_fails_soft_when_unavailable():
     # Unresolvable host + (likely) no mahalath package -> no exception, just [].
     r = MahalathResolver(mongo_uri="mongodb://198.51.100.9:1/", per_term_timeout_ms=200)
     assert r.resolve(["form"]) == []
+    assert r.last_error_type

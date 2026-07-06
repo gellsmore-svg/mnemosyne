@@ -7,6 +7,7 @@ from tirzah.planning.recursive import (
     fallback_plan,
     interpretive_plan_template_hint,
     process_frontend_request,
+    plan_from_payload,
     revise_plan_recursively,
     revise_saved_plan,
     list_plan_revisions,
@@ -64,6 +65,53 @@ def test_initial_plan_is_versioned_cairn():
     assert "PROCESS FulfilRequest" in plan.cairn_text
     assert plan.steps[1].allowed_tools == ["tirzah_retrieval"]
     assert all(step.status == "pending" for step in plan.steps)
+
+
+def test_queue_construct_survives_normalization():
+    plan = plan_from_payload(
+        {
+            "objective": "Discuss",
+            "steps": [
+                {"id": "1", "construct": "STEP", "action": "Open"},
+                {
+                    "id": "2",
+                    "construct": "QUEUE",
+                    "action": "QUEUE ORDER: ROUND_ROBIN",
+                    "depends_on": ["1"],
+                },
+            ],
+        },
+        plan_id="plan_queue",
+        revision=1,
+        parent_revision=None,
+        request="Discuss",
+        trigger="test",
+        max_steps=5,
+    )
+    assert plan.steps[1].construct == "QUEUE"
+
+
+def test_specialist_tool_survives_normalization():
+    plan = plan_from_payload(
+        {
+            "objective": "Pressure-test",
+            "steps": [
+                {
+                    "id": "1",
+                    "construct": "CALL",
+                    "action": "Check coherence",
+                    "allowed_tools": ["coherence_check"],
+                }
+            ],
+        },
+        plan_id="plan_specialist",
+        revision=1,
+        parent_revision=None,
+        request="Pressure-test",
+        trigger="test",
+        max_steps=5,
+    )
+    assert plan.steps[0].allowed_tools == ["coherence_check"]
 
 
 def test_create_initial_plan_threads_context():
@@ -213,6 +261,21 @@ def test_frontend_wrapper_can_be_disabled_per_request():
         planning_enabled=False,
     )
     assert result == {"ok": True, "query": "hello"}
+
+
+def test_frontend_wrapper_surfaces_plan_persist_warning():
+    class DbWithoutRecursivePlans:
+        pass
+
+    result = process_frontend_request(
+        DbWithoutRecursivePlans(),
+        AppConfig(),
+        query="hello",
+        executor=lambda _db, _config, **kwargs: {"ok": True, **kwargs},
+        planner=lambda _prompt: payload(decision="stable", status="stable"),
+    )
+    assert "plan_persist_warning" in result
+    assert "recursive_plans collection unavailable" in result["plan_persist_warning"]
 
 
 def test_saved_plan_can_be_revised_from_later_information():

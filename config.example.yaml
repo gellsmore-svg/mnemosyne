@@ -1,7 +1,7 @@
 mongo:
   uri: mongodb://localhost:27017
-  # Kept on the existing development database during the product rename so local corpora remain visible.
-  database: mnemosyne_dev
+  # Existing renamed installs may keep mnemosyne_dev in local config.yaml.
+  database: tirzah_dev
 
 paths:
   ingest: data/ingest
@@ -45,6 +45,11 @@ runtime:
   web_max_content_bytes: 500000
   web_max_content_chars: 8000
   web_allow_private_search_endpoint: false
+  # Optional local API guardrails. Set web_api_token before exposing any /api/*
+  # route beyond a trusted loopback-only development browser.
+  web_api_token: ""
+  web_localhost_only: false
+  web_max_upload_bytes: 1000000
   # Optional Milcah specialist seam. Install with `pip install "tirzah[milcah]"`
   # (or co-install the local Milcah repo), then enable this so recursive planning
   # may dispatch coherence/counter-framework checks to Milcah. Fail-soft if absent.

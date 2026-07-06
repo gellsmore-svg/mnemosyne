@@ -1252,38 +1252,9 @@ def main() -> None:
 
     if args.command == "backfill-source-metadata":
         ensure_indexes(db)
-        updated = []
-        skipped = []
-        for document in db.documents.find({"source.checksum_sha256": {"$exists": False}}):
-            source_path = Path(document["source"]["path"])
-            if not source_path.exists():
-                skipped.append(
-                    {
-                        "document_id": str(document["_id"]),
-                        "reason": "source_missing",
-                        "path": str(source_path),
-                    }
-                )
-                continue
-            checksum = sha256_file(source_path)
-            archived_path = archive_source(source_path, config.paths.archive, checksum)
-            db.documents.update_one(
-                {"_id": document["_id"]},
-                {
-                    "$set": {
-                        "source.checksum_sha256": checksum,
-                        "source.archive_path": str(archived_path),
-                    }
-                },
-            )
-            updated.append(
-                {
-                    "document_id": str(document["_id"]),
-                    "checksum_sha256": checksum,
-                    "archive_path": str(archived_path),
-                }
-            )
-        print(json.dumps({"ok": True, "updated": updated, "skipped": skipped}, indent=2))
+        from tirzah.migrations import backfill_source_metadata
+
+        print(json.dumps({"ok": True, **backfill_source_metadata(db, archive_dir=config.paths.archive)}, indent=2))
         return
 
     if args.command == "migrate":
@@ -2244,7 +2215,7 @@ def main() -> None:
                 query=query,
                 session_id=args.session_id,
                 executor=answer_query,
-                planning_enabled=False,
+                planning_enabled=None,
                 source="tirzah-cli",
                 focus_node_id=args.node_id,
                 answer_adapter_name=args.adapter,

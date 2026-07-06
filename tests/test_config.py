@@ -110,6 +110,15 @@ def test_load_config_defaults_ingestion_adapter_to_mock(tmp_path: Path) -> None:
     assert config.runtime.ingestion_adapter == "mock"
 
 
+def test_default_mongo_database_is_tirzah_dev(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("runtime: {}\n", encoding="utf-8")
+
+    config = load_config(config_file)
+
+    assert config.mongo.database == "tirzah_dev"
+
+
 def test_load_config_accepts_unquoted_ollama_think_false(tmp_path: Path) -> None:
     config_file = tmp_path / "config.yaml"
     config_file.write_text(

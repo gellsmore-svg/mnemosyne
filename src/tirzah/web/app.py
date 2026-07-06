@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 from contextlib import asynccontextmanager
 from queue import Empty as QueueEmpty
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -325,6 +326,43 @@ class ApplyEvolutionRequest(BaseModel):
     created_by: str = "operator"
 
 
+PUBLIC_API_PATHS = {"/api/health"}
+
+
+def _install_api_guardrails(app: FastAPI, config: Any) -> None:
+    @app.middleware("http")
+    async def api_guardrails(request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/api/") and path not in PUBLIC_API_PATHS:
+            if getattr(config.runtime, "web_localhost_only", False) and not _is_loopback_request(request):
+                return JSONResponse(
+                    {"ok": False, "error": "localhost_required"},
+                    status_code=403,
+                )
+            token = getattr(config.runtime, "web_api_token", "") or ""
+            if token and not _authorized_api_token(request, token):
+                return JSONResponse(
+                    {"ok": False, "error": "api_token_required"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        return await call_next(request)
+
+
+def _is_loopback_request(request: Request) -> bool:
+    host = (request.client.host if request.client else "") or ""
+    return host in {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def _authorized_api_token(request: Request, token: str) -> bool:
+    supplied = request.headers.get("x-tirzah-api-token") or ""
+    if supplied == token:
+        return True
+    auth = request.headers.get("authorization") or ""
+    scheme, _, value = auth.partition(" ")
+    return scheme.lower() == "bearer" and value == token
+
+
 def create_app() -> FastAPI:
     config = load_config()
     db = get_database(config.mongo)
@@ -352,6 +390,7 @@ def create_app() -> FastAPI:
         yield
 
     app = FastAPI(title="Tirzah", lifespan=lifespan)
+    _install_api_guardrails(app, config)
     # Single UI: the backend serves the built Mahlah front end (the old hand-rolled
     # static UI is retired). Built assets are installed into web/static by
     # scripts/build_ui.sh (gitignored). In dev, run Mahlah on :5273 instead.
@@ -370,6 +409,31 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health() -> dict[str, Any]:
         return {"ok": True, "database": config.mongo.database}
+
+    @app.get("/api/db-ping")
+    def db_ping() -> dict[str, Any]:
+        ensure_indexes(db)
+        return {"ok": True, "database": config.mongo.database}
+
+    @app.get("/api/config-status")
+    def config_status() -> dict[str, Any]:
+        from tirzah.capabilities import resolved_runtime
+
+        snapshot = resolved_runtime(config.runtime)
+        snapshot["config_source"] = {
+            "config_path": os.environ.get("TIRZAH_CONFIG") or "config.yaml",
+            "mongo_uri": config.mongo.uri,
+            "mongo_db": config.mongo.database,
+        }
+        return {"ok": True, "runtime": snapshot}
+
+    @app.post("/api/migrate")
+    def migrate(status: bool = False, dry_run: bool = False) -> dict[str, Any]:
+        from tirzah import migrations
+
+        ensure_indexes(db)
+        report = migrations.status(db) if status else migrations.migrate(db, dry_run=dry_run)
+        return {"ok": True, "report": report}
 
     @app.get("/api/memory-health")
     def memory_health() -> dict[str, Any]:
@@ -394,6 +458,9 @@ def create_app() -> FastAPI:
 
     @app.get("/api/runtime")
     def runtime() -> dict[str, Any]:
+        from tirzah.capabilities import resolved_runtime
+
+        runtime_snapshot = resolved_runtime(config.runtime)
         discovered_models = ollama_model_rows(config.runtime)
         model_options = model_options_with_fallbacks(
             discovered_models,
@@ -416,10 +483,11 @@ def create_app() -> FastAPI:
             "memory_agent_model": config.runtime.memory_agent_model or config.runtime.ollama_model,
             "retrieval_mode": config.runtime.retrieval_mode,
             "available_retrieval_modes": ["direct", "agentic", "deep"],
-            "available_adapters": ["mock", "ollama_cli", "ollama_http"],
+            "available_adapters": runtime_snapshot["available_answer_adapters"],
             "available_embedding_adapters": ["mock", "local_command"],
             "non_compliant_embedding_adapters": ["ollama_http", "ollama_powershell"],
             "embedding_adapter_policy": "ingestion_and_retrieval_no_http",
+            "resolved_runtime": runtime_snapshot,
             "profile_adapter_status": profile_adapter_status(config.runtime),
             "known_models": [model["name"] for model in model_options],
             "discovered_models": [model["name"] for model in discovered_models],
@@ -1028,6 +1096,12 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unsupported source type: {suffix or '<none>'}",
+            )
+        content_bytes = len(request.content.encode("utf-8"))
+        if content_bytes > config.runtime.web_max_upload_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Upload too large: {content_bytes} bytes exceeds {config.runtime.web_max_upload_bytes}",
             )
         config.paths.ingest.mkdir(parents=True, exist_ok=True)
         content_hash = hashlib.sha256(request.content.encode("utf-8")).hexdigest()

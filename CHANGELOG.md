@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Closed the v1.4.0 review bugs around QUEUE normalization, specialist tool
+  dispatch, process gate resume wiring, plan persistence warnings, Mahalath and
+  Milcah failure visibility, retry-safe retrieval effects, ITERATE blocked
+  propagation, runtime capability drift, web API guardrails, and migration
+  coverage.
+
+## [1.4.0] - 2026-07-06
+
 ### Added
 - **Human-defined Processes** (`tirzah/process/`): versioned plain-text process
   templates (history preserved), instances that bind a template version to a
@@ -137,7 +146,8 @@ while `pyproject` stayed at 1.2.0). All additions are backward-compatible.
 - Initial public release: local graph-based memory and retrieval for LLM
   interactions (MongoDB store, Ollama adapters, FastAPI + CLI surfaces).
 
-[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/gellsmore-svg/tirzah/compare/v1.1.0...v1.1.1

@@ -21,6 +21,7 @@ from tirzah.planning.constructs import (
     execute_retry_step,
     execute_service_step,
     is_owned_by_pending_parent,
+    parse_await_event,
     resume_awaiting_steps,
 )
 from tirzah.planning.revision_runtime import apply_mid_step_revision
@@ -32,7 +33,7 @@ from tirzah.planning.context_bundle import (
     resolve_focus_node_id,
     resolve_web_fetch_url,
 )
-from tirzah.planning.recursive import ALLOWED_PLAN_TOOLS, CairnPlan, PlanStep
+from tirzah.planning.recursive import CairnPlan, PlanStep
 
 StepHandler = Callable[[PlanStep, "PlanExecutionContext"], dict[str, Any]]
 
@@ -85,6 +86,7 @@ class LiveTraceList(list):
 class PlanExecutionContext:
     query: str
     session_id: str
+    db: Any = None
     artifacts: dict[str, Any] = field(default_factory=dict)
     trace: list[dict[str, Any]] = field(default_factory=list)
     effects: set[str] = field(default_factory=set)  # once-only handlers (e.g. tirzah_retrieval)
@@ -147,6 +149,7 @@ def interpret_plan(
             context = PlanExecutionContext(
                 query=query,
                 session_id=session_id,
+                db=db,
                 artifacts=artifacts,
                 trace=trace,
                 effects=effects,
@@ -160,6 +163,7 @@ def interpret_plan(
             context = PlanExecutionContext(
                 query=query,
                 session_id=session_id,
+                db=db,
                 config=config,
                 answer_kwargs=dict(answer_kwargs or {}),
             )
@@ -169,6 +173,7 @@ def interpret_plan(
         context = PlanExecutionContext(
             query=query,
             session_id=session_id,
+            db=db,
             config=config,
             answer_kwargs=dict(answer_kwargs or {}),
         )
@@ -347,12 +352,14 @@ def build_default_handlers(
             if executor is None:
                 return {"ok": False, "reason": "no_pipeline_executor"}
             result = executor(db, config, query=ctx.query, **answer_kwargs)
+            if isinstance(result, dict) and not result.get("ok", True):
+                return result
             ctx.effects.add("tirzah_retrieval")
             ctx.artifacts["synthesis_result"] = result
             return result
-        ctx.effects.add("tirzah_retrieval")
         if not result.get("ok"):
             return result
+        ctx.effects.add("tirzah_retrieval")
         ctx.artifacts["retrieval_package"] = result["package"]
         return {
             "ok": True,
@@ -743,11 +750,9 @@ def _execute_step(
             shared_lock=shared_parallel_lock,
         )
     if construct == "AWAIT":
-        return execute_await_step(
+        return _execute_await_with_process_gate(
             step,
-            answer_kwargs=context.answer_kwargs,
-            artifacts=context.artifacts,
-            trace=context.trace,
+            context,
         )
     if construct == "SERVICE":
         return execute_service_step(
@@ -901,11 +906,9 @@ def _run_iterate_body_step(
             shared_lock=shared_parallel_lock,
         )
     if construct == "AWAIT":
-        return execute_await_step(
+        return _execute_await_with_process_gate(
             step,
-            answer_kwargs=context.answer_kwargs,
-            artifacts=context.artifacts,
-            trace=context.trace,
+            context,
         )
     if construct == "SERVICE":
         return execute_service_step(
@@ -996,7 +999,7 @@ def _dispatch_call(
     context: PlanExecutionContext,
     handlers: dict[str, StepHandler],
 ) -> dict[str, Any]:
-    tools = [tool for tool in step.allowed_tools if tool in ALLOWED_PLAN_TOOLS]
+    tools = [tool for tool in step.allowed_tools if tool in handlers]
     for tool in tools:
         handler = handlers.get(tool)
         if handler is None:
@@ -1015,7 +1018,64 @@ def _dispatch_call(
             "artifact": artifact,
             "reason": None if ok else (artifact.get("reason") if isinstance(artifact, dict) else "handler_not_ok"),
         }
-    return {"status": "blocked", "reason": "no_handler", "allowed_tools": tools}
+    return {"status": "blocked", "reason": "no_handler", "allowed_tools": list(step.allowed_tools)}
+
+
+def _execute_await_with_process_gate(step: PlanStep, context: PlanExecutionContext) -> dict[str, Any]:
+    outcome = execute_await_step(
+        step,
+        answer_kwargs=context.answer_kwargs,
+        artifacts=context.artifacts,
+        trace=context.trace,
+    )
+    if outcome.get("status") == "awaiting":
+        _record_process_gate_for_await(context, step, outcome.get("artifact"))
+    return outcome
+
+
+def _record_process_gate_for_await(
+    context: PlanExecutionContext,
+    step: PlanStep,
+    artifact: Any,
+) -> None:
+    if context.db is None:
+        return
+    marker = f"process_gate:{step.id}"
+    if marker in context.artifacts:
+        return
+    try:
+        from tirzah.process import enforcement as process_enforcement
+        from tirzah.process import instances as process_instances
+
+        instance = process_instances.active_instance_for_session(context.db, context.session_id)
+        if not instance:
+            return
+        event = parse_await_event(step)
+        updated = process_enforcement.reach_gate(
+            context.db,
+            instance["instance_id"],
+            step_id=step.id,
+            reason=f"{event}: {step.action}",
+        )
+        if updated is None:
+            return
+        payload = {
+            "instance_id": instance["instance_id"],
+            "step_id": step.id,
+            "event": event,
+            "status": "awaiting_gate",
+        }
+        if isinstance(artifact, dict):
+            artifact["process_gate"] = payload
+        context.artifacts[marker] = payload
+    except Exception as error:
+        context.trace.append(
+            {
+                "step": "process.gate.reach_failed",
+                "step_id": step.id,
+                "metadata": {"error": str(error), "error_type": type(error).__name__},
+            }
+        )
 
 
 def _append_trace(context: PlanExecutionContext, step_id: str, event: str, metadata: dict[str, Any]) -> None:

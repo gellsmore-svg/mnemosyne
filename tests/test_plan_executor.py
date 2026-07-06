@@ -94,6 +94,50 @@ def test_duplicate_retrieval_call_is_skipped():
     assert result.plan.steps[1].status == "skipped"
 
 
+def test_failed_retrieval_does_not_consume_once_only_effect():
+    calls = {"count": 0}
+
+    def pipeline(_db, _config, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return {"ok": False, "reason": "temporary_failure"}
+        return {"ok": True, "answer": "retried"}
+
+    plan = _plan(
+        PlanStep(id="1", action="A", construct="CALL", allowed_tools=["tirzah_retrieval"]),
+    )
+    handlers = build_default_handlers(
+        pipeline_executor=pipeline,
+        db=None,
+        config=None,
+        answer_kwargs={},
+        use_split_phases=False,
+    )
+
+    first = interpret_plan(plan, query="q", session_id="s1", handlers=handlers)
+    assert first.plan.steps[0].status == "blocked"
+    assert "tirzah_retrieval" not in first.context.effects
+
+    plan.steps[0].status = "pending"
+    second = interpret_plan(plan, query="q", session_id="s1", handlers=handlers)
+    assert second.plan.steps[0].status == "completed"
+    assert calls["count"] == 2
+
+
+def test_specialist_call_dispatches_registered_handler():
+    plan = _plan(
+        PlanStep(id="1", action="Check coherence", construct="CALL", allowed_tools=["coherence_check"]),
+    )
+
+    def handler(step, ctx):
+        return {"ok": True, "tool": "coherence_check", "query": ctx.query, "action": step.action}
+
+    result = interpret_plan(plan, query="q", session_id="s1", handlers={"coherence_check": handler})
+    assert result.ok
+    assert result.plan.steps[0].status == "completed"
+    assert result.context.artifacts["1"]["tool"] == "coherence_check"
+
+
 def test_interpretive_wrapper_uses_split_phases(monkeypatch):
     from tirzah.config import AppConfig, RuntimeConfig
     from tirzah.planning.recursive import process_frontend_request

@@ -24,6 +24,7 @@ CONSTRUCTS = {
     "DECISION",
     "RECURSE",
     "PARALLEL",
+    "QUEUE",
     "MERGE",
     "BREAK",
     "CONTINUE",
@@ -39,6 +40,8 @@ ALLOWED_PLAN_TOOLS = {
     "get_node_context", "get_document", "get_document_tree", "get_graph_edges",
     "expand_proximity", "expand_graph_paths", "semantic_candidates",
     "list_active_documents", "list_documents", "web_search", "web_fetch",
+    "coherence_check", "coherence", "milcah", "specialist",
+    "counter_framework", "research_specialist", "milcah_research",
 }
 
 
@@ -447,7 +450,11 @@ def process_frontend_request(
         profile_hint=profile_hint,
     )
     session_id = answer_kwargs.get("session_id", "web")
-    save_plan_revision(db, initial, session_id=session_id)
+    plan_persist_warnings: list[str] = []
+    _collect_plan_persist_warning(
+        plan_persist_warnings,
+        save_plan_revision(db, initial, session_id=session_id),
+    )
     if active_process is not None:
         try:
             from tirzah.process import enforcement as _proc_enf
@@ -492,7 +499,10 @@ def process_frontend_request(
             tracer=tracer,
         )
         current_plan = execution.plan
-        save_plan_revision(db, current_plan, session_id=session_id)
+        _collect_plan_persist_warning(
+            plan_persist_warnings,
+            save_plan_revision(db, current_plan, session_id=session_id),
+        )
         result = _interpretive_result_from_execution(
             execution, current_plan, db=db, query=query, session_id=session_id
         )
@@ -509,7 +519,10 @@ def process_frontend_request(
             if proposed.revision <= revisions[-1].revision:
                 break
             revisions.append(proposed)
-            save_plan_revision(db, proposed, session_id=session_id)
+            _collect_plan_persist_warning(
+                plan_persist_warnings,
+                save_plan_revision(db, proposed, session_id=session_id),
+            )
             result.setdefault("process_trace", []).append(_revision_trace_event("plan.revision.proposed", proposed))
             if proposed.revision_decision in {"stable", "complete", "blocked"}:
                 break
@@ -529,7 +542,10 @@ def process_frontend_request(
             )
             current_plan = execution.plan
             revisions[-1] = current_plan
-            save_plan_revision(db, current_plan, session_id=session_id)
+            _collect_plan_persist_warning(
+                plan_persist_warnings,
+                save_plan_revision(db, current_plan, session_id=session_id),
+            )
             fresh = _interpretive_result_from_execution(
                 execution, current_plan, db=db, query=query, session_id=session_id
             )
@@ -551,7 +567,10 @@ def process_frontend_request(
             max_steps=config.runtime.planning_max_steps,
         )
         for revision in revisions[1:]:
-            save_plan_revision(db, revision, session_id=session_id)
+            _collect_plan_persist_warning(
+                plan_persist_warnings,
+                save_plan_revision(db, revision, session_id=session_id),
+            )
         initial = revisions[-1]
     plan_trace = [
         {
@@ -590,13 +609,26 @@ def process_frontend_request(
                         "objections": len(specialist.objections),
                         "confidence": specialist.confidence,
                         "terminal_reason": specialist.terminal_reason,
+                        "error": specialist.error,
+                        "error_type": specialist.error_type,
                     },
                 }
             )
     except _SpecialistAlreadyRan:
         pass
-    except Exception:
-        pass
+    except Exception as error:
+        result["specialist_error"] = {
+            "error": str(error),
+            "error_type": type(error).__name__,
+        }
+        result["process_trace"].append(
+            {
+                "step": "specialist_coherence.failed",
+                "input": {"query": query},
+                "output": result["specialist_error"],
+            }
+        )
+    _attach_plan_persist_warnings(result, plan_persist_warnings)
     result["request_plan"] = revisions[-1].to_dict()
     result["plan_revisions"] = [revision.to_dict() for revision in revisions]
     if result.get("activity_report"):
@@ -604,6 +636,18 @@ def process_frontend_request(
     existing_log = result.get("activity_log") or ""
     result["activity_log"] = render_plan_activity(revisions) + ("\n\n" + existing_log if existing_log else "")
     return result
+
+
+def _collect_plan_persist_warning(warnings: list[str], warning: str | None) -> None:
+    if warning:
+        warnings.append(warning)
+
+
+def _attach_plan_persist_warnings(result: dict[str, Any], warnings: list[str]) -> None:
+    if not warnings:
+        return
+    result["plan_persist_warnings"] = warnings
+    result["plan_persist_warning"] = warnings[-1]
 
 
 def render_plan_activity(revisions: list[CairnPlan]) -> str:
@@ -784,17 +828,18 @@ def render_cairn_plan(plan: CairnPlan) -> str:
     return "\n".join(lines)
 
 
-def save_plan_revision(db, plan: CairnPlan, *, session_id: str) -> None:
+def save_plan_revision(db, plan: CairnPlan, *, session_id: str) -> str | None:
     collection = getattr(db, "recursive_plans", None)
     if collection is None:
-        return
+        return "recursive_plans collection unavailable; plan revision was not persisted"
     row = plan.to_dict()
     row["session_id"] = session_id
     row["created_at"] = datetime.now(timezone.utc)
     try:
         collection.insert_one(row)
-    except Exception:
-        return
+    except Exception as error:
+        return f"recursive_plan_persist_failed:{type(error).__name__}: {error}"
+    return None
 
 
 def list_plan_revisions(db, plan_id: str, limit: int = 20) -> list[dict[str, Any]]:
@@ -832,7 +877,9 @@ def revise_saved_plan(
         planner=planner or make_planner(config.runtime),
         max_steps=config.runtime.planning_max_steps,
     )
-    save_plan_revision(db, revised, session_id=session_id)
+    warning = save_plan_revision(db, revised, session_id=session_id)
+    if warning:
+        raise RuntimeError(warning)
     return revised
 
 

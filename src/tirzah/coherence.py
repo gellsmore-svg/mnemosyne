@@ -51,6 +51,8 @@ class SpecialistResult:
     confidence: float = 0.0  # in [0, 1]
     terminal_reason: str = "converged"  # one of TERMINAL_REASONS
     trace_metadata: dict[str, Any] = field(default_factory=dict)  # trace_id/job_id/iterations
+    error: str | None = None
+    error_type: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -69,7 +71,10 @@ RESULT_FIELDS: tuple[str, ...] = (
     "confidence",
     "terminal_reason",
     "trace_metadata",
+    "error",
+    "error_type",
 )
+REQUIRED_PROVIDER_RESULT_FIELDS = tuple(field for field in RESULT_FIELDS if field not in {"error", "error_type"})
 
 
 def validate_specialist_request(request: Any) -> list[str]:
@@ -122,6 +127,8 @@ CANONICAL_RESULT: dict[str, Any] = {
     "confidence": 0.62,
     "terminal_reason": "converged",
     "trace_metadata": {"trace_id": "trace_abc", "iterations": 3},
+    "error": None,
+    "error_type": None,
 }
 
 
@@ -209,10 +216,10 @@ def _coerce_provider_result(value: Any) -> SpecialistResult | None:
         data = value
     else:
         return None
-    if not isinstance(data, dict) or any(field not in data for field in RESULT_FIELDS):
+    if not isinstance(data, dict) or any(field not in data for field in REQUIRED_PROVIDER_RESULT_FIELDS):
         return None
     try:
-        return SpecialistResult(**{field: data[field] for field in RESULT_FIELDS})
+        return SpecialistResult(**{field: data.get(field) for field in RESULT_FIELDS})
     except Exception:
         return None
 
@@ -232,8 +239,12 @@ class MilcahClient:
         adapt = self.adapt or _adapt_orchestration
         try:
             orchestration = pipeline(request)
-        except Exception:
-            return SpecialistResult(terminal_reason="blocked")
+        except Exception as error:
+            return SpecialistResult(
+                terminal_reason="blocked",
+                error=str(error),
+                error_type=type(error).__name__,
+            )
         if orchestration is None:
             return SpecialistResult(terminal_reason="insufficient_evidence")
         provider_result = _coerce_provider_result(orchestration)
@@ -241,8 +252,12 @@ class MilcahClient:
             return provider_result
         try:
             return adapt(orchestration)
-        except Exception:
-            return SpecialistResult(terminal_reason="blocked")
+        except Exception as error:
+            return SpecialistResult(
+                terminal_reason="blocked",
+                error=str(error),
+                error_type=type(error).__name__,
+            )
 
 
 def make_client(config: Any) -> "CoherenceClient | None":

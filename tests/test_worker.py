@@ -9,7 +9,7 @@ from tirzah.ingestion.activity import ingestion_activity_fields, ingestion_activ
 from tirzah.ingestion.worker import activity_for_worker_failure, discover_sources, process_next
 from tirzah.models.ingestion import IngestedNode, IngestionResult, SourceRef
 
-from test_repositories import FakeDb as RepoFakeDb
+from tests.test_repositories import FakeDb as RepoFakeDb
 
 
 def test_discover_sources_only_returns_supported_files(tmp_path: Path) -> None:

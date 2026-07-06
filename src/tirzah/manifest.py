@@ -10,6 +10,7 @@ the validated contract never drift. Exposed at ``GET /api/capabilities`` (add
 
 from __future__ import annotations
 
+import copy
 import importlib
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 
@@ -46,9 +47,10 @@ def _milcah_coherence_capability():
 def _specialist_capability():
     federated = _milcah_coherence_capability()
     if federated is not None:
-        if "planner" not in federated.tags:
-            federated.tags = [*federated.tags, "planner"]
-        return federated
+        copied = copy.deepcopy(federated)
+        if "planner" not in copied.tags:
+            copied.tags = [*copied.tags, "planner"]
+        return copied
 
     # Local fallback: the mirror Tirzah keeps so the seam works without Milcah installed.
     from tirzah.coherence import REQUEST_FIELDS, SPECIALIST_MODES, TERMINAL_REASONS
@@ -86,6 +88,8 @@ def _specialist_capability():
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                 "terminal_reason": {"type": "string", "enum": sorted(TERMINAL_REASONS)},
                 "trace_metadata": {"type": "object"},
+                "error": {"type": ["string", "null"]},
+                "error_type": {"type": ["string", "null"]},
             },
         },
         tags=["specialist", "milcah", "planner"],

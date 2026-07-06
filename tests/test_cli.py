@@ -266,7 +266,7 @@ def test_cli_config_status_does_not_connect_to_mongo(monkeypatch, capsys) -> Non
     main()
 
     output = json.loads(capsys.readouterr().out)
-    assert output["config_source"]["mongo_db"] == "mnemosyne_dev"
+    assert output["config_source"]["mongo_db"] == "tirzah_dev"
     assert "capabilities" in output
 
 

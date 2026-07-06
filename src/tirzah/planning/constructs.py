@@ -362,6 +362,7 @@ def execute_iterate_step(
     max_rounds = parse_max_rounds(step)
     rounds_run = 0
     loop_break = False
+    blocked_reason: str | None = None
     for round_num in range(1, max_rounds + 1):
         rounds_run = round_num
         trace.append(
@@ -467,12 +468,25 @@ def execute_iterate_step(
                     artifacts[body_step.id] = outcome["artifact"]
             if outcome["status"] == "blocked":
                 body_blocked = True
+                blocked_reason = outcome.get("reason") or "iterate_body_blocked"
         if loop_break:
             break
         if iterate_until_satisfied(step, artifacts, round_num=round_num):
             break
         if any(body_step.status == "blocked" for body_step in body):
             break
+    if blocked_reason:
+        return {
+            "status": "blocked",
+            "reason": "iterate_body_blocked",
+            "artifact": {
+                "rounds": rounds_run,
+                "body": [item.id for item in body],
+                "max_rounds": max_rounds,
+                "loop_break": loop_break,
+                "blocked_reason": blocked_reason,
+            },
+        }
     return {
         "status": "completed",
         "artifact": {

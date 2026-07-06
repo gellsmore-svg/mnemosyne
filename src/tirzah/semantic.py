@@ -203,13 +203,19 @@ class MahalathResolver:
     database: str = "mahalath_dev"
     language: str = "en"
     per_term_timeout_ms: int = 2000
+    last_error: str | None = field(default=None, init=False)
+    last_error_type: str | None = field(default=None, init=False)
 
     def resolve(self, terms: list[str]) -> list[SemanticLabel]:
+        self.last_error = None
+        self.last_error_type = None
         try:
             from pymongo import MongoClient
 
             from mahalath.retrieval import Filters, search_terms
-        except Exception:
+        except Exception as error:
+            self.last_error = str(error)
+            self.last_error_type = type(error).__name__
             return []  # Mahalath not installed — degrade to no-op
         try:
             client = MongoClient(self.mongo_uri, serverSelectionTimeoutMS=self.per_term_timeout_ms)
@@ -221,7 +227,9 @@ class MahalathResolver:
                     continue
                 out.append(match_to_label(term, matches[0]))
             return out
-        except Exception:
+        except Exception as error:
+            self.last_error = str(error)
+            self.last_error_type = type(error).__name__
             return []  # store unreachable / schema drift — fail soft
         finally:
             try:

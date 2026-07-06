@@ -106,6 +106,101 @@ def list_plan_executions(db, session_id: str, *, status: str | None = None, limi
     return [serialize_execution_row(row) for row in rows]
 
 
+def signal_awaiting_step(
+    db,
+    *,
+    session_id: str,
+    step_id: str,
+    event: str = "default",
+    approved: bool = True,
+    plan_id: str | None = None,
+    note: str | None = None,
+) -> dict[str, Any] | None:
+    """Inject a durable AWAIT signal into the latest running plan execution.
+
+    Process gate approval happens through the process API, while AWAIT execution
+    resumes from the plan execution store. This bridge writes the matching signal
+    into the saved artifacts and immediately promotes awaiting steps that are now
+    satisfied, so a subsequent interpretive resume can continue from durable state.
+    """
+    collection = getattr(db, "plan_executions", None)
+    if collection is None or not session_id:
+        return None
+    rows = list(collection.find({"session_id": session_id, "status": "running"}))
+    candidates = []
+    for row in rows:
+        if plan_id and row.get("plan_id") != plan_id:
+            continue
+        for step in row.get("steps") or []:
+            if (
+                isinstance(step, dict)
+                and str(step.get("id")) == str(step_id)
+                and step.get("status") == "awaiting"
+            ):
+                candidates.append(row)
+                break
+    if not candidates:
+        return None
+    row = max(candidates, key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""))
+    artifacts = dict(row.get("artifacts") or {})
+    signals = dict(artifacts.get("await_signals") or {})
+    if approved:
+        signals[str(step_id)] = True
+        if event:
+            signals[str(event)] = True
+    else:
+        signals[f"{step_id}:rejected"] = True
+    artifacts["await_signals"] = signals
+    trace = list(row.get("trace") or [])
+    trace.append(
+        {
+            "step": "plan.await.signal",
+            "step_id": str(step_id),
+            "metadata": {
+                "event": event,
+                "approved": approved,
+                "source": "process_gate",
+                "note": note,
+            },
+        }
+    )
+
+    updated_row = {**row, "artifacts": artifacts, "trace": trace}
+    steps, completed, artifacts, trace, effects = resume_steps_and_context(updated_row)
+    if approved:
+        from tirzah.planning.constructs import resume_awaiting_steps
+
+        resume_awaiting_steps(
+            steps,
+            completed,
+            answer_kwargs={},
+            artifacts=artifacts,
+            trace=trace,
+        )
+    collection.update_one(
+        execution_key(str(row["plan_id"]), int(row["revision"]), str(row["session_id"])),
+        {
+            "$set": {
+                "steps": [step.__dict__ if hasattr(step, "__dict__") else step for step in steps],
+                "completed_step_ids": sorted(completed),
+                "artifacts": artifacts,
+                "trace": trace,
+                "effects": sorted(effects),
+                "updated_at": utc_now(),
+            }
+        },
+    )
+    return {
+        "plan_id": row.get("plan_id"),
+        "revision": row.get("revision"),
+        "session_id": row.get("session_id"),
+        "step_id": str(step_id),
+        "event": event,
+        "approved": approved,
+        "resumed": approved and str(step_id) in completed,
+    }
+
+
 def resume_steps_and_context(saved: dict[str, Any]) -> tuple[list[PlanStep], set[str], dict[str, Any], list[dict[str, Any]], set[str]]:
     steps = []
     for item in saved.get("steps") or []:

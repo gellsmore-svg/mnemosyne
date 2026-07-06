@@ -5,7 +5,7 @@ import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
 
-from tirzah.config import RuntimeConfig, load_config
+from tirzah.config import AppConfig, PathConfig, RuntimeConfig, load_config
 from tirzah.db.client import get_database
 from tirzah.web.app import (
     annotate_embedding_coverage,
@@ -1305,6 +1305,8 @@ def test_runtime_endpoint_lists_llm_controls() -> None:
     data = response.json()
     assert data["ok"] is True
     assert "ollama_cli" in data["available_adapters"]
+    assert "hoglah" in data["available_adapters"]
+    assert data["resolved_runtime"]["adapters"]["answer"]
     assert data["available_embedding_adapters"] == ["mock", "local_command"]
     assert "ollama_http" in data["non_compliant_embedding_adapters"]
     assert "ollama_powershell" in data["non_compliant_embedding_adapters"]
@@ -2308,6 +2310,64 @@ def test_upload_source_rejects_unsupported_suffix() -> None:
 
     assert response.status_code == 400
     assert "Unsupported source type" in response.json()["detail"]
+
+
+def test_upload_source_rejects_oversized_content(monkeypatch, tmp_path) -> None:
+    from tirzah.web.app import create_app
+
+    config = AppConfig(
+        paths=PathConfig(ingest=tmp_path / "ingest"),
+        runtime=RuntimeConfig(web_max_upload_bytes=4),
+    )
+    monkeypatch.setattr("tirzah.web.app.load_config", lambda: config)
+    monkeypatch.setattr("tirzah.web.app.get_database", lambda _mongo: object())
+    monkeypatch.setattr("tirzah.web.app.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.process.templates.seed_presets", lambda _db: None)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/upload-source",
+        json={"filename": "source.md", "content": "12345"},
+    )
+
+    assert response.status_code == 413
+
+
+def test_api_token_protects_api_routes(monkeypatch) -> None:
+    from tirzah.web.app import create_app
+
+    config = AppConfig(runtime=RuntimeConfig(web_api_token="secret"))
+    monkeypatch.setattr("tirzah.web.app.load_config", lambda: config)
+    monkeypatch.setattr("tirzah.web.app.get_database", lambda _mongo: object())
+    monkeypatch.setattr("tirzah.web.app.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.process.templates.seed_presets", lambda _db: None)
+    client = TestClient(create_app())
+
+    assert client.get("/api/documents").status_code == 401
+
+
+def test_admin_cli_equivalent_endpoints(monkeypatch) -> None:
+    from tirzah.web.app import create_app
+
+    class Collection:
+        def find(self, query=None, projection=None):
+            return []
+
+    class Db:
+        def __getitem__(self, name):
+            return Collection()
+
+    monkeypatch.setattr("tirzah.web.app.load_config", lambda: AppConfig())
+    monkeypatch.setattr("tirzah.web.app.get_database", lambda _mongo: Db())
+    monkeypatch.setattr("tirzah.web.app.ensure_indexes", lambda _db: None)
+    monkeypatch.setattr("tirzah.process.templates.seed_presets", lambda _db: None)
+    client = TestClient(create_app())
+
+    assert client.get("/api/config-status").json()["runtime"]["config_source"]["mongo_db"] == "tirzah_dev"
+    assert client.get("/api/db-ping").json()["ok"] is True
+    migrate = client.post("/api/migrate", params={"status": True}).json()
+    assert migrate["ok"] is True
+    assert migrate["report"]["target_version"] >= 2
 
 
 def test_ingest_folder_lists_supported_files() -> None:

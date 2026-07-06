@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from pymongo.database import Database
@@ -42,12 +43,63 @@ def _backfill_schema_metadata(db: Database) -> dict[str, Any]:
     return backfill_schema_metadata(db)
 
 
+def backfill_source_metadata(db: Database, *, archive_dir: Path | None = None) -> dict[str, Any]:
+    """Backfill source checksums/archive paths for legacy documents.
+
+    Idempotent: documents that already carry ``source.checksum_sha256`` are left
+    alone, and missing source files are reported as skipped rather than failing
+    the whole migration.
+    """
+    from tirzah.ingestion.files import archive_source, sha256_file
+
+    if archive_dir is None:
+        from tirzah.config import load_config
+
+        archive_dir = load_config().paths.archive
+    updated = []
+    skipped = []
+    for document in db.documents.find({"source.checksum_sha256": {"$exists": False}}):
+        source = document.get("source") or {}
+        source_path = Path(str(source.get("path") or ""))
+        if not source.get("path") or not source_path.is_file():
+            skipped.append(
+                {
+                    "document_id": str(document.get("_id")),
+                    "reason": "source_missing",
+                    "path": str(source_path),
+                }
+            )
+            continue
+        checksum = sha256_file(source_path)
+        archived_path = archive_source(source_path, archive_dir, checksum)
+        db.documents.update_one(
+            {"_id": document["_id"]},
+            {
+                "$set": {
+                    "source.checksum_sha256": checksum,
+                    "source.archive_path": str(archived_path),
+                }
+            },
+        )
+        updated.append(
+            {
+                "document_id": str(document["_id"]),
+                "checksum_sha256": checksum,
+                "archive_path": str(archived_path),
+            }
+        )
+    return {"updated": updated, "skipped": skipped}
+
+
 # Ordered registry. Append new migrations with the next number; never renumber.
 MIGRATIONS: list[Migration] = [
     Migration(1, "backfill_schema_metadata",
               "Stamp schema_version (+ derived metadata) on documents/trees/nodes "
               "that predate the field.",
               _backfill_schema_metadata),
+    Migration(2, "backfill_source_metadata",
+              "Stamp source checksum/archive metadata on legacy documents.",
+              backfill_source_metadata),
 ]
 
 

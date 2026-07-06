@@ -5,6 +5,7 @@ from tirzah.planning.execution_store import (
     load_plan_execution,
     resume_steps_and_context,
     save_plan_execution,
+    signal_awaiting_step,
 )
 from tirzah.planning.executor import build_default_handlers, interpret_plan
 from tirzah.planning.recursive import CairnPlan, PlanStep
@@ -129,6 +130,46 @@ def test_save_and_resume_execution_state():
     assert "1" in completed
     assert artifacts["retrieval_package"]["query"] == "q"
     assert "tirzah_retrieval" in effects
+
+
+def test_signal_awaiting_step_promotes_saved_execution():
+    db = Db()
+    plan = CairnPlan(
+        plan_id="plan_gate",
+        revision=1,
+        parent_revision=None,
+        request="q",
+        trigger="t",
+        objective="q",
+        status="active",
+        steps=[PlanStep(id="gate", action="EVENT: approve_change", construct="AWAIT", status="awaiting")],
+    )
+    save_plan_execution(
+        db,
+        plan=plan,
+        session_id="s1",
+        query="q",
+        steps=plan.steps,
+        completed_step_ids=[],
+        artifacts={"await:gate": {"event": "approve_change", "status": "pending"}},
+        trace=[],
+        effects=[],
+        status="running",
+    )
+
+    result = signal_awaiting_step(
+        db,
+        session_id="s1",
+        step_id="gate",
+        event="approve_change",
+        approved=True,
+    )
+
+    assert result["resumed"] is True
+    saved = get_plan_execution(db, "plan_gate", 1, "s1")
+    assert saved["completed_step_ids"] == ["gate"]
+    assert saved["steps"][0]["status"] == "completed"
+    assert saved["artifacts"]["await_signals"]["approve_change"] is True
 
 
 def test_interpret_plan_resumes_after_partial_execution(monkeypatch):

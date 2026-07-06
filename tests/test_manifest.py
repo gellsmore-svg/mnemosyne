@@ -53,6 +53,7 @@ def test_specialist_capability_federates_from_milcah_when_present(monkeypatch):
     got = tm._specialist_capability()
     assert got.description == "Milcah's own description."  # sourced from Milcah
     assert "planner" in got.tags  # Tirzah ensures it's planner-callable
+    assert "planner" not in federated.tags  # federated object was copied, not mutated
 
 
 def test_family_registry_aggregates_importable_siblings():

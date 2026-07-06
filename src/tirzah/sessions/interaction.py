@@ -652,7 +652,10 @@ def prepare_direct_answer_prompt(
         "context_text": prompt["context_text"],
         "context_metadata": prompt["context_metadata"],
         "budget": prompt["budget"],
+        "semantic_status": prompt.get("semantic_status", "disabled"),
     }
+    if prompt.get("semantic_diagnostic"):
+        retrieval_output["semantic_diagnostic"] = prompt["semantic_diagnostic"]
     trust_diagnostic = compact_trust_diagnostic_for_node(db, selected_node_id)
     if trust_diagnostic:
         retrieval_output["trust_diagnostic"] = trust_diagnostic

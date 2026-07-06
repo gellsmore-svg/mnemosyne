@@ -69,6 +69,24 @@ def test_iterate_runs_body_until_has_matches():
     assert any(row["step"] == "plan.iterate.round" for row in trace)
 
 
+def test_iterate_reports_blocked_when_body_blocks():
+    steps = [
+        PlanStep(id="1", action="Loop", construct="ITERATE"),
+        PlanStep(id="2", action="Blocked body", construct="CALL", depends_on=["1"]),
+    ]
+    outcome = execute_iterate_step(
+        steps[0],
+        steps=steps,
+        completed=set(),
+        artifacts={},
+        trace=[],
+        run_step=lambda _step: {"status": "blocked", "reason": "handler_down"},
+    )
+    assert outcome["status"] == "blocked"
+    assert outcome["reason"] == "iterate_body_blocked"
+    assert outcome["artifact"]["blocked_reason"] == "handler_down"
+
+
 def test_decision_skips_unselected_branch():
     steps = [
         PlanStep(id="1", action="ON: web_research", construct="DECISION"),

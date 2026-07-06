@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from tests.process_fakes import FakeDb
+from tirzah.planning.execution_store import save_plan_execution
+from tirzah.planning.recursive import CairnPlan, PlanStep
 from tirzah.process import enforcement as enf
 from tirzah.process import instances as inst
 from tirzah.process import templates as tmpl
@@ -56,6 +58,40 @@ def test_gate_pauses_and_approval_resumes() -> None:
     rejected = enf.resolve_gate(db, iid, step_id="3", approved=False)
     assert rejected["status"] == "active"  # returns to flow for iteration
     assert rejected["trace"][-1]["event"] == "process.gate.rejected"
+
+
+def test_gate_approval_signals_matching_plan_await() -> None:
+    db = FakeDb()
+    instance = _instance(db, "PAUSE FOR APPROVAL")
+    iid = instance["instance_id"]
+    plan = CairnPlan(
+        plan_id="plan_gate",
+        revision=1,
+        parent_revision=None,
+        request="q",
+        trigger="t",
+        objective="q",
+        status="active",
+        steps=[PlanStep(id="3", action="EVENT: approval", construct="AWAIT", status="awaiting")],
+    )
+    save_plan_execution(
+        db,
+        plan=plan,
+        session_id="s1",
+        query="q",
+        steps=plan.steps,
+        completed_step_ids=[],
+        artifacts={},
+        trace=[],
+        effects=[],
+        status="running",
+    )
+
+    resumed = enf.resolve_gate(db, iid, step_id="3", approved=True, note="approved")
+
+    assert resumed["trace"][-1]["detail"]["plan_resume"]["resumed"] is True
+    saved = db.plan_executions.rows[0]
+    assert saved["steps"][0]["status"] == "completed"
 
 
 def test_deviation_flag_pauses_until_resolved() -> None:

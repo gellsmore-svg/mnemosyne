@@ -145,11 +145,32 @@ def resolve_gate(
     rejection sends it back for iteration (recorded, stays active so the flow
     can return to an earlier step)."""
     event = "process.gate.approved" if approved else "process.gate.rejected"
+    detail = {"step_id": step_id, "approver": approver, "note": note}
+    if approved:
+        try:
+            before = inst.get_instance(db, instance_id)
+            session_id = str((before or {}).get("session_id") or "")
+            from tirzah.planning.execution_store import signal_awaiting_step
+
+            resume = signal_awaiting_step(
+                db,
+                session_id=session_id,
+                step_id=step_id,
+                approved=True,
+                note=note,
+            )
+            if resume:
+                detail["plan_resume"] = resume
+        except Exception as error:
+            detail["plan_resume_error"] = {
+                "error": str(error),
+                "error_type": type(error).__name__,
+            }
     updated = inst.record_event(
         db,
         instance_id,
         event,
-        {"step_id": step_id, "approver": approver, "note": note},
+        detail,
         status="active",
     )
     _emit(instance_id, event, {"step_id": step_id, "approver": approver})

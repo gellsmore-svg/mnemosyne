@@ -1318,12 +1318,25 @@ def build_prompt_envelope(
     semantic_labels: list[Any] = []
     semantic_block = ""
     semantic_summary = ""
+    semantic_status = "disabled"
+    semantic_diagnostic: dict[str, Any] | None = None
     if resolver is not None:
         from tirzah.semantic import annotate, render_prompt_block, summarize_labels
 
         semantic_labels = annotate(query, rendered["text"], resolver, strict=semantic_strict)
         semantic_block = render_prompt_block(semantic_labels)
         semantic_summary = summarize_labels(semantic_labels)
+        error = getattr(resolver, "last_error", None)
+        error_type = getattr(resolver, "last_error_type", None)
+        if error or error_type:
+            semantic_status = "unavailable"
+            semantic_diagnostic = {
+                "reason": "mahalath_unavailable",
+                "error": error,
+                "error_type": error_type,
+            }
+        else:
+            semantic_status = "resolved" if semantic_labels else "no_matches"
 
     prompt_parts = [instruction, "", "## User Query", query, ""]
     if semantic_block:
@@ -1336,6 +1349,8 @@ def build_prompt_envelope(
         "context_text": rendered["text"],
         "semantic": [label.to_dict() for label in semantic_labels],
         "semantic_summary": semantic_summary,
+        "semantic_status": semantic_status,
+        "semantic_diagnostic": semantic_diagnostic,
         "prompt_text": prompt_text,
         "budget": {
             "token_budget": token_budget,

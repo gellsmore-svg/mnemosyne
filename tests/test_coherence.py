@@ -143,6 +143,8 @@ def test_live_client_is_fail_soft():
     boom = MilcahClient(pipeline=lambda _req: (_ for _ in ()).throw(RuntimeError("milcah down")))
     blocked = boom.run(SpecialistRequest(query="q"))
     assert validate_specialist_result(blocked) == [] and blocked.terminal_reason == "blocked"
+    assert blocked.error == "milcah down"
+    assert blocked.error_type == "RuntimeError"
     # empty pipeline -> insufficient_evidence
     empty = MilcahClient(pipeline=lambda _req: None).run(SpecialistRequest(query="q"))
     assert empty.terminal_reason == "insufficient_evidence"

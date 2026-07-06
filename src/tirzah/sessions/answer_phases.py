@@ -692,6 +692,8 @@ def _persist_answer(
         "budget": prompt.get("budget", {}),
         "semantic": prompt.get("semantic", []),
         "semantic_summary": prompt.get("semantic_summary", ""),
+        "semantic_status": prompt.get("semantic_status", "disabled"),
+        "semantic_diagnostic": prompt.get("semantic_diagnostic"),
         "retrieval_status": package.retrieval_status,
         "controller_decision": package.controller_decision,
         "process_run_id": package.process_run_id,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from tirzah.config import AppConfig, PathConfig
 
 from tirzah import migrations
 from tirzah.migrations import LEDGER, Migration
@@ -90,3 +91,41 @@ def test_real_registry_has_schema_metadata_migration():
     # The shipped registry wires the real backfill as migration 1.
     assert migrations.MIGRATIONS[0].number == 1
     assert migrations.MIGRATIONS[0].name == "backfill_schema_metadata"
+    assert migrations.MIGRATIONS[1].number == 2
+    assert migrations.MIGRATIONS[1].name == "backfill_source_metadata"
+
+
+class _DocumentCollection:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def find(self, query=None, projection=None):
+        return [row for row in self.rows if "checksum_sha256" not in (row.get("source") or {})]
+
+    def update_one(self, query, update, upsert=False):
+        row = next(item for item in self.rows if item["_id"] == query["_id"])
+        for key, value in update["$set"].items():
+            section, field = key.split(".", 1)
+            row.setdefault(section, {})[field] = value
+
+
+class _SourceDb:
+    def __init__(self, rows):
+        self.documents = _DocumentCollection(rows)
+
+
+def test_backfill_source_metadata_updates_checksum_and_archive(tmp_path, monkeypatch):
+    source = tmp_path / "source.md"
+    source.write_text("hello", encoding="utf-8")
+    archive = tmp_path / "archive"
+    db = _SourceDb([{"_id": "doc1", "source": {"path": str(source)}}])
+    monkeypatch.setattr(
+        "tirzah.config.load_config",
+        lambda: AppConfig(paths=PathConfig(archive=archive)),
+    )
+
+    result = migrations.backfill_source_metadata(db)
+
+    assert len(result["updated"]) == 1
+    assert db.documents.rows[0]["source"]["checksum_sha256"]
+    assert archive.exists()
