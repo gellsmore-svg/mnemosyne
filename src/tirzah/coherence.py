@@ -198,12 +198,31 @@ def _adapt_orchestration(orchestration: Any) -> SpecialistResult:
         return _local_adapt(orchestration)
 
 
-def _default_pipeline(request: SpecialistRequest, *, model: str = "") -> Any:
+def _default_pipeline(
+    request: SpecialistRequest,
+    *,
+    model: str = "",
+    hoglah_db_path: str = "",
+    hoglah_output_dir: str = "",
+    hoglah_transport: str = "store",
+    hoglah_timeout_seconds: int | None = None,
+) -> Any:
     """Delegate to Milcah's provider-side specialist runner."""
     from milcah.orchestration import OrchestrationConfig
     from milcah.specialist import SpecialistConfig, run_specialist
 
-    config = SpecialistConfig(orchestration=OrchestrationConfig(default_model=model)) if model else None
+    orchestration_kwargs: dict[str, Any] = {}
+    if model:
+        orchestration_kwargs["default_model"] = model
+    if hoglah_db_path:
+        orchestration_kwargs["db_path"] = str(hoglah_db_path)
+    if hoglah_output_dir:
+        orchestration_kwargs["output_dir"] = str(hoglah_output_dir)
+    if hoglah_transport and hoglah_transport != "store":
+        orchestration_kwargs["transport"] = str(hoglah_transport)
+    if hoglah_timeout_seconds is not None:
+        orchestration_kwargs["timeout"] = float(hoglah_timeout_seconds)
+    config = SpecialistConfig(orchestration=OrchestrationConfig(**orchestration_kwargs))
     return run_specialist(request.to_dict(), config=config)
 
 
@@ -231,11 +250,24 @@ class MilcahClient:
     injectable (tests); defaults drive Milcah over Hoglah. Fail-soft."""
 
     model: str = ""
+    hoglah_db_path: str = ""
+    hoglah_output_dir: str = ""
+    hoglah_transport: str = "store"
+    hoglah_timeout_seconds: int | None = None
     pipeline: Callable[[SpecialistRequest], Any] | None = None
     adapt: Callable[[Any], SpecialistResult] | None = None
 
     def run(self, request: SpecialistRequest) -> SpecialistResult:
-        pipeline = self.pipeline or (lambda req: _default_pipeline(req, model=self.model))
+        pipeline = self.pipeline or (
+            lambda req: _default_pipeline(
+                req,
+                model=self.model,
+                hoglah_db_path=self.hoglah_db_path,
+                hoglah_output_dir=self.hoglah_output_dir,
+                hoglah_transport=self.hoglah_transport,
+                hoglah_timeout_seconds=self.hoglah_timeout_seconds,
+            )
+        )
         adapt = self.adapt or _adapt_orchestration
         try:
             orchestration = pipeline(request)
@@ -265,7 +297,13 @@ def make_client(config: Any) -> "CoherenceClient | None":
     mirroring :func:`tirzah.semantic.make_resolver`."""
     if not getattr(config, "milcah_enabled", False):
         return None
-    return MilcahClient(model=getattr(config, "milcah_model", "") or "")
+    return MilcahClient(
+        model=getattr(config, "milcah_model", "") or "",
+        hoglah_db_path=str(getattr(config, "hoglah_db_path", "") or ""),
+        hoglah_output_dir=str(getattr(config, "hoglah_output_dir", "") or ""),
+        hoglah_transport=str(getattr(config, "hoglah_transport", "store") or "store"),
+        hoglah_timeout_seconds=getattr(config, "hoglah_wait_timeout_seconds", None),
+    )
 
 
 # --- planner trigger -------------------------------------------------------

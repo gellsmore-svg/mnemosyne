@@ -72,8 +72,17 @@ def _fake_orchestration():
 
 def test_make_client_gated_by_config():
     assert make_client(SimpleNamespace(milcah_enabled=False)) is None
-    client = make_client(SimpleNamespace(milcah_enabled=True, milcah_model="gemma"))
+    client = make_client(
+        SimpleNamespace(
+            milcah_enabled=True,
+            milcah_model="gemma",
+            hoglah_db_path="/tmp/hoglah.db",
+            hoglah_output_dir="/tmp/hoglah-out",
+        )
+    )
     assert isinstance(client, MilcahClient) and client.model == "gemma"
+    assert client.hoglah_db_path == "/tmp/hoglah.db"
+    assert client.hoglah_output_dir == "/tmp/hoglah-out"
 
 
 def test_live_client_runs_pipeline_and_adapts():
@@ -113,8 +122,10 @@ def test_default_pipeline_delegates_to_milcah_provider(monkeypatch):
     specialist = types.ModuleType("milcah.specialist")
 
     class OrchestrationConfig:
-        def __init__(self, default_model=""):
+        def __init__(self, default_model="", db_path="", output_dir=""):
             self.default_model = default_model
+            self.db_path = db_path
+            self.output_dir = output_dir
 
     class SpecialistConfig:
         def __init__(self, orchestration=None):
@@ -123,6 +134,8 @@ def test_default_pipeline_delegates_to_milcah_provider(monkeypatch):
     def run_specialist(payload, config=None):
         calls["payload"] = payload
         calls["model"] = config.orchestration.default_model
+        calls["db_path"] = config.orchestration.db_path
+        calls["output_dir"] = config.orchestration.output_dir
         return SpecialistResult(claims=["provider"], confidence=0.6)
 
     orchestration.OrchestrationConfig = OrchestrationConfig
@@ -132,10 +145,17 @@ def test_default_pipeline_delegates_to_milcah_provider(monkeypatch):
     monkeypatch.setitem(sys.modules, "milcah.orchestration", orchestration)
     monkeypatch.setitem(sys.modules, "milcah.specialist", specialist)
 
-    result = _default_pipeline(SpecialistRequest(query="q", mode="research"), model="gemma")
+    result = _default_pipeline(
+        SpecialistRequest(query="q", mode="research"),
+        model="gemma",
+        hoglah_db_path="/tmp/hoglah.db",
+        hoglah_output_dir="/tmp/hoglah-out",
+    )
     assert result.claims == ["provider"]
     assert calls["payload"]["mode"] == "research"
     assert calls["model"] == "gemma"
+    assert calls["db_path"] == "/tmp/hoglah.db"
+    assert calls["output_dir"] == "/tmp/hoglah-out"
 
 
 def test_live_client_is_fail_soft():
