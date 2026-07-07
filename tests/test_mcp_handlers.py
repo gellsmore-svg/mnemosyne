@@ -28,6 +28,21 @@ def test_search_memory_compacts_nodes(monkeypatch) -> None:
     assert out["results"][1]["node_id"] == "n2"
 
 
+def test_search_memory_uses_serialized_preview_and_title(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "tirzah.retrieval.queries.search_nodes",
+        lambda _db, query=None, limit=10: [
+            {"node_id": "n1", "title": "Decision record", "text_preview": "Use Keturah for MCP."},
+            {"node_id": "n2", "title": "Title fallback"},
+        ],
+    )
+    handler = mcp_handlers.build_handlers(db=object())["search_memory"]
+    out = handler(query="keturah", limit=2)
+    assert out["results"][0]["title"] == "Decision record"
+    assert out["results"][0]["text"] == "Use Keturah for MCP."
+    assert out["results"][1]["text"] == "Title fallback"
+
+
 def test_search_memory_requires_query() -> None:
     handler = mcp_handlers.build_handlers(db=object())["search_memory"]
     assert "error" in handler(query="   ")

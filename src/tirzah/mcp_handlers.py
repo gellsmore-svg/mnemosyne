@@ -55,11 +55,19 @@ def _default_config() -> Any:
 
 def _compact_node(node: dict[str, Any]) -> dict[str, Any]:
     """A small, agent-friendly projection of a memory node."""
-    text = node.get("content") or node.get("text") or node.get("summary") or ""
+    text = (
+        node.get("content")
+        or node.get("text")
+        or node.get("text_preview")
+        or node.get("summary")
+        or node.get("title")
+        or ""
+    )
     if isinstance(text, str) and len(text) > 400:
         text = text[:400] + "…"
     return {
         "node_id": str(node.get("node_id") or node.get("_id") or ""),
+        "title": str(node.get("title") or ""),
         "labels": list(node.get("labels") or []),
         "text": text,
         "document_id": str(node.get("document_id") or ""),
