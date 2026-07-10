@@ -33,9 +33,9 @@ dependencies = [
   "pydantic>=2.7",
   "pymongo>=4.7",
   "pyyaml>=6.0",
-  "galeed>=0.1",  # the cross-project trace/log spine (extracted from tirzah.trace)
-  "cairn-lang>=0.3",  # process-grammar conformance (import name: cairn) the recursive planner validates against
-  "keturah>=0.1",  # uniform manifest of LLM-consumable interfaces (served at /api/capabilities)
+  "galeed @ git+https://github.com/gellsmore-svg/galeed.git@v0.2.0",  # cross-project trace/log spine
+  "cairn-lang @ git+https://github.com/gellsmore-svg/Cairn.git@v0.8.2",  # process grammar (import: cairn)
+  "keturah @ git+https://github.com/gellsmore-svg/keturah.git@v0.3.0",  # uniform LLM interface manifest
 ]
 
 [project.optional-dependencies]
