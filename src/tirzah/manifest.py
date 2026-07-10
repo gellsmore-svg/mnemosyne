@@ -17,7 +17,7 @@ from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from keturah import Manifest, Registry, capability, manifest
 
 # Sibling products whose manifests Tirzah aggregates into the family registry.
-_SIBLING_PACKAGES = ("milcah", "mahalath", "cairn", "hoglah")
+_SIBLING_PACKAGES = ("milcah", "mahalath", "cairn", "hoglah", "hanani")
 
 
 def _tirzah_version() -> str:
