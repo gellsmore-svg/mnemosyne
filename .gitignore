@@ -8,6 +8,7 @@ dist/
 config.yaml
 data/archive/*
 data/dead_letter/*
+data/hoglah/*
 data/ingest/*
 data/online_sources/*
 data/staging/*
