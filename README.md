@@ -78,10 +78,10 @@ tirzah serve
 by default (`gemma3:1b` per `config.example.yaml`); pass `--model <name>` to
 override per request, or `--adapter mock` for an offline deterministic answer.
 
-## Recursive Cairn request planning
+## Recursive Deborah request planning
 
 The browser-facing `/api/ask` path is wrapped by a recursive process planner. It
-creates a bounded first-pass Cairn `PLAN`, invokes Tirzah's existing validated
+creates a bounded first-pass Deborah `PLAN`, invokes Tirzah's existing validated
 retrieval and answer pipeline, and then revises the same plan from new evidence
 or unresolved state. Each revision keeps the plan ID, parent revision, trigger,
 stopping conditions, and a complete process backbone.
@@ -142,7 +142,7 @@ their frozen process, so evolution is backward-compatible.
 ## Interpretive plan execution & debugging
 
 Set `TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED=true` and planned requests are
-*executed* step-by-step by the Cairn interpreter (SPEC §4.6): dependency-gated
+*executed* step-by-step by the Deborah interpreter (SPEC §4.6): dependency-gated
 steps, tool gating via `allowed_tools`, ITERATE/DECISION/PARALLEL/RETRY/ERROR
 constructs, resumable persisted executions, and **mid-step revision** — the plan
 adapts after each completed call. The running plan streams live into Mahlah's

@@ -27,7 +27,7 @@ runtime:
   profile_backfill_web_max_batches: 10
   memory_agent_adapter:
   retrieval_mode: direct
-  # Versioned Cairn plan wrapper below the front end. The planner creates an
+  # Versioned Deborah plan wrapper below the front end. The planner creates an
   # initial process, then revises it from new retrieval/execution information.
   recursive_planning_enabled: true
   planning_adapter:
@@ -96,7 +96,7 @@ retrieval:
   reserved_response_tokens: 500
   memory_agent_max_iterations: 4
 
-  # --- Interpretive Cairn plan execution (SPEC §4.6) -----------------------
+  # --- Interpretive Deborah plan execution (SPEC §4.6) -----------------------
   # Walk machine plans step-by-step (constructs, tool gating, resumable
   # executions, live plan streaming). Env: TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED.
   # plan_interpretive_execution_enabled: false

@@ -128,17 +128,18 @@ def test_create_initial_plan_threads_context():
     assert "Do X" in captured["prompt"]
 
 
-def test_tirzah_plan_conforms_to_cairn_grammar():
+def test_tirzah_plan_conforms_to_deborah_grammar():
     # Executable seam contract (review P1-001): the recursive planner's output must
-    # satisfy Cairn's machine-readable plan conformance, so Tirzah cannot drift into
-    # a local dialect of the grammar.
-    import cairn
+    # satisfy Deborah's machine-readable plan conformance, so Tirzah cannot drift
+    # into a local dialect of the grammar. (Deborah is the post-split `cairn`
+    # language package; Tirzah depends on it directly, not through the shim.)
+    import deborah
 
     plan = create_initial_plan("Do the thing", planner=lambda _p: payload())
-    assert cairn.validate_plan(plan.to_dict()) == []
+    assert deborah.validate_plan(plan.to_dict()) == []
     # a completed-status revision must stay conformant too
     done = create_initial_plan("Finish it", planner=lambda _p: payload(decision="complete", status="complete"))
-    assert cairn.validate_plan(done.to_dict()) == []
+    assert deborah.validate_plan(done.to_dict()) == []
 
 
 def test_malformed_planner_gets_bounded_fallback_plan():
