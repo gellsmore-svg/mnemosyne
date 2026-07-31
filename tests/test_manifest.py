@@ -62,8 +62,11 @@ def test_family_registry_aggregates_importable_siblings():
     reg = family_registry()
     products = reg.products()
     assert "tirzah" in products
-    # cairn + hoglah are installed in Tirzah's venv, so they self-describe into the registry
-    assert "cairn" in products and "hoglah" in products
+    # deborah + hoglah are installed in Tirzah's venv, so they self-describe into
+    # the registry. (`cairn` split into deborah + huldah; the registry advertises
+    # the new products, not the deprecated fused one.)
+    assert "deborah" in products and "hoglah" in products
+    assert "cairn" not in products
 
 
 def test_registry_endpoint_full_and_mcp():

@@ -17,7 +17,12 @@ from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from keturah import Manifest, Registry, capability, manifest
 
 # Sibling products whose manifests Tirzah aggregates into the family registry.
-_SIBLING_PACKAGES = ("milcah", "mahalath", "cairn", "hoglah", "hanani")
+# `cairn` split into `deborah` (process language) + `huldah` (human-systems
+# analysis); both are listed so the registry advertises each product's real
+# capabilities rather than one fused manifest. `cairn` is deliberately absent:
+# its compat shim re-exports deborah.manifest, which would double-register the
+# same capabilities under a deprecated name.
+_SIBLING_PACKAGES = ("milcah", "mahalath", "deborah", "huldah", "hoglah", "hanani")
 
 
 def _tirzah_version() -> str:
