@@ -126,3 +126,100 @@ def test_apply_evolution_creates_versioned_provenance() -> None:
 
 def test_analyze_unknown_template() -> None:
     assert evo.analyze_template_evolution(FakeDb(), "nope")["ok"] is False
+
+
+# --- reuse gate: re-check a version before binding new work to it -----------
+
+
+def test_reuse_is_clean_for_a_first_version():
+    db = FakeDb()
+    tid = _template(db)
+    assessment = evo.assess_reuse(db, tid)
+    assert assessment["recommendation"] == "proceed"
+    assert assessment["concerns"] == []
+
+
+def test_reuse_flags_a_revision_that_has_never_been_validated():
+    """The highest-value signal: approved, then never carried to completion.
+
+    Published evidence on reusing learned procedure without a re-check shows
+    an 11-14 point drop across a real version migration — and it fails
+    silently, because the stale procedure still looks plausible.
+    """
+    db = FakeDb()
+    tid = _template(db)
+    tmpl.revise_template(db, tid, body="1. plan\n2. do\n3. PAUSE FOR APPROVAL")
+
+    assessment = evo.assess_reuse(db, tid)
+
+    assert assessment["version"] == 2
+    assert [c["kind"] for c in assessment["concerns"]] == ["never_validated"]
+    assert assessment["recommendation"] == "proceed_with_note"
+    # the concern must carry its evidence, not just an opinion
+    assert assessment["concerns"][0]["evidence"]["completed"] == 0
+
+
+def test_a_validated_revision_raises_no_concern():
+    db = FakeDb()
+    tid = _template(db)
+    tmpl.revise_template(db, tid, body="1. plan\n2. do")
+    _run(db, tid, completed=True)
+
+    assessment = evo.assess_reuse(db, tid)
+    assert assessment["concerns"] == []
+    assert assessment["recommendation"] == "proceed"
+
+
+def test_reuse_detects_the_revision_failing_the_way_its_predecessor_did():
+    """A version showing the very symptom evolution was meant to fix."""
+    db = FakeDb()
+    tid = _template(db)
+    tmpl.revise_template(db, tid, body="1. plan\n2. do")
+    for _ in range(3):
+        _run(db, tid, abandoned=True, completed=False)
+
+    assessment = evo.assess_reuse(db, tid)
+
+    kinds = {c["kind"] for c in assessment["concerns"]}
+    assert "abandonment_on_current_version" in kinds
+    assert assessment["recommendation"] == "prefer_previous_version"
+
+
+def test_assessment_never_blocks_and_never_raises_on_a_bad_template_id():
+    """Service outranks the learning signal — a gate that refused work would be
+    worse than the drift it guards against."""
+    db = FakeDb()
+    assessment = evo.assess_reuse(db, "does-not-exist")
+    assert assessment["ok"] is False
+    assert assessment["recommendation"] == "proceed"
+
+
+def test_start_instance_records_the_assessment_without_blocking():
+    db = FakeDb()
+    tid = _template(db)
+    tmpl.revise_template(db, tid, body="1. plan\n2. do")
+
+    instance = inst.start_instance(db, template_id=tid, task="new work")
+
+    assert instance["status"] == "active"          # work started regardless
+    events = [e["event"] for e in instance["trace"]]
+    assert "process.instance.reuse_assessed" in events
+    recorded = next(e for e in instance["trace"] if e["event"] == "process.instance.reuse_assessed")
+    assert recorded["detail"]["recommendation"] == "proceed_with_note"
+
+
+def test_clean_reuse_adds_no_trace_noise():
+    db = FakeDb()
+    tid = _template(db)
+    instance = inst.start_instance(db, template_id=tid, task="t")
+    events = [e["event"] for e in instance["trace"]]
+    assert "process.instance.reuse_assessed" not in events
+
+
+def test_reuse_check_can_be_disabled():
+    db = FakeDb()
+    tid = _template(db)
+    tmpl.revise_template(db, tid, body="1. plan\n2. do")
+    instance = inst.start_instance(db, template_id=tid, task="t", reuse_check=False)
+    events = [e["event"] for e in instance["trace"]]
+    assert "process.instance.reuse_assessed" not in events

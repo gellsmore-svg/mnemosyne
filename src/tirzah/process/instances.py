@@ -13,6 +13,7 @@ started with (backward compatibility for active instances).
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -21,6 +22,8 @@ from pymongo.database import Database
 
 from tirzah.db.governance import serialize_governance_row
 from tirzah.process.templates import get_template
+
+log = logging.getLogger("tirzah.process")
 
 INSTANCE_STATUSES = (
     "active",       # running under the process
@@ -44,6 +47,7 @@ def start_instance(
     selected_by: str = "operator",
     selection_reason: str = "manual",
     metadata: dict[str, Any] | None = None,
+    reuse_check: bool = True,
 ) -> dict[str, Any]:
     """Apply a template (its latest version, or a pinned one) to a task.
 
@@ -79,6 +83,24 @@ def start_instance(
         "template_version": document["template_version"],
         "selection_reason": selection_reason,
     }, at=now)
+
+    # Reuse gate: re-check the version before the work leans on it. Recorded,
+    # never blocking — the immediate task outranks the learning signal, and a
+    # gate that refused to start work would be worse than the drift it guards
+    # against. Import is local to keep the evolution/instances cycle broken.
+    if reuse_check:
+        try:
+            from tirzah.process.evolution import assess_reuse
+
+            assessment = assess_reuse(db, template_id, version=document["template_version"])
+            if assessment.get("concerns"):
+                _append(document, "process.instance.reuse_assessed", {
+                    "recommendation": assessment["recommendation"],
+                    "concerns": assessment["concerns"],
+                    "evidence": assessment.get("evidence") or {},
+                }, at=now)
+        except Exception:  # noqa: BLE001 - a failed assessment must not fail the work
+            log.debug("reuse assessment failed (ignored)", exc_info=True)
     db.process_instances.insert_one({**document})
     return serialize_governance_row(document)
 

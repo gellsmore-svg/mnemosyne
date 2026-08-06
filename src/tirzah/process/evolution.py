@@ -11,6 +11,21 @@ only when a human approves it (recording provenance), and — because instances
 freeze their process body at bind time — active work is unaffected: evolution
 is backward-compatible by construction. This keeps the human-grounding
 principle: usage informs, a person decides.
+
+That gate covers **writes**. ``assess_reuse`` covers the other side: before a
+template version is bound to new work, check whether it is still carrying its
+weight. A version can be approved and then never actually validated by a
+completed run, or can start exhibiting the very symptoms that triggered the last
+evolution. Published evidence on learned-procedure reuse is blunt about this —
+reusing accumulated procedure *without* a re-check degraded task success by
+11–14 points across a real version migration, while a gated equivalent held
+flat; the damage is silent, because the stale procedure still looks plausible.
+
+``assess_reuse`` deliberately does **not** return a pass/fail. A concern is not
+a veto: the immediate work comes first, and an assessment that blocked service
+would be worse than the drift it guards against. It returns concerns with the
+evidence behind them and an ordinal recommendation, which ``start_instance``
+records on the instance trace.
 """
 
 from __future__ import annotations
@@ -30,6 +45,111 @@ _RECUR_DEVIATION = 2        # a deviation seen this many times is a pattern
 _HIGH_OVERRIDE_RATE = 0.34  # gates may be heavier than the work warrants
 _HIGH_ABANDON_RATE = 0.34   # process may be too onerous / unclear
 _HIGH_GATE_REJECT = 2       # a step whose gate keeps getting rejected
+
+
+def assess_reuse(
+    db: Database, template_id: str, *, version: int | None = None
+) -> dict[str, Any]:
+    """Re-check a template version before it is bound to new work.
+
+    Returns ``{ok, template_id, version, concerns, evidence, recommendation}``.
+
+    ``recommendation`` is ordinal, never boolean:
+
+    - ``proceed`` — nothing observed against this version;
+    - ``proceed_with_note`` — a concern worth recording, not worth blocking;
+    - ``prefer_previous_version`` — this version looks worse than the one it
+      replaced, on its own instances.
+
+    Concerns are evidence-bearing (``{kind, detail, evidence}``) so a later
+    reviewer can see what the judgement was made from, and so a concern that
+    turns out to be wrong can be argued with rather than merely overridden.
+
+    Only signals computable from recorded instances are used. Notably absent:
+    any check on the *model* that authored a version — nothing in the template
+    record identifies it, and inventing that signal would be worse than
+    omitting it.
+    """
+    template = get_template(db, template_id, version=version)
+    if template is None:
+        return {
+            "ok": False,
+            "reason": "unknown_template",
+            "template_id": template_id,
+            "version": version,
+            "concerns": [],
+            "recommendation": "proceed",  # never block on our own lookup failure
+        }
+
+    resolved = int(template["version"])
+    rows = inst.list_instances(db, template_id=template_id, limit=500)
+    on_version = [r for r in rows if int(r.get("template_version") or 0) == resolved]
+    completed = [r for r in on_version if r.get("status") == "completed"]
+
+    concerns: list[dict[str, Any]] = []
+
+    # 1. Approved but never proven. The highest-value signal: a revision was
+    #    accepted and has never once been carried through to completion.
+    if resolved > 1 and not completed:
+        concerns.append({
+            "kind": "never_validated",
+            "detail": (
+                f"v{resolved} has {len(on_version)} instance(s) and none completed. "
+                "The revision was approved but has not yet been shown to work."
+            ),
+            "evidence": {"version": resolved, "instances": len(on_version), "completed": 0},
+        })
+
+    # 2. Regression: this version already shows the symptoms that trigger
+    #    evolution, i.e. the last revision did not fix what it aimed at.
+    n = len(on_version)
+    if n >= _MIN_INSTANCES:
+        abandoned = sum(1 for r in on_version if r.get("status") == "abandoned")
+        overrides = sum(
+            1
+            for r in on_version
+            for e in (r.get("trace") or [])
+            if e.get("event") == "process.override.invoked"
+        )
+        abandon_rate = round(abandoned / n, 3)
+        override_rate = round(overrides / n, 3)
+        if abandon_rate >= _HIGH_ABANDON_RATE:
+            concerns.append({
+                "kind": "abandonment_on_current_version",
+                "detail": (
+                    f"{abandon_rate:.0%} of v{resolved} instances were abandoned — "
+                    "the same signal that prompts evolution is present on the "
+                    "version meant to have fixed it."
+                ),
+                "evidence": {"abandon_rate": abandon_rate, "abandoned": abandoned, "n": n},
+            })
+        if override_rate >= _HIGH_OVERRIDE_RATE:
+            concerns.append({
+                "kind": "overrides_on_current_version",
+                "detail": (
+                    f"{override_rate:.0%} of v{resolved} instances used an emergency "
+                    "override — its gates are still heavier than the work warrants."
+                ),
+                "evidence": {"override_rate": override_rate, "overrides": overrides, "n": n},
+            })
+
+    recommendation = "proceed"
+    if concerns:
+        regressed = {"abandonment_on_current_version", "overrides_on_current_version"}
+        recommendation = (
+            "prefer_previous_version"
+            if resolved > 1 and any(c["kind"] in regressed for c in concerns)
+            else "proceed_with_note"
+        )
+
+    return {
+        "ok": True,
+        "template_id": template_id,
+        "version": resolved,
+        "concerns": concerns,
+        "evidence": {"instances_on_version": len(on_version), "completed": len(completed)},
+        "recommendation": recommendation,
+    }
 
 
 def analyze_template_evolution(db: Database, template_id: str) -> dict[str, Any]:
