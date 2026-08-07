@@ -140,9 +140,35 @@ def build_handlers(*, db: Any = None, client: Any = None) -> dict[str, Callable[
             "terminal_reason": str(get("terminal_reason", "") or ""),
         }
 
+    def retrieve(query: str = "", limit: int = 10, **kw: Any) -> dict[str, Any]:
+        """Deborah-facing retrieve — same search as search_memory, observe-shaped."""
+        raw = search_memory(query=query, limit=limit, **kw)
+        if "error" in raw:
+            return raw
+        try:
+            from tirzah.deborah import nodes_to_observe
+
+            nodes = [
+                {
+                    "node_id": r.get("node_id"),
+                    "title": r.get("title"),
+                    "labels": r.get("labels"),
+                    "text": r.get("text"),
+                    "document_id": r.get("document_id"),
+                }
+                for r in (raw.get("results") or [])
+            ]
+            product = nodes_to_observe(nodes, query=str(query))
+            product["results"] = raw.get("results") or []  # keep MCP raw hits too
+            return product
+        except Exception as exc:  # noqa: BLE001
+            return {"error": f"retrieve shape failed: {type(exc).__name__}: {exc}", **raw}
+
     return {
         "tirzah.search_memory": search_memory,
         "search_memory": search_memory,
+        "tirzah.retrieve": retrieve,
+        "retrieve": retrieve,
         "tirzah.coherence_check": coherence_check,
         "coherence_check": coherence_check,
     }

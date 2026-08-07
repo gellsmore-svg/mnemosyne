@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] — 2026-08-07
+
 ### Added
+- **Deborah estate adapter** (`tirzah.deborah`): `retrieve` / `search_memory`
+  dispatch for Deborah's thin PLAN interpreter — maps graph-memory search onto
+  a COGNITION **observe** product (evidence with provenance). Injectable search
+  for offline tests; fail-soft when Mongo is unreachable.
+- Manifest capability **`retrieve`** — Deborah ASSUMES/CALL name (`tirzah.retrieve`)
+  for the same surface as `search_memory`.
+- MCP handlers expose `retrieve` / `tirzah.retrieve` (observe-shaped results).
+
+### Added (prior unreleased)
 - MCP tool discovery/execution now align: the manifest declares a `search_memory`
   capability, and the Milcah handler is registered under the already-declared
   `coherence_check` tool (query/context args) — both appear in the MCP `tools/list`

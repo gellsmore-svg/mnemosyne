@@ -233,6 +233,43 @@ def build_manifest() -> Manifest:
                 },
                 tags=["memory", "retrieval"],
             ),
+            # Deborah PLAN ASSUMES / CALL name for the same retrieval surface.
+            capability(
+                "retrieve",
+                "Retrieve graph-memory evidence bearing on a claim or query (observe product). "
+                "Alias of search_memory used by Deborah crystallised plans (tirzah.retrieve).",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "claim or question to retrieve evidence for",
+                        },
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+                    },
+                    "required": ["query"],
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "evidence": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "statement": {"type": "string"},
+                                    "source": {"type": "string"},
+                                    "trace_ref": {"type": ["string", "null"]},
+                                },
+                            },
+                        },
+                        "query": {"type": "string"},
+                        "count": {"type": "integer"},
+                        "empty": {"type": "boolean"},
+                    },
+                },
+                tags=["memory", "retrieval", "observe", "deborah"],
+            ),
             _specialist_capability(),
             _semantic_capability(),
             capability(
