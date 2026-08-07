@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.1] — 2026-08-07
+
+### Added
+- Retrieve observe product marks every evidence item ``trust.level=untrusted``
+  (prompt-injection boundary for downstream LLM steps)
+
 ## [1.14.0] — 2026-08-07
 
 ### Added

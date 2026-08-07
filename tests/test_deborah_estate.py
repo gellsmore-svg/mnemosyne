@@ -37,6 +37,8 @@ def test_nodes_to_observe_maps_provenance():
     assert "closed loops" in ev["statement"]
     assert ev["source"].startswith("tirzah.retrieve:")
     assert ev["trace_ref"] == "n1"
+    assert ev["trust"]["level"] == "untrusted"
+    assert product["trust"]["level"] == "untrusted"
 
 
 def test_retrieve_handler_with_injected_search():
