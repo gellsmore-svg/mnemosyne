@@ -181,3 +181,40 @@ def capability_index_entries() -> dict[str, dict[str, Any]]:
             "tags": ["memory", "retrieval"],
         },
     }
+
+
+def try_live_db() -> Any | None:
+    """Return a live Tirzah Mongo database handle, or None if unavailable."""
+    try:
+        from tirzah.open_questions import try_get_database
+
+        return try_get_database()
+    except Exception:
+        return None
+
+
+def prepare_live_estate(
+    *,
+    db: Any = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Build live Deborah estate pieces when Mongo is reachable.
+
+    Returns ``{"ok": bool, "db": …, "dispatch": …, "index_entries": …, "error": …}``.
+    """
+    store = db if db is not None else try_live_db()
+    if store is None:
+        return {
+            "ok": False,
+            "db": None,
+            "dispatch": {},
+            "index_entries": capability_index_entries(),
+            "error": "tirzah mongo unavailable",
+        }
+    return {
+        "ok": True,
+        "db": store,
+        "dispatch": deborah_dispatch(db=store, limit=limit),
+        "index_entries": capability_index_entries(),
+        "error": None,
+    }

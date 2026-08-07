@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] — 2026-08-07
+
+### Added
+- `tirzah.open_questions` — Mongo store for Deborah residual open questions
+  (`deborah_open_questions` collection, indexes, list/record helpers)
+- `tirzah.deborah.prepare_live_estate` / `try_live_db` for live Deborah slice
+
 ## [1.13.0] — 2026-08-07
 
 ### Changed
