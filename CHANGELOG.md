@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.13.0] — 2026-08-07
 
+### Changed
+- Core dependencies pin **PyPI** releases (`hoglah`, `galeed`, `deborah`,
+  `keturah`) instead of git URLs so the wheel is index-publishable.
+
 ### Added
 - **Deborah estate adapter** (`tirzah.deborah`): `retrieve` / `search_memory`
   dispatch for Deborah's thin PLAN interpreter — maps graph-memory search onto

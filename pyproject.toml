@@ -33,10 +33,11 @@ dependencies = [
   "pydantic>=2.7",
   "pymongo>=4.7",
   "pyyaml>=6.0",
-  "hoglah @ git+https://github.com/gellsmore-svg/hoglah.git@v0.9.0",  # priority queue and LLM transport runtime
-  "galeed @ git+https://github.com/gellsmore-svg/galeed.git@v0.2.0",  # cross-project trace/log spine
-  "deborah @ git+https://github.com/gellsmore-svg/Deborah.git@v0.9.0",  # process grammar (import: deborah)
-  "keturah @ git+https://github.com/gellsmore-svg/keturah.git@v0.3.0",  # uniform LLM interface manifest
+  # PyPI pins (git URLs are rejected by the package index).
+  "hoglah>=0.8.0",   # priority queue and LLM transport runtime
+  "galeed>=0.2.0",   # cross-project trace/log spine
+  "deborah>=0.14.0", # process grammar (import: deborah)
+  "keturah>=0.3.0",  # uniform LLM interface manifest
 ]
 
 [project.optional-dependencies]
