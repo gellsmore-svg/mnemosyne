@@ -184,8 +184,6 @@ def test_run_framed_plan_offline_demo_path():
     }
     assert is_framed_substrate_plan(plan)
     # Inject empty search so retrieve never hits real Mongo/Hoglah
-    from tirzah.deborah import deborah_dispatch
-
     framed = run_framed_plan(
         plan,
         db=None,

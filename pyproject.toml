@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tirzah"
-version = "1.15.2"
+version = "1.15.3"
 description = "Local graph-based memory and retrieval layer for LLM interactions."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -101,7 +101,8 @@ Issues = "https://github.com/gellsmore-svg/tirzah/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"tirzah.web" = ["static/*.html", "static/*.js", "static/*.css"]
+# Mahlah-built UI (and any fallback static) under web/static/.
+"tirzah.web" = ["static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -112,8 +113,11 @@ markers = [
 
 [tool.ruff]
 line-length = 120
-
-[tool.ruff.lint]
-# E402/E731/E741 are established style in this codebase (late imports for
-# optional deps, seam lambdas, math-ish single letters); churn > value.
-ignore = ["E402", "E731", "E741"]
+# Pin the default-style rule set so upgrades do not silently expand CI.
+# (Unpinned ruff on CI pulled in PLR/etc. and reported ~500 style nits.)
+lint.select = ["E4", "E7", "E9", "F"]
+lint.ignore = [
+  "E402",  # late imports for optional deps
+  "E731",  # seam lambdas
+  "E741",  # math-ish single letters
+]

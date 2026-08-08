@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.3] — 2026-08-08
+
+### Fixed
+- CI ruff: pin rule set (`E4,E7,E9,F`) so unpinned ruff upgrades do not fail
+  the suite with hundreds of style nits.
+- Release packaging: build Mahlah UI into `tirzah.web.static` before
+  `python -m build`; include `static/**/*` in package data so wheel/sdist
+  smoke finds `index.html`.
+
 ## [1.15.2] — 2026-08-08
 
 ### Changed
@@ -257,7 +266,8 @@ while `pyproject` stayed at 1.2.0). All additions are backward-compatible.
 - Initial public release: local graph-based memory and retrieval for LLM
   interactions (MongoDB store, Ollama adapters, FastAPI + CLI surfaces).
 
-[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.2...HEAD
+[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.3...HEAD
+[1.15.3]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.2...v1.15.3
 [1.15.2]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.1...v1.15.2
 [1.15.1]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.0...v1.15.1
 [1.15.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.14.1...v1.15.0

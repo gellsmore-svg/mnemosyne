@@ -13,13 +13,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout Tirzah
         uses: actions/checkout@v5
+
+      - name: Checkout Mahlah (served UI)
+        uses: actions/checkout@v5
+        with:
+          repository: gellsmore-svg/Mahlah
+          path: Mahlah
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - name: Set up Node (build Mahlah UI into tirzah.web.static)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build and install Mahlah UI
+        env:
+          MAHLAH_DIR: ${{ github.workspace }}/Mahlah
+        run: |
+          bash scripts/build_ui.sh
 
       - name: Build Python artifacts
         run: |
