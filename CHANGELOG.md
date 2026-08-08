@@ -302,7 +302,8 @@ while `pyproject` stayed at 1.2.0). All additions are backward-compatible.
 - Initial public release: local graph-based memory and retrieval for LLM
   interactions (MongoDB store, Ollama adapters, FastAPI + CLI surfaces).
 
-[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.4...HEAD
+[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.16.0...HEAD
+[1.16.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.4...v1.16.0
 [1.15.4]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.3...v1.15.4
 [1.15.3]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.2...v1.15.3
 [1.15.2]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.1...v1.15.2
