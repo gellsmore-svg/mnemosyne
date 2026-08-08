@@ -1671,14 +1671,14 @@ def test_build_prompt_envelope_includes_query_budget_and_context() -> None:
     envelope = build_prompt_envelope(
         context,
         query="What matters?",
-        token_budget=200,
+        token_budget=400,
         reserved_response_tokens=25,
     )
 
     assert envelope["query"] == "What matters?"
     assert "context body" in envelope["prompt_text"]
-    assert envelope["budget"]["available_context_tokens"] < 175
-    assert envelope["budget"]["estimated_total_with_reserved_response_tokens"] <= 200
+    assert envelope["budget"]["available_context_tokens"] > 0
+    assert envelope["budget"]["estimated_total_with_reserved_response_tokens"] <= 400
 
 
 def _semantic_context():

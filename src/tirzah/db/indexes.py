@@ -6,6 +6,9 @@ from pymongo.database import Database
 
 from tirzah.db.schema import ensure_required_collections
 
+# Bump when index set changes so ensure_indexes re-runs (review M4).
+_INDEX_SCHEMA_VERSION = 2
+
 
 LABEL_DEFINITIONS = [
     {
@@ -119,8 +122,23 @@ DEFAULT_TRUST_WEIGHTING_PROFILES = [
 ]
 
 
-def ensure_indexes(db: Database) -> None:
+def ensure_indexes(db: Database, *, force: bool = False) -> None:
+    """Create indexes if the schema version marker is missing/stale (review M4).
+
+    Governance label/identity seeds still run every call (cheap upserts).
+    Pass ``force=True`` from ``tirzah migrate`` to rebuild the index set.
+    """
     ensure_required_collections(db)
+    meta = db.tirzah_meta
+    marker = meta.find_one({"_id": "indexes"})
+    if (
+        not force
+        and marker
+        and int(marker.get("version") or 0) == _INDEX_SCHEMA_VERSION
+    ):
+        seed_governance_defaults(db)
+        return
+
     for index in db.documents.list_indexes():
         if index.get("key") == {"source.path": 1} and index.get("unique"):
             db.documents.drop_index(index["name"])
@@ -207,6 +225,16 @@ def ensure_indexes(db: Database) -> None:
             {"$set": definition},
             upsert=True,
         )
+    meta.update_one(
+        {"_id": "indexes"},
+        {
+            "$set": {
+                "version": _INDEX_SCHEMA_VERSION,
+                "applied_at": datetime.now(timezone.utc),
+            }
+        },
+        upsert=True,
+    )
     seed_governance_defaults(db)
 
 

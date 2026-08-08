@@ -24,6 +24,7 @@ REQUIRED_COLLECTIONS = (
     "retrieval_traces",
     "semantic_edge_candidates",
     "sessions",
+    "tirzah_meta",
     "trees",
     "trust_weighting_profiles",
 )

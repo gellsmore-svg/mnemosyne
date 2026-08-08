@@ -1,27 +1,37 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+logger = logging.getLogger("tirzah.config")
 
 
-class MongoConfig(BaseModel):
+class _StrictModel(BaseModel):
+    """Reject unknown keys so typos cannot silently disable controls (review F2/H3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MongoConfig(_StrictModel):
     uri: str = "mongodb://localhost:27017"
     database: str = "tirzah_dev"
 
 
-class PathConfig(BaseModel):
+class PathConfig(_StrictModel):
     ingest: Path = Path("data/ingest")
     archive: Path = Path("data/archive")
     dead_letter: Path = Path("data/dead_letter")
     staging: Path = Path("data/staging")
 
 
-class RuntimeConfig(BaseModel):
+class RuntimeConfig(_StrictModel):
     model_adapter: str = "mock"
-    answer_adapter: str = "ollama_cli"
+    # Prefer HTTP: the CLI binary is often missing even when Ollama is up (F6).
+    answer_adapter: str = "ollama_http"
     ingestion_adapter: str = "mock"
     embedding_adapter: str = "mock"
     allow_http_ingestion_adapters: bool = False
@@ -61,8 +71,13 @@ class RuntimeConfig(BaseModel):
     web_max_content_bytes: int = 500_000
     web_max_content_chars: int = 8_000
     web_allow_private_search_endpoint: bool = False
+    # API auth token (header X-Tirzah-Api-Token or Authorization: Bearer …).
+    # Empty = no token required. Prefer setting this when binding beyond loopback.
     web_api_token: str = ""
-    web_localhost_only: bool = False
+    # Default True: refuse non-loopback API clients (review F1/H1). Docker
+    # compose binds the *host* to 127.0.0.1; the container may listen on 0.0.0.0
+    # internally while this still blocks off-machine clients via the host map.
+    web_localhost_only: bool = True
     web_max_upload_bytes: int = Field(default=1_000_000, ge=1)
     # Blend lexical + query-vector similarity in node search (ADR-020). On by
     # default as of the real-corpus validation; only takes effect with a real
@@ -134,41 +149,41 @@ class RuntimeConfig(BaseModel):
     hoglah_redis_results_stream: str = "hoglah-results"
 
 
-class QueueConfig(BaseModel):
-    max_attempts: int = 3
+class QueueConfig(_StrictModel):
+    max_attempts: int = Field(default=3, ge=1)
 
 
-class RetrievalConfig(BaseModel):
-    context_char_budget: int = 4000
-    prompt_token_budget: int = 2000
-    reserved_response_tokens: int = 500
-    memory_agent_max_iterations: int = 4
+class RetrievalConfig(_StrictModel):
+    context_char_budget: int = Field(default=4000, ge=256)
+    prompt_token_budget: int = Field(default=2000, ge=64)
+    reserved_response_tokens: int = Field(default=500, ge=16)
+    memory_agent_max_iterations: int = Field(default=4, ge=1, le=50)
     # Conversational memory: how many prior turns of the session to thread into
     # the prompt, and how much of each answer to keep.
-    conversation_history_turns: int = 6
-    conversation_history_answer_chars: int = 600
+    conversation_history_turns: int = Field(default=6, ge=0, le=100)
+    conversation_history_answer_chars: int = Field(default=600, ge=0)
     # Phase 2: also surface semantically-relevant EARLIER turns (beyond the recent
     # window) by embedding similarity. Off by default — it embeds each turn, which
     # adds latency; enable for long conversations with a real embedder.
     conversation_semantic_recall: bool = False
-    conversation_semantic_recall_k: int = 3
+    conversation_semantic_recall_k: int = Field(default=3, ge=1, le=50)
     # Phase 3: decompose turns into typed semantic chunks (topic/intent/domain/...).
     # Off by default — it runs an extra LLM call per turn (async + durable when on).
     conversation_chunking: bool = False
     # Deep retrieval mode (ADR-020) — bounds for the agent loop + Python pre-rank.
-    deep_max_iterations: int = 4
-    deep_max_candidates: int = 50
-    deep_shortlist_size: int = 12
-    deep_page_size: int = 5
+    deep_max_iterations: int = Field(default=4, ge=1, le=50)
+    deep_max_candidates: int = Field(default=50, ge=1, le=10_000)
+    deep_shortlist_size: int = Field(default=12, ge=1, le=500)
+    deep_page_size: int = Field(default=5, ge=1, le=100)
     # Phase 4: recursive Context Sufficiency Score driving the deep loop.
     deep_sufficiency_scoring: bool = True
     deep_sufficiency_stop: float = 9.0  # stop when sufficiency reaches this
     deep_sufficiency_plateau_floor: float = 8.0  # stop at/above this if plateaued
-    deep_plateau_passes: int = 3
+    deep_plateau_passes: int = Field(default=3, ge=1, le=20)
     deep_plateau_epsilon: float = 0.2
 
 
-class AppConfig(BaseModel):
+class AppConfig(_StrictModel):
     mongo: MongoConfig = Field(default_factory=MongoConfig)
     paths: PathConfig = Field(default_factory=PathConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
@@ -227,4 +242,9 @@ def load_config(path: Path | str = "config.yaml") -> AppConfig:
     data = {}
     if config_path.exists():
         data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    return AppConfig.model_validate(_apply_env_overrides(data))
+    try:
+        return AppConfig.model_validate(_apply_env_overrides(data))
+    except Exception as exc:
+        # Surface unknown keys / validation failures clearly (review F2).
+        logger.error("Invalid Tirzah config at %s: %s", config_path, exc)
+        raise

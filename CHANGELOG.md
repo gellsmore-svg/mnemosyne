@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-08-08
+
+**Action the 2026-08-08 functional/code review**
+([docs/review-2026-08-08.md](docs/review-2026-08-08.md)).
+
+### Security / defaults
+- `web_localhost_only` defaults to **true** (fail closed for non-loopback API)
+- Config models use `extra="forbid"` so typos cannot silently disable auth
+- API token comparison uses `hmac.compare_digest`
+- `/api/health/` is public; loopback setting documented as direct-bind only
+- Docker Compose documents loopback host publish + `TIRZAH_WEB_LOCALHOST_ONLY`
+
+### Trust boundary
+- Primary answer / agentic envelopes mark retrieved corpus text as **untrusted
+  evidence** (same spirit as the web-research rule)
+
+### CLI / ops
+- `tirzah ask` exits **1** when `ok` is false
+- Every subcommand has `help=`; subcommand errors print **subcommand** usage
+- Default `answer_adapter` is `ollama_http` (works when only the daemon is present)
+- `ensure_indexes` gated by version marker (full rebuild on `migrate`)
+- FastAPI lifespan joins startup backfill threads and closes the Mongo client
+
+### Config bounds
+- `memory_agent_max_iterations`, `deep_max_*`, and related retrieval fields
+  require `ge=1` (and sane upper caps) instead of silently clamping
+
+### Docs
+- `docs/install.md` and `config.example.yaml` document API guardrails
+
 ## [1.15.4] — 2026-08-08
 
 ### Changed
@@ -272,7 +302,8 @@ while `pyproject` stayed at 1.2.0). All additions are backward-compatible.
 - Initial public release: local graph-based memory and retrieval for LLM
   interactions (MongoDB store, Ollama adapters, FastAPI + CLI surfaces).
 
-[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.3...HEAD
+[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.4...HEAD
+[1.15.4]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.3...v1.15.4
 [1.15.3]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.2...v1.15.3
 [1.15.2]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.1...v1.15.2
 [1.15.1]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.0...v1.15.1

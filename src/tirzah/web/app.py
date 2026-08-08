@@ -342,15 +342,19 @@ class ApplyEvolutionRequest(BaseModel):
     created_by: str = "operator"
 
 
-PUBLIC_API_PATHS = {"/api/health"}
+PUBLIC_API_PATHS = {"/api/health", "/api/health/"}
 
 
 def _install_api_guardrails(app: FastAPI, config: Any) -> None:
     @app.middleware("http")
     async def api_guardrails(request: Request, call_next):
-        path = request.url.path
-        if path.startswith("/api/") and path not in PUBLIC_API_PATHS:
-            if getattr(config.runtime, "web_localhost_only", False) and not _is_loopback_request(request):
+        raw = request.url.path
+        path = raw.rstrip("/") or "/"
+        public_paths = {p.rstrip("/") or "/" for p in PUBLIC_API_PATHS}
+        if path.startswith("/api/") and path not in public_paths:
+            # Fail closed when attributes are missing (review H1).
+            localhost_only = bool(getattr(config.runtime, "web_localhost_only", True))
+            if localhost_only and not _is_loopback_request(request):
                 return JSONResponse(
                     {"ok": False, "error": "localhost_required"},
                     status_code=403,
@@ -366,44 +370,68 @@ def _install_api_guardrails(app: FastAPI, config: Any) -> None:
 
 
 def _is_loopback_request(request: Request) -> bool:
+    """True when the *direct* peer is loopback.
+
+    Assumes a direct bind (not a reverse proxy). Behind a proxy,
+    ``request.client.host`` is the proxy; set ``web_localhost_only: false`` and
+    put auth on the proxy instead (review M7).
+    """
     host = (request.client.host if request.client else "") or ""
     return host in {"127.0.0.1", "::1", "localhost", "testclient"}
 
 
 def _authorized_api_token(request: Request, token: str) -> bool:
+    import hmac
+
     supplied = request.headers.get("x-tirzah-api-token") or ""
-    if supplied == token:
+    if supplied and hmac.compare_digest(supplied, token):
         return True
     auth = request.headers.get("authorization") or ""
     scheme, _, value = auth.partition(" ")
-    return scheme.lower() == "bearer" and value == token
+    if scheme.lower() == "bearer" and value:
+        return hmac.compare_digest(value, token)
+    return False
 
 
 def create_app() -> FastAPI:
     config = load_config()
     db = get_database(config.mongo)
     ensure_indexes(db)
+    _bg_threads: list[threading.Thread] = []
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         # Restart-safe catch-up: embed/chunk any turns the in-process queue missed.
         # Runs on real serve startup (not on plain TestClient import). No-op if the
-        # respective feature is off. Background + best-effort.
+        # respective feature is off. Background + best-effort; joined on shutdown
+        # before closing Mongo (review M2 / L2).
         if config.retrieval.conversation_semantic_recall:
-            threading.Thread(
+            t = threading.Thread(
                 target=backfill_turn_embeddings,
                 args=(db, config, config.runtime),
                 kwargs={"limit": 1000},
                 daemon=True,
-            ).start()
+                name="tirzah-backfill-turns",
+            )
+            t.start()
+            _bg_threads.append(t)
         if config.retrieval.conversation_chunking:
-            threading.Thread(
+            t = threading.Thread(
                 target=backfill_chunks,
                 args=(db, config, config.runtime),
                 kwargs={"limit": 50},  # chunking is a slow LLM call; modest per-startup catch-up
                 daemon=True,
-            ).start()
+                name="tirzah-backfill-chunks",
+            )
+            t.start()
+            _bg_threads.append(t)
         yield
+        for t in _bg_threads:
+            t.join(timeout=2.0)
+        try:
+            db.client.close()
+        except Exception:
+            pass
 
     app = FastAPI(title="Tirzah", lifespan=lifespan)
     _install_api_guardrails(app, config)

@@ -16,6 +16,16 @@ docker compose up
 
 Open `http://127.0.0.1:8765/`.
 
+Compose maps the app to **host loopback only** (`127.0.0.1:8765`). Inside the
+container the process may listen on `0.0.0.0`, but:
+
+- `runtime.web_localhost_only` defaults to **true** — non-loopback API clients
+  receive `403 localhost_required`.
+- Set `runtime.web_api_token` (or env `TIRZAH_WEB_API_TOKEN`) to require
+  `X-Tirzah-Api-Token` / `Authorization: Bearer …` on every `/api/*` route
+  except `/api/health`. Unknown config keys are rejected (typos no longer
+  silently disable auth).
+
 The init command creates `config.yaml` and the local data directories. In Docker
 mode it writes `mongo.uri: mongodb://mongo:27017`, so the app talks to the
 Compose-managed MongoDB service.

@@ -720,12 +720,28 @@ def serve_app(host: str, port: int, reload: bool = False) -> None:
     uvicorn.run("tirzah.web.app:app", host=host, port=port, reload=reload)
 
 
+def _add_cmd(sub, name: str, **kwargs):
+    """add_parser with a default help= so `tirzah --help` is usable (review F5)."""
+    kwargs.setdefault("help", name.replace("-", " "))
+    return sub.add_parser(name, **kwargs)
+
+
+class _SubcommandParser(argparse.ArgumentParser):
+    """Print this subcommand's usage on error, not the top-level command list."""
+
+    def error(self, message: str) -> None:  # type: ignore[override]
+        self.print_usage(sys.stderr)
+        self.exit(2, f"{self.prog}: error: {message}\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="tirzah")
     parser.add_argument("--config", default="config.yaml")
 
-    subcommands = parser.add_subparsers(dest="command", required=True)
-    init = subcommands.add_parser("init")
+    subcommands = parser.add_subparsers(
+        dest="command", required=True, parser_class=_SubcommandParser
+    )
+    init = _add_cmd(subcommands, "init")
     init.add_argument("--docker", action="store_true")
     init.add_argument("--force", action="store_true")
     init.add_argument("--non-interactive", action="store_true")
@@ -735,12 +751,12 @@ def main() -> None:
         default=None,
         help="Runtime defaults to write. Interactive mode prompts when omitted.",
     )
-    serve = subcommands.add_parser("serve")
+    serve = _add_cmd(subcommands, "serve")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument("--reload", action="store_true")
-    subcommands.add_parser("db-ping")
-    migrate_parser = subcommands.add_parser(
+    _add_cmd(subcommands, "db-ping")
+    migrate_parser = _add_cmd(subcommands, 
         "migrate",
         help="Run all pending schema migrations in order (idempotent); the "
         "consolidated entry point for the backfill-* one-shots.",
@@ -749,58 +765,58 @@ def main() -> None:
                                 help="Show applied + pending migrations without running anything.")
     migrate_parser.add_argument("--dry-run", action="store_true",
                                 help="List the migrations that would run, without applying them.")
-    subcommands.add_parser("backfill-source-metadata")
-    subcommands.add_parser("backfill-schema-metadata")
-    graph_status = subcommands.add_parser("graph-status")
+    _add_cmd(subcommands, "backfill-source-metadata")
+    _add_cmd(subcommands, "backfill-schema-metadata")
+    graph_status = _add_cmd(subcommands, "graph-status")
     graph_status.add_argument("--limit", type=int, default=10)
     graph_status.add_argument("--format", choices=["json", "text"], default="json")
-    structural_edges = subcommands.add_parser("backfill-structural-graph-edges")
+    structural_edges = _add_cmd(subcommands, "backfill-structural-graph-edges")
     structural_edges.add_argument("--limit", type=int, default=None)
-    embedding_backfill = subcommands.add_parser("backfill-embeddings")
+    embedding_backfill = _add_cmd(subcommands, "backfill-embeddings")
     add_profile_backfill_arguments(embedding_backfill)
-    turn_embedding_backfill = subcommands.add_parser("backfill-turn-embeddings")
+    turn_embedding_backfill = _add_cmd(subcommands, "backfill-turn-embeddings")
     turn_embedding_backfill.add_argument("--limit", type=int, default=1000)
-    chunk_backfill = subcommands.add_parser("backfill-chunks")
+    chunk_backfill = _add_cmd(subcommands, "backfill-chunks")
     chunk_backfill.add_argument("--limit", type=int, default=1000)
-    profile_backfill = subcommands.add_parser("backfill-profiles")
+    profile_backfill = _add_cmd(subcommands, "backfill-profiles")
     add_profile_backfill_arguments(profile_backfill)
-    embedding_jobs = subcommands.add_parser("embedding-backfill-jobs")
+    embedding_jobs = _add_cmd(subcommands, "embedding-backfill-jobs")
     embedding_jobs.add_argument("--status", default=None)
     embedding_jobs.add_argument("--limit", type=int, default=20)
-    profile_jobs = subcommands.add_parser("profile-backfill-jobs")
+    profile_jobs = _add_cmd(subcommands, "profile-backfill-jobs")
     profile_jobs.add_argument("--status", default=None)
     profile_jobs.add_argument("--limit", type=int, default=20)
-    queue_embedding_job = subcommands.add_parser("queue-embedding-backfill")
+    queue_embedding_job = _add_cmd(subcommands, "queue-embedding-backfill")
     queue_embedding_job.add_argument("--limit", type=int, default=100)
     queue_embedding_job.add_argument("--label", default=None)
     queue_embedding_job.add_argument("--document-id", default=None)
     queue_embedding_job.add_argument("--force", action="store_true")
     queue_embedding_job.add_argument("--created-by", default="cli")
-    queue_profile_job = subcommands.add_parser("queue-profile-backfill")
+    queue_profile_job = _add_cmd(subcommands, "queue-profile-backfill")
     queue_profile_job.add_argument("--limit", type=int, default=100)
     queue_profile_job.add_argument("--label", default=None)
     queue_profile_job.add_argument("--document-id", default=None)
     queue_profile_job.add_argument("--force", action="store_true")
     queue_profile_job.add_argument("--created-by", default="cli")
-    process_embedding_job = subcommands.add_parser("process-embedding-backfill")
+    process_embedding_job = _add_cmd(subcommands, "process-embedding-backfill")
     process_embedding_job.add_argument("--max-batches", type=int, default=1)
-    process_profile_job = subcommands.add_parser("process-profile-backfill")
+    process_profile_job = _add_cmd(subcommands, "process-profile-backfill")
     process_profile_job.add_argument("--max-batches", type=int, default=1)
-    subcommands.add_parser("enqueue-inbox")
-    subcommands.add_parser("process-next")
-    subcommands.add_parser("process-inbox")
-    subcommands.add_parser("queue-status")
-    memory_health = subcommands.add_parser("memory-health")
+    _add_cmd(subcommands, "enqueue-inbox")
+    _add_cmd(subcommands, "process-next")
+    _add_cmd(subcommands, "process-inbox")
+    _add_cmd(subcommands, "queue-status")
+    memory_health = _add_cmd(subcommands, "memory-health")
     memory_health.add_argument("--format", choices=["json", "text"], default="text")
-    config_status = subcommands.add_parser(
+    config_status = _add_cmd(subcommands, 
         "config-status",
         help="Show the resolved runtime: active config file, adapters + their "
         "capabilities, models, embedding dims, and the Mahalath seam state.",
     )
     config_status.add_argument("--format", choices=["json", "text"], default="text")
-    subcommands.add_parser("labels")
-    subcommands.add_parser("sessions")
-    embedding_smoke = subcommands.add_parser("embedding-smoke")
+    _add_cmd(subcommands, "labels")
+    _add_cmd(subcommands, "sessions")
+    embedding_smoke = _add_cmd(subcommands, "embedding-smoke")
     embedding_smoke.add_argument("text")
     embedding_smoke.add_argument(
         "--adapter",
@@ -810,42 +826,42 @@ def main() -> None:
     embedding_smoke.add_argument("--model", default=None)
     embedding_smoke.add_argument("--allow-http-diagnostic", action="store_true")
 
-    agent_identities = subcommands.add_parser("agent-identities")
+    agent_identities = _add_cmd(subcommands, "agent-identities")
     agent_identities.add_argument("--limit", type=int, default=20)
-    agent_identity = subcommands.add_parser("agent-identity")
+    agent_identity = _add_cmd(subcommands, "agent-identity")
     agent_identity.add_argument("identity_id")
 
-    trust_profiles = subcommands.add_parser("trust-weighting-profiles")
+    trust_profiles = _add_cmd(subcommands, "trust-weighting-profiles")
     trust_profiles.add_argument("--limit", type=int, default=20)
-    trust_profile = subcommands.add_parser("trust-weighting-profile")
+    trust_profile = _add_cmd(subcommands, "trust-weighting-profile")
     trust_profile.add_argument("weighting_profile_id")
-    trust_diagnostic = subcommands.add_parser("trust-diagnostic")
+    trust_diagnostic = _add_cmd(subcommands, "trust-diagnostic")
     trust_diagnostic.add_argument("node_id")
     trust_diagnostic.add_argument("--profile-id", default=None)
 
-    governance_policies = subcommands.add_parser("governance-policies")
+    governance_policies = _add_cmd(subcommands, "governance-policies")
     governance_policies.add_argument("--limit", type=int, default=20)
-    governance_policy = subcommands.add_parser("governance-policy")
+    governance_policy = _add_cmd(subcommands, "governance-policy")
     governance_policy.add_argument("policy_id")
 
-    process_objects = subcommands.add_parser("process-objects")
+    process_objects = _add_cmd(subcommands, "process-objects")
     process_objects.add_argument("--limit", type=int, default=20)
-    process_object = subcommands.add_parser("process-object")
+    process_object = _add_cmd(subcommands, "process-object")
     process_object.add_argument("process_id")
 
-    process_runs = subcommands.add_parser("process-runs")
+    process_runs = _add_cmd(subcommands, "process-runs")
     process_runs.add_argument("--session-id", default=None)
     process_runs.add_argument("--status", default=None, choices=sorted(PROCESS_RUN_STATUSES))
     process_runs.add_argument("--limit", type=int, default=20)
-    process_run = subcommands.add_parser("process-run")
+    process_run = _add_cmd(subcommands, "process-run")
     process_run.add_argument("run_id")
-    start_process_run = subcommands.add_parser("start-process-run")
+    start_process_run = _add_cmd(subcommands, "start-process-run")
     start_process_run.add_argument("process_id")
     start_process_run.add_argument("--session-id", default="default")
     start_process_run.add_argument("--identity-id", default=None)
     start_process_run.add_argument("--current-step-id", default=None)
     start_process_run.add_argument("--status", default="active", choices=sorted(PROCESS_RUN_STATUSES))
-    update_process_run_parser = subcommands.add_parser("update-process-run")
+    update_process_run_parser = _add_cmd(subcommands, "update-process-run")
     update_process_run_parser.add_argument("run_id")
     update_process_run_parser.add_argument("--status", default=None, choices=sorted(PROCESS_RUN_STATUSES))
     update_process_run_parser.add_argument("--current-step-id", default=None)
@@ -856,50 +872,50 @@ def main() -> None:
     update_process_run_parser.add_argument("--exception-reviewer", default=None)
     update_process_run_parser.add_argument("--exception-note", default=None)
 
-    active_documents = subcommands.add_parser("active-documents")
+    active_documents = _add_cmd(subcommands, "active-documents")
     active_documents.add_argument("--session-id", default="default")
     active_documents.add_argument("--limit", type=int, default=20)
-    continuity = subcommands.add_parser("session-continuity")
+    continuity = _add_cmd(subcommands, "session-continuity")
     continuity.add_argument("--session-id", default="default")
     continuity.add_argument("--limit", type=int, default=5)
     continuity.add_argument("--format", choices=["json", "text"], default="text")
-    restart_render = subcommands.add_parser("restart-render")
+    restart_render = _add_cmd(subcommands, "restart-render")
     restart_render.add_argument("--session-id", default="default")
     restart_render.add_argument("--limit", type=int, default=5)
     restart_render.add_argument(
         "--output", default=None, help="Write the rendered markdown to this path instead of stdout."
     )
 
-    output_jobs = subcommands.add_parser("output-ingestion")
+    output_jobs = _add_cmd(subcommands, "output-ingestion")
     output_jobs.add_argument("--session-id", default=None)
     output_jobs.add_argument("--status", default=None)
     output_jobs.add_argument("--limit", type=int, default=20)
-    process_output_jobs = subcommands.add_parser("process-output-ingestion")
+    process_output_jobs = _add_cmd(subcommands, "process-output-ingestion")
     process_output_jobs.add_argument("--session-id", default=None)
     process_output_jobs.add_argument("--job-id", default=None)
 
-    review_outputs = subcommands.add_parser("review-generated-output")
+    review_outputs = _add_cmd(subcommands, "review-generated-output")
     review_outputs.add_argument("--endorsement", default=None, choices=sorted(ENDORSEMENT_LABELS))
     review_outputs.add_argument("--limit", type=int, default=20)
 
-    endorse_node = subcommands.add_parser("endorse-node")
+    endorse_node = _add_cmd(subcommands, "endorse-node")
     endorse_node.add_argument("node_id")
     endorse_node.add_argument("--endorsement", required=True, choices=sorted(ENDORSEMENT_LABELS))
     endorse_node.add_argument("--reviewer", default="user")
     endorse_node.add_argument("--note", default=None)
 
-    create_session_cmd = subcommands.add_parser("create-session")
+    create_session_cmd = _add_cmd(subcommands, "create-session")
     create_session_cmd.add_argument("--title", default=None)
     create_session_cmd.add_argument("--session-id", default=None)
 
-    list_docs = subcommands.add_parser("list-docs")
+    list_docs = _add_cmd(subcommands, "list-docs")
     list_docs.add_argument("--limit", type=int, default=20)
     list_docs.add_argument("--format", choices=["json", "text"], default="json")
 
-    show_doc = subcommands.add_parser("show-doc")
+    show_doc = _add_cmd(subcommands, "show-doc")
     show_doc.add_argument("document_id")
 
-    search = subcommands.add_parser("search-nodes")
+    search = _add_cmd(subcommands, "search-nodes")
     search.add_argument("--query", default=None)
     search.add_argument("--label", default=None)
     search.add_argument("--endorsement", default=None)
@@ -908,24 +924,24 @@ def main() -> None:
     search.add_argument("--created-before", default=None)
     search.add_argument("--limit", type=int, default=20)
 
-    context = subcommands.add_parser("node-context")
+    context = _add_cmd(subcommands, "node-context")
     context.add_argument("node_id")
     context.add_argument("--child-limit", type=int, default=20)
 
-    graph_edges = subcommands.add_parser("graph-edges")
+    graph_edges = _add_cmd(subcommands, "graph-edges")
     graph_edges.add_argument("node_id")
     graph_edges.add_argument("--direction", choices=["incoming", "outgoing", "both"], default="both")
     graph_edges.add_argument("--relation-type", default=None)
     graph_edges.add_argument("--limit", type=int, default=10)
 
-    proximity = subcommands.add_parser("expand-proximity")
+    proximity = _add_cmd(subcommands, "expand-proximity")
     proximity.add_argument("node_id")
     proximity.add_argument("--direction", choices=["incoming", "outgoing", "both"], default="both")
     proximity.add_argument("--relation-type", default=None)
     proximity.add_argument("--limit", type=int, default=10)
     proximity.add_argument("--format", choices=["json", "text"], default="json")
 
-    graph_paths = subcommands.add_parser("expand-graph-paths")
+    graph_paths = _add_cmd(subcommands, "expand-graph-paths")
     graph_paths.add_argument("node_id")
     graph_paths.add_argument("--direction", choices=["incoming", "outgoing", "both"], default="both")
     graph_paths.add_argument("--relation-type", default=None)
@@ -933,43 +949,43 @@ def main() -> None:
     graph_paths.add_argument("--branch-limit", type=int, default=5)
     graph_paths.add_argument("--limit", type=int, default=10)
 
-    semantic_candidates = subcommands.add_parser("semantic-candidates")
+    semantic_candidates = _add_cmd(subcommands, "semantic-candidates")
     semantic_candidates.add_argument("node_id")
     semantic_candidates.add_argument("--include-same-document", action="store_true")
     semantic_candidates.add_argument("--limit", type=int, default=10)
 
-    vector_candidates = subcommands.add_parser("vector-semantic-candidates")
+    vector_candidates = _add_cmd(subcommands, "vector-semantic-candidates")
     add_profile_candidate_arguments(vector_candidates)
-    profile_candidates = subcommands.add_parser("profile-semantic-candidates")
+    profile_candidates = _add_cmd(subcommands, "profile-semantic-candidates")
     add_profile_candidate_arguments(profile_candidates)
 
-    enqueue_semantic = subcommands.add_parser("enqueue-semantic-candidates")
+    enqueue_semantic = _add_cmd(subcommands, "enqueue-semantic-candidates")
     enqueue_semantic.add_argument("node_id")
     enqueue_semantic.add_argument("--include-same-document", action="store_true")
     enqueue_semantic.add_argument("--relation-type", default="related_to")
     enqueue_semantic.add_argument("--created-by", default="user")
     enqueue_semantic.add_argument("--limit", type=int, default=10)
 
-    enqueue_vector_semantic = subcommands.add_parser("enqueue-vector-semantic-candidates")
+    enqueue_vector_semantic = _add_cmd(subcommands, "enqueue-vector-semantic-candidates")
     add_enqueue_profile_candidate_arguments(enqueue_vector_semantic)
-    enqueue_profile_semantic = subcommands.add_parser("enqueue-profile-semantic-candidates")
+    enqueue_profile_semantic = _add_cmd(subcommands, "enqueue-profile-semantic-candidates")
     add_enqueue_profile_candidate_arguments(enqueue_profile_semantic)
 
-    enqueue_vector_semantic_batch = subcommands.add_parser(
+    enqueue_vector_semantic_batch = _add_cmd(subcommands, 
         "enqueue-vector-semantic-batch"
     )
     add_enqueue_profile_batch_arguments(enqueue_vector_semantic_batch)
-    enqueue_profile_semantic_batch = subcommands.add_parser(
+    enqueue_profile_semantic_batch = _add_cmd(subcommands, 
         "enqueue-profile-semantic-batch"
     )
     add_enqueue_profile_batch_arguments(enqueue_profile_semantic_batch)
 
-    semantic_queue = subcommands.add_parser("semantic-edge-candidates")
+    semantic_queue = _add_cmd(subcommands, "semantic-edge-candidates")
     semantic_queue.add_argument("--status", default="pending")
     semantic_queue.add_argument("--limit", type=int, default=20)
     semantic_queue.add_argument("--format", choices=["json", "text"], default="json")
 
-    semantic_candidate_review = subcommands.add_parser("review-semantic-edge-candidate")
+    semantic_candidate_review = _add_cmd(subcommands, "review-semantic-edge-candidate")
     semantic_candidate_review.add_argument("candidate_id")
     semantic_candidate_review.add_argument("--action", required=True, choices=["accept", "reject"])
     semantic_candidate_review.add_argument("--reviewer", default="user")
@@ -977,7 +993,7 @@ def main() -> None:
     semantic_candidate_review.add_argument("--weight", type=float, default=0.7)
     semantic_candidate_review.add_argument("--confidence", type=float, default=0.6)
 
-    semantic_edge = subcommands.add_parser("create-semantic-edge")
+    semantic_edge = _add_cmd(subcommands, "create-semantic-edge")
     semantic_edge.add_argument("source_node_id")
     semantic_edge.add_argument("target_node_id")
     semantic_edge.add_argument("--relation-type", default="related_to")
@@ -986,14 +1002,14 @@ def main() -> None:
     semantic_edge.add_argument("--reviewer", default="user")
     semantic_edge.add_argument("--note", default=None)
 
-    compile_ctx = subcommands.add_parser("compile-context")
+    compile_ctx = _add_cmd(subcommands, "compile-context")
     compile_ctx.add_argument("node_id")
     compile_ctx.add_argument("--ancestor-depth", type=int, default=3)
     compile_ctx.add_argument("--sibling-window", type=int, default=1)
     compile_ctx.add_argument("--child-depth", type=int, default=1)
     compile_ctx.add_argument("--child-limit", type=int, default=20)
 
-    render_ctx = subcommands.add_parser("render-context")
+    render_ctx = _add_cmd(subcommands, "render-context")
     render_ctx.add_argument("node_id")
     render_ctx.add_argument("--ancestor-depth", type=int, default=3)
     render_ctx.add_argument("--sibling-window", type=int, default=1)
@@ -1002,7 +1018,7 @@ def main() -> None:
     render_ctx.add_argument("--char-budget", type=int, default=None)
     render_ctx.add_argument("--json", action="store_true")
 
-    prompt = subcommands.add_parser("build-prompt")
+    prompt = _add_cmd(subcommands, "build-prompt")
     prompt.add_argument("node_id")
     prompt.add_argument("--query", required=True)
     prompt.add_argument("--ancestor-depth", type=int, default=3)
@@ -1014,7 +1030,7 @@ def main() -> None:
     prompt.add_argument("--system-instruction", default=None)
     prompt.add_argument("--text", action="store_true")
 
-    ask = subcommands.add_parser("ask")
+    ask = _add_cmd(subcommands, "ask")
     ask.add_argument("query")
     ask.add_argument("--node-id", default=None)
     ask.add_argument("--session-id", default="default")
@@ -1029,7 +1045,7 @@ def main() -> None:
     )
     ask.add_argument("--json", action="store_true")
 
-    chat = subcommands.add_parser("chat")
+    chat = _add_cmd(subcommands, "chat")
     chat.add_argument("--node-id", default=None)
     chat.add_argument("--session-id", default="default")
     chat.add_argument("--adapter", default=None)
@@ -1037,14 +1053,14 @@ def main() -> None:
     chat.add_argument("--retrieval-mode", choices=["direct", "agentic", "deep"], default=None)
     chat.add_argument("--web", action="store_true", help="allow bounded web search/fetch")
 
-    history = subcommands.add_parser("history")
+    history = _add_cmd(subcommands, "history")
     history.add_argument("--session-id", default=None)
     history.add_argument("--query", default=None)
     history.add_argument("--adapter", default=None)
     history.add_argument("--model", default=None)
     history.add_argument("--limit", type=int, default=10)
 
-    plan_executions = subcommands.add_parser("plan-executions")
+    plan_executions = _add_cmd(subcommands, "plan-executions")
     plan_exec_sub = plan_executions.add_subparsers(dest="plan_exec_command", required=True)
     plan_exec_list = plan_exec_sub.add_parser("list")
     plan_exec_list.add_argument("--session-id", default="default")
@@ -1055,7 +1071,7 @@ def main() -> None:
     plan_exec_show.add_argument("--revision", type=int, required=True)
     plan_exec_show.add_argument("--session-id", default="default")
 
-    process_p = subcommands.add_parser("process", help="Human-defined process templates + instances.")
+    process_p = _add_cmd(subcommands, "process", help="Human-defined process templates + instances.")
     process_sub = process_p.add_subparsers(dest="process_command", required=True)
     process_sub.add_parser("seed-presets")
     p_templates = process_sub.add_parser("templates")
@@ -1124,16 +1140,16 @@ def main() -> None:
     o_validate.add_argument("instance_id")
     o_validate.add_argument("--answer", default=None, help="Work text, or '-' for stdin.")
 
-    queue_recent = subcommands.add_parser("queue-recent")
+    queue_recent = _add_cmd(subcommands, "queue-recent")
     queue_recent.add_argument("--limit", type=int, default=10)
     queue_recent.add_argument("--status", default=None)
     queue_recent.add_argument("--query", default=None)
     queue_recent.add_argument("--reason", default=None)
 
-    show_tree = subcommands.add_parser("show-tree")
+    show_tree = _add_cmd(subcommands, "show-tree")
     show_tree.add_argument("document_id")
 
-    ingest_one = subcommands.add_parser("ingest-one")
+    ingest_one = _add_cmd(subcommands, "ingest-one")
     ingest_one.add_argument("path")
     ingest_one.add_argument(
         "--label",
@@ -1147,7 +1163,7 @@ def main() -> None:
         help="Optional epoch identifier to stamp on the document, tree, and nodes.",
     )
 
-    ingest_folder = subcommands.add_parser("ingest-folder")
+    ingest_folder = _add_cmd(subcommands, "ingest-folder")
     ingest_folder.add_argument("path")
     ingest_folder.add_argument(
         "--label",
@@ -1172,7 +1188,7 @@ def main() -> None:
         help="Include every per-file result in the JSON output. By default only a summary is printed.",
     )
 
-    rebuild_doc = subcommands.add_parser("rebuild-document")
+    rebuild_doc = _add_cmd(subcommands, "rebuild-document")
     rebuild_doc.add_argument("document_id")
     rebuild_doc.add_argument(
         "--source",
@@ -1190,7 +1206,7 @@ def main() -> None:
         help="Optional epoch identifier to stamp on replacement trees/nodes.",
     )
 
-    rebuild_by_label = subcommands.add_parser("rebuild-by-label")
+    rebuild_by_label = _add_cmd(subcommands, "rebuild-by-label")
     rebuild_by_label.add_argument("--label", required=True)
     rebuild_by_label.add_argument("--limit", type=int, default=None)
     rebuild_by_label.add_argument(
@@ -1271,7 +1287,7 @@ def main() -> None:
     if args.command == "migrate":
         from tirzah import migrations
 
-        ensure_indexes(db)
+        ensure_indexes(db, force=True)
         report = migrations.status(db) if args.status else migrations.migrate(db, dry_run=args.dry_run)
         print(json.dumps(report, indent=2, default=str))
         return
@@ -2244,6 +2260,8 @@ def main() -> None:
             if result.get("semantic_summary"):
                 print(f"\n[{result['semantic_summary']}]")
             print(f"\nexchange_id: {result['exchange_id']}")
+        if not result.get("ok"):
+            sys.exit(1)
         return
 
     if args.command == "chat":

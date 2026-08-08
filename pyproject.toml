@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tirzah"
-version = "1.15.4"
+version = "1.16.0"
 description = "Local graph-based memory and retrieval layer for LLM interactions."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -36,7 +36,7 @@ dependencies = [
   # PyPI pins (git URLs are rejected by the package index).
   "hoglah>=0.10.4",  # SessionPriorityQueue + review-hardened queue runtime
   "galeed>=0.3.2",   # cross-project trace/log spine (negotiation note/phase)
-  "deborah>=0.23.3", # process grammar + framed substrate slice
+  "deborah>=0.24.0", # process grammar + framed substrate (review-hardened)
   "keturah>=0.4.0",  # manifest + shared specialist envelope (REQUEST_FIELDS)
 ]
 

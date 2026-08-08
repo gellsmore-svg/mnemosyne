@@ -47,7 +47,7 @@ def test_load_config_reads_separate_memory_agent_model(tmp_path: Path) -> None:
     config_file.write_text(
         """
 runtime:
-  answer_adapter: ollama_cli
+  answer_adapter: ollama_http
   memory_agent_adapter: ollama_http
   ollama_model: final-model
   memory_agent_model: memory-model
@@ -58,7 +58,7 @@ runtime:
 
     config = load_config(config_file)
 
-    assert config.runtime.answer_adapter == "ollama_cli"
+    assert config.runtime.answer_adapter == "ollama_http"
     assert config.runtime.memory_agent_adapter == "ollama_http"
     assert config.runtime.ollama_model == "final-model"
     assert config.runtime.memory_agent_model == "memory-model"
@@ -143,3 +143,28 @@ def test_recursive_planning_defaults_are_bounded():
     assert config.runtime.plan_framed_execution_enabled is True
     assert config.runtime.plan_require_deborah_conformance is False
     assert config.runtime.plan_deborah_validate_profile == "full"
+    # Security defaults (review 2026-08-08).
+    assert config.runtime.web_localhost_only is True
+    assert config.runtime.answer_adapter == "ollama_http"
+
+
+def test_unknown_runtime_key_is_rejected():
+    from pydantic import ValidationError
+    from tirzah.config import RuntimeConfig
+
+    try:
+        RuntimeConfig(web_api_tokn="typo")  # type: ignore[call-arg]
+        raise AssertionError("expected ValidationError")
+    except ValidationError:
+        pass
+
+
+def test_retrieval_bounds_reject_zero_iterations():
+    from pydantic import ValidationError
+    from tirzah.config import RetrievalConfig
+
+    try:
+        RetrievalConfig(memory_agent_max_iterations=0)
+        raise AssertionError("expected ValidationError")
+    except ValidationError:
+        pass

@@ -22,6 +22,11 @@ services:
     volumes:
       - .:/app
       - tirzah-data:/app/data
+    # Listen on all interfaces *inside* the container; host publish is
+    # loopback-only above. runtime.web_localhost_only (default true) still
+    # refuses non-loopback peers; set TIRZAH_WEB_API_TOKEN for a shared secret.
+    environment:
+      TIRZAH_WEB_LOCALHOST_ONLY: "1"
     command: ["tirzah", "serve", "--host", "0.0.0.0", "--port", "8765"]
 
 volumes:

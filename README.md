@@ -36,6 +36,11 @@ inference — and is usable from a CLI or a web interface.
 > scaffold-depth (lexical retrieval, observational governance, mock-default
 > embeddings). See [`docs/build-roadmap.md`](docs/build-roadmap.md) and
 > [`docs/v1-readiness-checklist.md`](docs/v1-readiness-checklist.md).
+>
+> A point-in-time functional + code review of 1.15.3 is in
+> [`docs/review-2026-08-08.md`](docs/review-2026-08-08.md) (findings not yet
+> actioned; note F1 — the Docker install path serves an unauthenticated API on
+> all interfaces by default).
 
 ## Install
 

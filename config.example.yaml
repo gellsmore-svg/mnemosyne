@@ -11,7 +11,8 @@ paths:
 
 runtime:
   model_adapter: mock
-  answer_adapter: ollama_cli
+  # Prefer ollama_http when the Ollama daemon is up but the CLI binary is not.
+  answer_adapter: ollama_http
   ingestion_adapter: mock
   embedding_adapter: mock
   # HTTP-backed embedding adapters are not compliant for ingestion/retrieval memory operations.
@@ -45,10 +46,11 @@ runtime:
   web_max_content_bytes: 500000
   web_max_content_chars: 8000
   web_allow_private_search_endpoint: false
-  # Optional local API guardrails. Set web_api_token before exposing any /api/*
-  # route beyond a trusted loopback-only development browser.
+  # API guardrails (see docs/install.md). web_localhost_only defaults True so
+  # non-loopback clients are refused. Set web_api_token when you intentionally
+  # open the API; misspellings are rejected (extra="forbid" on config models).
   web_api_token: ""
-  web_localhost_only: false
+  web_localhost_only: true
   web_max_upload_bytes: 1000000
   # Optional Milcah specialist seam. Install with `pip install "tirzah[milcah]"`
   # (or co-install the local Milcah repo), then enable this so recursive planning
