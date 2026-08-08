@@ -516,9 +516,27 @@ def parse_deep_triage(text: str, page: list[dict[str, Any]]) -> list[dict[str, A
     return [c for c in page if node_identity(c) in keep]
 
 
+def _adapter_answer_result(adapter: Any, prompt_text: str) -> dict[str, Any]:
+    """Call an answer adapter and return the full payload (incl. usage/duration).
+
+    Deep planner/triager/scorer only need the text; synthesis and the
+    process-trace path need instrumentation for galeed llm_calls.
+    """
+    result = adapter.answer(
+        {
+            "prompt_text": prompt_text,
+            "context_text": "",
+            "context_metadata": {"included": []},
+        }
+    )
+    if isinstance(result, dict):
+        return result
+    return {"answer": str(result)}
+
+
 def _adapter_answer(adapter: Any, prompt_text: str) -> str:
-    result = adapter.answer({"prompt_text": prompt_text})
-    return result.get("answer", "") if isinstance(result, dict) else str(result)
+    result = _adapter_answer_result(adapter, prompt_text)
+    return str(result.get("answer") or "")
 
 
 def make_planner(adapter: Any):
@@ -666,7 +684,25 @@ def synthesize_answer(
     """Write the final answer from the kept chunks (the useful-chunks bucket).
     Reads the chunk text, cites node ids, and is told to flag insufficiency.
     ``history_block`` (optional) threads prior conversation turns for continuity."""
-    return _adapter_answer(adapter, build_synthesis_prompt(query, useful_chunks, history_block))
+    return str(
+        synthesize_answer_result(
+            query, useful_chunks, adapter, history_block=history_block
+        ).get("answer")
+        or ""
+    )
+
+
+def synthesize_answer_result(
+    query: str, useful_chunks: list[dict[str, Any]], adapter: Any, history_block: str = ""
+) -> dict[str, Any]:
+    """Like :func:`synthesize_answer` but returns the full adapter payload.
+
+    Carries ``usage`` / ``duration_ms`` when the adapter reports them so the
+    answer pipeline can stamp galeed ``llm_calls`` (instrumentation backlog).
+    """
+    return _adapter_answer_result(
+        adapter, build_synthesis_prompt(query, useful_chunks, history_block)
+    )
 
 
 def _build_query_embedding(runtime_config: Any, text: str) -> dict[str, Any] | None:
@@ -718,12 +754,18 @@ def run_deep_answer(
         identity=identity,
         embedder=embedder,
     )
-    answer = synthesize_answer(query, result["useful_chunks"], adapter, history_block=history_block)
+    synthesis = synthesize_answer_result(
+        query, result["useful_chunks"], adapter, history_block=history_block
+    )
     return {
-        "answer": answer,
+        "answer": str(synthesis.get("answer") or ""),
         "useful_chunks": result["useful_chunks"],
         "rounds": result["rounds"],
         "trace": result["trace"],
         "sufficiency": result.get("sufficiency"),
         "sufficiency_history": result.get("sufficiency_history", []),
+        "usage": synthesis.get("usage"),
+        "duration_ms": synthesis.get("duration_ms"),
+        "model": synthesis.get("model"),
+        "adapter": synthesis.get("adapter"),
     }

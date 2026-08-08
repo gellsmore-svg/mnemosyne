@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.2] — 2026-08-08
+
+### Fixed
+- **Deep synthesis + planner instrumentation:** `synthesize_answer_result` and
+  `run_deep_answer` preserve adapter `usage` / `duration_ms` (not wall-clock
+  only). Deep process-trace steps and recursive planner `plan_r*` galeed rows
+  now carry real Ollama/Hoglah token counts when the adapter reports them.
+
 ## [1.16.1] — 2026-08-08
 
 ### Fixed
@@ -314,7 +322,8 @@ while `pyproject` stayed at 1.2.0). All additions are backward-compatible.
 - Initial public release: local graph-based memory and retrieval for LLM
   interactions (MongoDB store, Ollama adapters, FastAPI + CLI surfaces).
 
-[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.16.1...HEAD
+[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.16.2...HEAD
+[1.16.2]: https://github.com/gellsmore-svg/tirzah/compare/v1.16.1...v1.16.2
 [1.16.1]: https://github.com/gellsmore-svg/tirzah/compare/v1.16.0...v1.16.1
 [1.16.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.4...v1.16.0
 [1.15.4]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.3...v1.15.4

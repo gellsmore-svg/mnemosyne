@@ -17,8 +17,14 @@ def test_synthesize_from_deep_useful_chunks(monkeypatch):
     monkeypatch.setattr(interaction, "attach_answer_activity", lambda result: result)
     monkeypatch.setattr(interaction, "render_session_history_block", lambda *a, **k: "")
     monkeypatch.setattr(
-        "tirzah.retrieval.deep.synthesize_answer",
-        lambda query, chunks, adapter, history_block="": "deep answer",
+        "tirzah.retrieval.deep.synthesize_answer_result",
+        lambda query, chunks, adapter, history_block="": {
+            "answer": "deep answer",
+            "adapter": "mock_answer",
+            "model": "mock",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total": 8},
+            "duration_ms": 42,
+        },
     )
 
     package = AnswerRetrievalPackage(
@@ -44,6 +50,8 @@ def test_synthesize_from_deep_useful_chunks(monkeypatch):
     assert len(adapter_steps) == 1
     assert adapter_steps[0]["input"]["mode"] == "deep_synthesis"
     assert adapter_steps[0]["output"]["ok"] is True
+    assert adapter_steps[0]["output"]["duration_ms"] == 42
+    assert adapter_steps[0]["output"]["usage"]["total"] == 8
 
 
 def test_retrieve_deep_stores_chunks_not_prebuilt_answer(monkeypatch):

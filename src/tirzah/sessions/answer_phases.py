@@ -529,7 +529,8 @@ def _synthesize_deep_and_persist(
     runtime_config: RuntimeConfig,
     package: AnswerRetrievalPackage,
 ) -> dict[str, Any]:
-    from tirzah.retrieval.deep import build_synthesis_prompt, synthesize_answer
+    from tirzah.adapters.answer import instrumentation_from_answer
+    from tirzah.retrieval.deep import build_synthesis_prompt, synthesize_answer_result
 
     useful = list(package.useful_chunks or [])
     used_node_ids = [nid for nid in (node_identity(c) for c in useful) if nid]
@@ -553,11 +554,8 @@ def _synthesize_deep_and_persist(
         "output": {},
     }
     package.process_trace.append(adapter_step)
-    import time
-
-    clock = time.monotonic()
     try:
-        answer_text = synthesize_answer(
+        synthesis = synthesize_answer_result(
             package.query,
             useful,
             ix.answer_adapter(runtime_config),
@@ -588,13 +586,12 @@ def _synthesize_deep_and_persist(
                 "process_trace": package.process_trace,
             }
         )
-    duration_ms = int((time.monotonic() - clock) * 1000)
     answer = {
-        "answer": answer_text,
+        "answer": str(synthesis.get("answer") or ""),
         "used_node_ids": used_node_ids,
-        "adapter": runtime_config.answer_adapter,
-        "model": runtime_config.ollama_model,
-        "duration_ms": duration_ms,
+        "adapter": synthesis.get("adapter") or runtime_config.answer_adapter,
+        "model": synthesis.get("model") or runtime_config.ollama_model,
+        **instrumentation_from_answer(synthesis),
     }
     adapter_step["output"] = {
         "ok": True,
@@ -602,7 +599,7 @@ def _synthesize_deep_and_persist(
         "used_node_ids": answer["used_node_ids"],
         "adapter": answer["adapter"],
         "model": answer.get("model"),
-        "duration_ms": duration_ms,
+        **instrumentation_from_answer(answer),
     }
     return _persist_answer(db, config, runtime_config, package, answer)
 

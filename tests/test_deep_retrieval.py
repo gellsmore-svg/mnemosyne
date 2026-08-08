@@ -387,17 +387,22 @@ def test_deep_loop_with_real_planner_triager(monkeypatch) -> None:
     assert out["trace"][-1]["reason"] == "planner_stop"
 
 
-from tirzah.retrieval.deep import run_deep_answer, synthesize_answer
+from tirzah.retrieval.deep import (
+    run_deep_answer,
+    synthesize_answer,
+    synthesize_answer_result,
+)
 
 
 class _CapturingAdapter:
-    def __init__(self, answer="ans"):
+    def __init__(self, answer="ans", **extra):
         self.prompts = []
         self._answer = answer
+        self._extra = extra
 
     def answer(self, prompt):
         self.prompts.append(prompt["prompt_text"])
-        return {"answer": self._answer}
+        return {"answer": self._answer, **self._extra}
 
 
 def test_synthesize_answer_with_and_without_chunks() -> None:
@@ -409,6 +414,23 @@ def test_synthesize_answer_with_and_without_chunks() -> None:
     a2 = _CapturingAdapter("none")
     assert synthesize_answer("q", [], a2) == "none"
     assert "no relevant information" in a2.prompts[0]
+
+
+def test_synthesize_answer_result_preserves_usage_and_duration() -> None:
+    a = _CapturingAdapter(
+        "written",
+        usage={"prompt_tokens": 20, "completion_tokens": 5, "total": 25},
+        duration_ms=99,
+        model="gemma3:1b",
+        adapter="ollama_http",
+    )
+    result = synthesize_answer_result(
+        "what?", [{"node_id": "n1", "title": "T", "text": "body"}], a
+    )
+    assert result["answer"] == "written"
+    assert result["usage"]["total"] == 25
+    assert result["duration_ms"] == 99
+    assert result["model"] == "gemma3:1b"
 
 
 def test_run_deep_answer_end_to_end(monkeypatch) -> None:

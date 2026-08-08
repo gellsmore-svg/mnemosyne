@@ -99,6 +99,41 @@ def test_non_adapter_steps_and_broken_db_are_harmless() -> None:
     }))
 
 
+def test_capturing_planner_records_usage_from_make_planner() -> None:
+    """Recursive planner side-channel feeds usage into galeed llm_calls."""
+    from galeed.recorder import Tracer
+    from tirzah.config import RuntimeConfig
+    from tirzah.planning.recursive import _capturing_planner, make_planner
+
+    class ScriptedAdapter:
+        def answer(self, prompt):
+            return {
+                "answer": '{"status":"stable"}',
+                "model": "gemma3:1b",
+                "usage": {"prompt_tokens": 30, "completion_tokens": 4, "total": 34},
+                "duration_ms": 55,
+            }
+
+    import tirzah.planning.recursive as rec
+
+    # Force make_planner to use our adapter instead of factory.
+    orig = rec.answer_adapter
+    rec.answer_adapter = lambda _cfg: ScriptedAdapter()  # type: ignore[assignment]
+    try:
+        db = FakeDb()
+        tracer = Tracer(session_id="s", db=None, source="tirzah")
+        planner = _capturing_planner(make_planner(RuntimeConfig()), db, tracer)
+        out = planner("plan this")
+        assert "stable" in out
+        call = db["llm_calls"].rows[0]
+        assert call["step_name"] == "plan_r0"
+        assert call["duration_ms"] == 55
+        assert call["usage"]["total"] == 34
+        assert call["model"] == "gemma3:1b"
+    finally:
+        rec.answer_adapter = orig
+
+
 def test_memory_agent_iterations_become_llm_call_documents() -> None:
     db = FakeDb()
     tracer = Tracer(session_id="s", db=None, source="tirzah")

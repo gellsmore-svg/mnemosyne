@@ -96,11 +96,22 @@ def make_planner(runtime: RuntimeConfig) -> PlannerFn:
     planner_runtime = planner_runtime_config(runtime)
 
     def plan(prompt: str) -> str:
+        from tirzah.adapters.answer import instrumentation_from_answer
+
         result = answer_adapter(planner_runtime).answer(
             {"prompt_text": prompt, "context_text": "", "context_metadata": {"included": []}}
         )
-        return str(result.get("answer") or "")
+        # Side-channel for _capturing_planner → galeed llm_calls.
+        plan.last_instrumentation = instrumentation_from_answer(  # type: ignore[attr-defined]
+            result if isinstance(result, dict) else {}
+        )
+        plan.last_model = (  # type: ignore[attr-defined]
+            result.get("model") if isinstance(result, dict) else None
+        ) or planner_runtime.ollama_model
+        return str(result.get("answer") or "") if isinstance(result, dict) else str(result or "")
 
+    plan.last_instrumentation = {}  # type: ignore[attr-defined]
+    plan.last_model = planner_runtime.ollama_model  # type: ignore[attr-defined]
     return plan
 
 
@@ -366,7 +377,13 @@ def _capturing_planner(planner: PlannerFn, db: Any, tracer: Any) -> PlannerFn:
             error = str(exc)
             raise
         finally:
-            duration_ms = int((time.monotonic() - clock) * 1000)
+            wall_ms = int((time.monotonic() - clock) * 1000)
+            instr = getattr(planner, "last_instrumentation", None) or {}
+            duration_ms = instr.get("duration_ms")
+            if duration_ms is None:
+                duration_ms = wall_ms
+            usage = instr.get("usage") if isinstance(instr.get("usage"), dict) else None
+            model = getattr(planner, "last_model", None)
             try:
                 from galeed import record_llm_call
 
@@ -376,10 +393,12 @@ def _capturing_planner(planner: PlannerFn, db: Any, tracer: Any) -> PlannerFn:
                     session_id=tracer.session_id,
                     source=tracer.source,
                     step_name=f"plan_r{index}",
+                    model=model,
                     prompt=prompt,
                     output=output,
                     error=error,
-                    duration_ms=duration_ms,
+                    usage=usage,
+                    duration_ms=int(duration_ms) if duration_ms is not None else None,
                     metadata={"request_id": tracer.request_id, "role": "planner"},
                     emit_event=False,  # plan.revision/plan_execution events mark the spine
                 )
