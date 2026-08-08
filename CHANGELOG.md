@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.2] — 2026-08-08
+
+### Changed
+- Require `hoglah>=0.10.4` (review-hardened queue: fair PROCESSING snapshot,
+  exact tag filters, worker metrics exporter, CI transport coverage, and the
+  0.10.3 classify_error / close-order / Kafka ingress fixes).
+
 ## [1.15.1] — 2026-08-08
 
 ### Added
@@ -250,7 +257,8 @@ while `pyproject` stayed at 1.2.0). All additions are backward-compatible.
 - Initial public release: local graph-based memory and retrieval for LLM
   interactions (MongoDB store, Ollama adapters, FastAPI + CLI surfaces).
 
-[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.1...HEAD
+[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.2...HEAD
+[1.15.2]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.1...v1.15.2
 [1.15.1]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.0...v1.15.1
 [1.15.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.14.1...v1.15.0
 [1.14.1]: https://github.com/gellsmore-svg/tirzah/compare/v1.14.0...v1.14.1
