@@ -38,8 +38,16 @@ def test_answer_adapter_step_becomes_full_io_document() -> None:
         "step": "answer_adapter",
         "input": {"adapter": "ollama_http", "model": "gemma3:1b",
                   "prompt_text": "CONTEXT…\n\nQUESTION: what is a vorton?"},
-        "output": {"ok": True, "answer": "A vorton is…", "model": "gemma3:1b",
-                   "adapter": "ollama_http", "used_node_ids": ["n1", "n2"]},
+        "output": {
+            "ok": True,
+            "answer": "A vorton is…",
+            "model": "gemma3:1b",
+            "adapter": "ollama_http",
+            "used_node_ids": ["n1", "n2"],
+            # Galeed F2 / Tirzah instrumentation: usage + duration on the step.
+            "usage": {"prompt_tokens": 40, "completion_tokens": 12, "total": 52},
+            "duration_ms": 180,
+        },
     }))
 
     calls = db["llm_calls"].rows
@@ -53,6 +61,10 @@ def test_answer_adapter_step_becomes_full_io_document() -> None:
     assert call["output"] == "A vorton is…"
     assert call["status"] == "completed"
     assert call["metadata"]["used_node_count"] == 2
+    assert call["duration_ms"] == 180
+    assert call["usage"]["prompt_tokens"] == 40
+    assert call["usage"]["completion_tokens"] == 12
+    assert call["tokens_in"] == 40
     # No extra spine event: model.response.completed already marks it.
     assert db["trace_events"].rows == []
 

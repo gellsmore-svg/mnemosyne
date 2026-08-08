@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.1] — 2026-08-08
+
+### Fixed
+- **LLM call instrumentation (Galeed F2 backlog):** Tirzah’s answer adapters now
+  record `usage` and `duration_ms` on the process-trace step and pass them into
+  Galeed `llm_calls`. `ollama_http` uses Ollama’s `prompt_eval_count` /
+  `eval_count` / `total_duration`; `ollama_cli` records wall-clock duration;
+  `hoglah` forwards job usage/duration when present; mock stamps estimated
+  usage + duration. Memory-agent iterations and planner wraps get the same
+  fields. New Tirzah calls no longer appear as zero-coverage producers on
+  `galeed sessions`.
+
 ## [1.16.0] — 2026-08-08
 
 **Action the 2026-08-08 functional/code review**
@@ -302,7 +314,8 @@ while `pyproject` stayed at 1.2.0). All additions are backward-compatible.
 - Initial public release: local graph-based memory and retrieval for LLM
   interactions (MongoDB store, Ollama adapters, FastAPI + CLI surfaces).
 
-[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.16.0...HEAD
+[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.16.1...HEAD
+[1.16.1]: https://github.com/gellsmore-svg/tirzah/compare/v1.16.0...v1.16.1
 [1.16.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.4...v1.16.0
 [1.15.4]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.3...v1.15.4
 [1.15.3]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.2...v1.15.3

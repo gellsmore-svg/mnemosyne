@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import subprocess
 
 import pytest
@@ -41,6 +42,37 @@ def test_mock_answer_adapter_returns_used_nodes() -> None:
 
     assert answer["adapter"] == "mock_answer"
     assert answer["used_node_ids"] == ["node1", "node2"]
+    assert answer.get("duration_ms") is not None
+    assert answer.get("usage", {}).get("total", 0) > 0
+
+
+def test_ollama_http_adapter_captures_usage_and_duration(monkeypatch) -> None:
+    from tirzah.adapters import answer as answer_mod
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "response": "hello from ollama",
+                "prompt_eval_count": 11,
+                "eval_count": 7,
+                "total_duration": 250_000_000,  # 250 ms in ns
+            }).encode("utf-8")
+
+    monkeypatch.setattr(answer_mod.request, "urlopen", lambda *a, **k: FakeResponse())
+    answer = OllamaHttpAnswerAdapter(RuntimeConfig(ollama_model="gemma3:1b")).answer(
+        {"prompt_text": "hi", "context_metadata": {"included": []}}
+    )
+    assert answer["answer"] == "hello from ollama"
+    assert answer["usage"]["prompt_tokens"] == 11
+    assert answer["usage"]["completion_tokens"] == 7
+    assert answer["usage"]["total"] == 18
+    assert answer["duration_ms"] == 250
 
 
 def test_clean_ollama_output_strips_spinner_and_ansi() -> None:

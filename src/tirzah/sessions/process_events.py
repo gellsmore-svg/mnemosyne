@@ -235,6 +235,10 @@ def record_llm_calls_from_trace(
             continue
         step_in = step.get("input") if isinstance(step.get("input"), dict) else {}
         step_out = step.get("output") if isinstance(step.get("output"), dict) else {}
+        usage = step_out.get("usage") if isinstance(step_out.get("usage"), dict) else None
+        duration_ms = step_out.get("duration_ms")
+        if duration_ms is None:
+            duration_ms = step_in.get("duration_ms")
         if name == "answer_adapter":
             failed = step_out.get("ok") is False
             record_llm_call(
@@ -247,6 +251,8 @@ def record_llm_calls_from_trace(
                 prompt=step_in.get("prompt_text"),
                 output=None if failed else step_out.get("answer"),
                 error=str(step_out.get("error")) if failed else None,
+                usage=usage,
+                duration_ms=int(duration_ms) if duration_ms is not None else None,
                 metadata={
                     "adapter": step_out.get("adapter") or step_in.get("adapter"),
                     "used_node_count": len(step_out.get("used_node_ids") or []),
@@ -270,6 +276,8 @@ def record_llm_calls_from_trace(
                 prompt=step_in.get("prompt_text"),
                 output=raw,
                 error=None if raw else (str(error) if error else None),
+                usage=usage,
+                duration_ms=int(duration_ms) if duration_ms is not None else None,
                 metadata={
                     "adapter": step_in.get("adapter"),
                     "iteration": step_in.get("iteration"),

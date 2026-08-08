@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from typing import Any
 from urllib import request
 
@@ -15,19 +16,26 @@ class MockAnswerAdapter:
     name = "mock_answer"
 
     def answer(self, prompt: dict[str, Any]) -> dict[str, Any]:
-        included = prompt.get("context_metadata", {}).get("included", [])
+        clock = time.monotonic()
         context_text = prompt.get("context_text", "")
         answer_lines = [
             "Mock answer based on retrieved context.",
             "",
             summarize_context_text(context_text),
         ]
-        return {
-            "adapter": self.name,
-            "answer": "\n".join(answer_lines).strip(),
-            "used_node_ids": [record["node_id"] for record in included],
-            "confidence": "mock",
-        }
+        answer_text = "\n".join(answer_lines).strip()
+        duration_ms = int((time.monotonic() - clock) * 1000)
+        # Deterministic mock: no real model — still stamp duration so the spine
+        # can measure coverage (Galeed F2 / Tirzah instrumentation backlog).
+        return answer_payload(
+            self.name,
+            "mock",
+            prompt,
+            answer_text,
+            usage=_estimate_usage_from_text(prompt.get("prompt_text") or context_text, answer_text),
+            duration_ms=duration_ms,
+            confidence="mock",
+        )
 
 
 def summarize_context_text(context_text: str) -> str:
@@ -59,6 +67,7 @@ class OllamaCliAnswerAdapter:
         env.setdefault("NO_COLOR", "1")
         env.setdefault("TERM", "dumb")
         cmd = ollama_cli_command(self.config)
+        clock = time.monotonic()
         try:
             completed = subprocess.run(
                 cmd,
@@ -78,10 +87,18 @@ class OllamaCliAnswerAdapter:
                 f"Ollama CLI timed out after {self.config.ollama_timeout_seconds}s "
                 f"while running {self.config.ollama_model}."
             ) from error
+        duration_ms = int((time.monotonic() - clock) * 1000)
         answer_text = clean_ollama_output(completed.stdout)
         if not answer_text:
             raise RuntimeError("Ollama CLI returned an empty response.")
-        return answer_payload(self.name, self.config.ollama_model, prompt, answer_text)
+        # CLI path has no structured token counts — wall-clock duration only.
+        return answer_payload(
+            self.name,
+            self.config.ollama_model,
+            prompt,
+            answer_text,
+            duration_ms=duration_ms,
+        )
 
     def _run_without_optional_flags(self, prompt: dict[str, Any], env: dict[str, str]):
         try:
@@ -129,9 +146,22 @@ class OllamaHttpAnswerAdapter:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
+        clock = time.monotonic()
         with request.urlopen(req, timeout=self.config.ollama_timeout_seconds) as response:
             data = json.loads(response.read().decode("utf-8"))
-        return answer_payload(self.name, self.config.ollama_model, prompt, data.get("response", ""))
+        wall_ms = int((time.monotonic() - clock) * 1000)
+        if not isinstance(data, dict):
+            data = {}
+        duration_ms = _duration_ms_from_ollama(data) or wall_ms
+        usage = _usage_from_ollama_generate(data)
+        return answer_payload(
+            self.name,
+            self.config.ollama_model,
+            prompt,
+            data.get("response", ""),
+            usage=usage,
+            duration_ms=duration_ms,
+        )
 
 
 class HoglahAnswerAdapter:
@@ -156,6 +186,7 @@ class HoglahAnswerAdapter:
         return self._runner
 
     def answer(self, prompt: dict[str, Any]) -> dict[str, Any]:
+        clock = time.monotonic()
         result = self._get_runner().run_generate(
             prompt["prompt_text"],
             model=self.config.ollama_model,
@@ -163,6 +194,7 @@ class HoglahAnswerAdapter:
             tags=["tirzah"],
             metadata={"source": "tirzah"},
         )
+        wall_ms = int((time.monotonic() - clock) * 1000)
         status = result.get("status")
         job_id = result.get("job_id")
         if status != "completed":
@@ -170,7 +202,20 @@ class HoglahAnswerAdapter:
         output = result.get("output")
         if not output:
             raise RuntimeError(f"Hoglah job {job_id} completed without output.")
-        payload = answer_payload(self.name, self.config.ollama_model, prompt, output)
+        usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
+        duration_ms = result.get("duration_ms")
+        if duration_ms is None:
+            duration_ms = result.get("processing_duration_ms")
+        if duration_ms is None:
+            duration_ms = wall_ms
+        payload = answer_payload(
+            self.name,
+            self.config.ollama_model,
+            prompt,
+            output,
+            usage=usage if usage else None,
+            duration_ms=int(duration_ms) if duration_ms is not None else None,
+        )
         payload["hoglah_job_id"] = job_id
         if result.get("truncated"):
             payload["truncated"] = True
@@ -254,14 +299,80 @@ def ollama_error_message(error: subprocess.CalledProcessError) -> str:
     return f"Ollama CLI failed with exit code {error.returncode}."
 
 
-def answer_payload(adapter: str, model: str, prompt: dict[str, Any], answer_text: str) -> dict[str, Any]:
+def answer_payload(
+    adapter: str,
+    model: str,
+    prompt: dict[str, Any],
+    answer_text: str,
+    *,
+    usage: dict[str, int] | None = None,
+    duration_ms: int | None = None,
+    confidence: str | None = None,
+) -> dict[str, Any]:
     included = prompt.get("context_metadata", {}).get("included", [])
-    return {
+    if confidence is None:
+        confidence = (
+            "model" if adapter.startswith("ollama") or adapter == "hoglah" else "mock"
+        )
+    payload: dict[str, Any] = {
         "adapter": adapter,
         "model": model,
         "answer": answer_text.strip(),
         "used_node_ids": [record["node_id"] for record in included],
-        "confidence": "model" if adapter.startswith("ollama") or adapter == "hoglah" else "mock",
+        "confidence": confidence,
+    }
+    if usage:
+        payload["usage"] = {
+            k: int(v) for k, v in usage.items() if isinstance(v, (int, float))
+        }
+    if duration_ms is not None:
+        payload["duration_ms"] = int(duration_ms)
+    return payload
+
+
+def instrumentation_from_answer(answer: dict[str, Any]) -> dict[str, Any]:
+    """Subset of adapter answer fields for process_trace / galeed llm_calls."""
+    out: dict[str, Any] = {}
+    usage = answer.get("usage")
+    if isinstance(usage, dict) and usage:
+        out["usage"] = dict(usage)
+    if answer.get("duration_ms") is not None:
+        out["duration_ms"] = int(answer["duration_ms"])
+    return out
+
+
+def _usage_from_ollama_generate(data: dict[str, Any]) -> dict[str, int]:
+    """Ollama /api/generate reports prompt_eval_count / eval_count."""
+    prompt_tokens = int(data.get("prompt_eval_count") or 0)
+    completion_tokens = int(data.get("eval_count") or 0)
+    if not prompt_tokens and not completion_tokens:
+        return {}
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total": prompt_tokens + completion_tokens,
+    }
+
+
+def _duration_ms_from_ollama(data: dict[str, Any]) -> int | None:
+    """Ollama ``total_duration`` is nanoseconds when present."""
+    total_ns = data.get("total_duration")
+    if total_ns is None:
+        return None
+    try:
+        return max(0, int(int(total_ns) / 1_000_000))
+    except (TypeError, ValueError):
+        return None
+
+
+def _estimate_usage_from_text(prompt_text: str, answer_text: str) -> dict[str, int]:
+    """Rough token estimate (~4 chars/token) when the model reports none."""
+    prompt_tokens = max(1, len(prompt_text or "") // 4) if prompt_text else 0
+    completion_tokens = max(1, len(answer_text or "") // 4) if answer_text else 0
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total": prompt_tokens + completion_tokens,
     }
 
 

@@ -510,12 +510,15 @@ def _synthesize_and_persist(
                 "process_trace": package.process_trace,
             }
         )
+    from tirzah.adapters.answer import instrumentation_from_answer
+
     adapter_step["output"] = {
         "ok": True,
         "answer": answer["answer"],
         "used_node_ids": answer["used_node_ids"],
         "adapter": answer["adapter"],
         "model": answer.get("model"),
+        **instrumentation_from_answer(answer),
     }
     return _persist_answer(db, config, runtime_config, package, answer)
 
@@ -550,6 +553,9 @@ def _synthesize_deep_and_persist(
         "output": {},
     }
     package.process_trace.append(adapter_step)
+    import time
+
+    clock = time.monotonic()
     try:
         answer_text = synthesize_answer(
             package.query,
@@ -582,11 +588,13 @@ def _synthesize_deep_and_persist(
                 "process_trace": package.process_trace,
             }
         )
+    duration_ms = int((time.monotonic() - clock) * 1000)
     answer = {
         "answer": answer_text,
         "used_node_ids": used_node_ids,
         "adapter": runtime_config.answer_adapter,
         "model": runtime_config.ollama_model,
+        "duration_ms": duration_ms,
     }
     adapter_step["output"] = {
         "ok": True,
@@ -594,6 +602,7 @@ def _synthesize_deep_and_persist(
         "used_node_ids": answer["used_node_ids"],
         "adapter": answer["adapter"],
         "model": answer.get("model"),
+        "duration_ms": duration_ms,
     }
     return _persist_answer(db, config, runtime_config, package, answer)
 

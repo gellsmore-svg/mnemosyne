@@ -353,9 +353,12 @@ def _capturing_planner(planner: PlannerFn, db: Any, tracer: Any) -> PlannerFn:
     counter = count()
 
     def plan(prompt: str) -> str:
+        import time
+
         index = next(counter)
         output: str | None = None
         error: str | None = None
+        clock = time.monotonic()
         try:
             output = planner(prompt)
             return output
@@ -363,6 +366,7 @@ def _capturing_planner(planner: PlannerFn, db: Any, tracer: Any) -> PlannerFn:
             error = str(exc)
             raise
         finally:
+            duration_ms = int((time.monotonic() - clock) * 1000)
             try:
                 from galeed import record_llm_call
 
@@ -375,6 +379,7 @@ def _capturing_planner(planner: PlannerFn, db: Any, tracer: Any) -> PlannerFn:
                     prompt=prompt,
                     output=output,
                     error=error,
+                    duration_ms=duration_ms,
                     metadata={"request_id": tracer.request_id, "role": "planner"},
                     emit_event=False,  # plan.revision/plan_execution events mark the spine
                 )

@@ -453,12 +453,15 @@ def answer_query_agentic(
             "process_trace": process_trace,
         }
         return attach_answer_activity(result)
+    from tirzah.adapters.answer import instrumentation_from_answer
+
     adapter_step["output"] = {
         "ok": True,
         "answer": answer["answer"],
         "used_node_ids": answer["used_node_ids"],
         "adapter": answer["adapter"],
         "model": answer.get("model"),
+        **instrumentation_from_answer(answer),
     }
     try:
         exchange_id = save_exchange(
@@ -1651,6 +1654,7 @@ def run_memory_agent_loop(
         }
         process_trace.append(step)
         raw_answer = None
+        agent_instrumentation: dict = {}
         try:
             memory_answer = answer_adapter(memory_runtime).answer(
                 {
@@ -1660,6 +1664,9 @@ def run_memory_agent_loop(
                 }
             )
             raw_answer = memory_answer["answer"]
+            from tirzah.adapters.answer import instrumentation_from_answer
+
+            agent_instrumentation = instrumentation_from_answer(memory_answer)
             decision = parse_memory_agent_decision(raw_answer)
         except Exception as error:
             decision = {
@@ -1683,6 +1690,7 @@ def run_memory_agent_loop(
                 },
                 "stopped": True,
                 "stop_reason": "memory_agent_failed_after_tool_context",
+                **agent_instrumentation,
             }
             break
         if not tool_calls and not all_tool_results:
@@ -1700,6 +1708,7 @@ def run_memory_agent_loop(
                 "raw_answer": raw_answer,
                 "decision": decision,
                 "stopped": True,
+                **agent_instrumentation,
             }
             break
 
@@ -1724,6 +1733,7 @@ def run_memory_agent_loop(
             "raw_answer": raw_answer,
             "decision": decision,
             "tool_results": tool_results,
+            **agent_instrumentation,
         }
         if decision.get("fallback_reason") in TERMINAL_FALLBACK_REASONS:
             step["output"]["stopped"] = True
