@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.4] — 2026-08-08
+
+### Changed
+- Require `deborah>=0.24.0` (case-sensitive constructs, exact allow-list, plan
+  graph validation, multi-process narrative hierarchy).
+
 ## [1.15.3] — 2026-08-08
 
 ### Fixed
