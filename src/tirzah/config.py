@@ -42,6 +42,13 @@ class RuntimeConfig(BaseModel):
     # Walk Cairn plan steps in depends_on order (SPEC §4.6) instead of only
     # wrapping a monolithic ask pipeline.
     plan_interpretive_execution_enabled: bool = False
+    # When interpretive mode is on (or framed auto-detect hits), run crystallised
+    # substrate/critique plans through Deborah's thin slice instead of Tirzah's
+    # rich executor. See tirzah.planning.deborah_bridge.
+    plan_framed_execution_enabled: bool = True
+    # Validate every plan revision against deborah.validate_plan before execute.
+    plan_require_deborah_conformance: bool = False  # soft by default: record errors
+    plan_deborah_validate_profile: str = "full"
     # Revise the active plan after each completed step when interpretive mode runs.
     plan_mid_revision_enabled: bool = True
     # Opt-in transient web evidence. Search uses a SearxNG JSON endpoint; results
@@ -180,6 +187,9 @@ _ENV_OVERRIDES: dict[str, tuple[str, str]] = {
     "TIRZAH_WEB_RESEARCH_ENABLED": ("runtime", "web_research_enabled"),
     "TIRZAH_RECURSIVE_PLANNING_ENABLED": ("runtime", "recursive_planning_enabled"),
     "TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED": ("runtime", "plan_interpretive_execution_enabled"),
+    "TIRZAH_PLAN_FRAMED_EXECUTION_ENABLED": ("runtime", "plan_framed_execution_enabled"),
+    "TIRZAH_PLAN_REQUIRE_DEBORAH_CONFORMANCE": ("runtime", "plan_require_deborah_conformance"),
+    "TIRZAH_PLAN_DEBORAH_VALIDATE_PROFILE": ("runtime", "plan_deborah_validate_profile"),
     "TIRZAH_PLAN_MID_REVISION_ENABLED": ("runtime", "plan_mid_revision_enabled"),
     "TIRZAH_WEB_SEARCH_BASE_URL": ("runtime", "web_search_base_url"),
     "TIRZAH_WEB_API_TOKEN": ("runtime", "web_api_token"),

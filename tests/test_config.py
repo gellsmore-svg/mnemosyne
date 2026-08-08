@@ -139,3 +139,7 @@ def test_recursive_planning_defaults_are_bounded():
     assert config.runtime.recursive_planning_enabled is True
     assert config.runtime.planning_max_revisions == 3
     assert config.runtime.planning_max_steps == 12
+    # Deborah framed handoff (1.15): soft seal + framed slice on by default.
+    assert config.runtime.plan_framed_execution_enabled is True
+    assert config.runtime.plan_require_deborah_conformance is False
+    assert config.runtime.plan_deborah_validate_profile == "full"

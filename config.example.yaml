@@ -100,6 +100,14 @@ retrieval:
   # Walk machine plans step-by-step (constructs, tool gating, resumable
   # executions, live plan streaming). Env: TIRZAH_PLAN_INTERPRETIVE_EXECUTION_ENABLED.
   # plan_interpretive_execution_enabled: false
+  # Route crystallised substrate/critique graphs through Deborah's thin slice
+  # (run_substrate_slice) instead of Tirzah's rich executor. Default on.
+  # Env: TIRZAH_PLAN_FRAMED_EXECUTION_ENABLED.
+  # plan_framed_execution_enabled: true
+  # Soft-validate every plan against deborah.validate_plan; set true to fail
+  # hard on conformance errors. Env: TIRZAH_PLAN_REQUIRE_DEBORAH_CONFORMANCE.
+  # plan_require_deborah_conformance: false
+  # plan_deborah_validate_profile: full
   # Consult the planner after each completed step and swap in a revised plan
   # when it says revise. Env: TIRZAH_PLAN_MID_REVISION_ENABLED.
   # plan_mid_revision_enabled: true

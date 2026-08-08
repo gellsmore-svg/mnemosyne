@@ -92,6 +92,15 @@ actual tool menu, budgets, writes, and termination. Later information can revise
 a stored plan through `POST /api/plans/{plan_id}/revise`. Configure the planner
 with `runtime.recursive_planning_*`.
 
+**Deborah plan ownership** (see Deborah `docs/PLAN-OWNERSHIP.md`): Tirzah
+authors and revises plans; Deborah owns PLAN conformance and crystallised
+*framed* walks. `tirzah.planning.deborah_bridge` seals each plan with
+`deborah.validate_plan`, auto-detects substrate/critique graphs, and routes
+them through Deborah `run_substrate_slice` when
+`runtime.plan_framed_execution_enabled` is true (default). Soft conformance
+errors land in `deborah_conformance_errors`; set
+`runtime.plan_require_deborah_conformance: true` to fail hard.
+
 When the planner needs a coherence pressure-test or counter-framework research,
 it can call [Milcah](https://github.com/gellsmore-svg/Milcah) as an optional
 specialist:

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.1] — 2026-08-08
+
+### Added
+- Activity log / plan summary flag framed Deborah execution
+  (`Execution: framed (Deborah substrate) → <terminal>`)
+- Config template + README notes for framed Deborah handoff
+- Env override `TIRZAH_PLAN_DEBORAH_VALIDATE_PROFILE`
+
+## [1.15.0] — 2026-08-08
+
+### Added
+- **Deborah bridge** (`tirzah.planning.deborah_bridge`):
+  - `to_deborah_plan` / `validate_against_deborah` — plan shape seal
+  - `is_framed_substrate_plan` — detect crystallised critique graphs
+  - `run_framed_plan` → Deborah `run_substrate_slice` (shared tracer + OQ Mongo)
+  - `compose_estate_dispatch` — tirzah + milcah + mahalath + deborah.infer
+- Runtime flags: `plan_framed_execution_enabled` (default on),
+  `plan_require_deborah_conformance`, `plan_deborah_validate_profile`
+- Soft Deborah validate on every `plan_from_payload`; process path records
+  `deborah_conformance_errors` and routes framed plans to Deborah
+
+### Changed
+- Dependency pins: `deborah>=0.23.3`, `galeed>=0.3.2`, `keturah>=0.4.0`
+  (envelope fields required by the coherence/manifest seam),
+  `hoglah>=0.9.0` (`SessionPriorityQueue` for background memory work)
+
 ## [1.14.1] — 2026-08-07
 
 ### Added
@@ -224,7 +250,12 @@ while `pyproject` stayed at 1.2.0). All additions are backward-compatible.
 - Initial public release: local graph-based memory and retrieval for LLM
   interactions (MongoDB store, Ollama adapters, FastAPI + CLI surfaces).
 
-[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.1...HEAD
+[1.15.1]: https://github.com/gellsmore-svg/tirzah/compare/v1.15.0...v1.15.1
+[1.15.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.14.1...v1.15.0
+[1.14.1]: https://github.com/gellsmore-svg/tirzah/compare/v1.14.0...v1.14.1
+[1.14.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.13.0...v1.14.0
+[1.13.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.12.0...v1.13.0
 [1.4.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/gellsmore-svg/tirzah/compare/v1.1.1...v1.2.0

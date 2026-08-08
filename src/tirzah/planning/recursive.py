@@ -469,8 +469,67 @@ def process_frontend_request(
         except Exception:
             pass
     interpretive = config.runtime.plan_interpretive_execution_enabled
+    framed_enabled = bool(getattr(config.runtime, "plan_framed_execution_enabled", True))
+    require_conf = bool(getattr(config.runtime, "plan_require_deborah_conformance", False))
+    conf_profile = str(getattr(config.runtime, "plan_deborah_validate_profile", "full") or "full")
     revisions: list[CairnPlan] = []
-    if interpretive:
+
+    # Phase A: Deborah conformance seal on the initial plan (soft unless required).
+    deborah_conformance_errors: list[str] = []
+    is_framed_substrate_plan = None  # type: ignore[assignment]
+    run_framed_plan = None  # type: ignore[assignment]
+    framed_result_to_process_result = None  # type: ignore[assignment]
+    try:
+        from tirzah.planning.deborah_bridge import (
+            ensure_deborah_conformance,
+            is_framed_substrate_plan as _is_framed,
+            run_framed_plan as _run_framed,
+            framed_result_to_process_result as _framed_to_proc,
+        )
+
+        is_framed_substrate_plan = _is_framed
+        run_framed_plan = _run_framed
+        framed_result_to_process_result = _framed_to_proc
+        deborah_conformance_errors = ensure_deborah_conformance(
+            initial, profile=conf_profile, require=require_conf
+        )
+    except Exception as conf_exc:  # noqa: BLE001
+        if require_conf:
+            raise
+        deborah_conformance_errors = [f"conformance check failed: {conf_exc}"]
+
+    use_framed = False
+    if framed_enabled and run_framed_plan is not None and is_framed_substrate_plan is not None:
+        try:
+            use_framed = bool(is_framed_substrate_plan(initial))
+        except Exception:
+            use_framed = False
+
+    if use_framed and run_framed_plan is not None and framed_result_to_process_result is not None:
+        # Phase B/C: crystallised substrate path → Deborah thin slice (shared tracer + OQ Mongo).
+        framed = run_framed_plan(
+            initial,
+            db=db,
+            tracer=tracer,
+            question=query,
+            session_id=session_id,
+            require_conformance=require_conf,
+            validate_profile=conf_profile,
+            open_questions_db=db,
+        )
+        result = framed_result_to_process_result(
+            framed, query=query, session_id=session_id
+        )
+        if deborah_conformance_errors:
+            result["deborah_conformance_errors"] = list(
+                dict.fromkeys(
+                    list(deborah_conformance_errors)
+                    + list(result.get("deborah_conformance_errors") or [])
+                )
+            )
+        revisions = [initial]
+        initial = revisions[-1]
+    elif interpretive:
         from tirzah.coherence import make_client, run_planned_specialist
         from tirzah.planning.executor import build_default_handlers, interpret_plan
 
@@ -647,10 +706,22 @@ def process_frontend_request(
     _attach_plan_persist_warnings(result, plan_persist_warnings)
     result["request_plan"] = revisions[-1].to_dict()
     result["plan_revisions"] = [revision.to_dict() for revision in revisions]
+    if deborah_conformance_errors and "deborah_conformance_errors" not in result:
+        result["deborah_conformance_errors"] = list(deborah_conformance_errors)
+    framed_flag = bool(result.get("framed_execution"))
     if result.get("activity_report"):
-        result["activity_report"]["request_plan"] = compact_plan_summary(revisions[-1])
+        summary = compact_plan_summary(revisions[-1])
+        if isinstance(summary, dict):
+            summary["framed_execution"] = framed_flag
+            if framed_flag:
+                summary["framed_terminal"] = result.get("reason") or result.get("terminal")
+        result["activity_report"]["request_plan"] = summary
     existing_log = result.get("activity_log") or ""
-    result["activity_log"] = render_plan_activity(revisions) + ("\n\n" + existing_log if existing_log else "")
+    result["activity_log"] = render_plan_activity(
+        revisions,
+        framed=framed_flag,
+        framed_terminal=str(result.get("reason") or "") or None,
+    ) + ("\n\n" + existing_log if existing_log else "")
     return result
 
 
@@ -666,7 +737,12 @@ def _attach_plan_persist_warnings(result: dict[str, Any], warnings: list[str]) -
     result["plan_persist_warning"] = warnings[-1]
 
 
-def render_plan_activity(revisions: list[CairnPlan]) -> str:
+def render_plan_activity(
+    revisions: list[CairnPlan],
+    *,
+    framed: bool = False,
+    framed_terminal: str | None = None,
+) -> str:
     final = revisions[-1]
     lines = [
         "Request Plan",
@@ -676,6 +752,9 @@ def render_plan_activity(revisions: list[CairnPlan]) -> str:
         f"- Decision: {final.revision_decision}",
         f"- Steps: {len(final.steps)}",
     ]
+    if framed:
+        term = framed_terminal or "open"
+        lines.append(f"- Execution: framed (Deborah substrate) → {term}")
     if final.revision_reason:
         lines.append(f"- Reason: {final.revision_reason}")
     return "\n".join(lines)
@@ -725,6 +804,21 @@ def plan_from_payload(
         step.status = "pending"
     plan.steps = ensure_interpretive_plan_shape(plan.steps)
     plan.cairn_text = render_cairn_plan(plan)
+    # Soft Deborah seal at construction time (never raises here — callers may require).
+    try:
+        from tirzah.planning.deborah_bridge import validate_against_deborah
+
+        errors = validate_against_deborah(plan, profile="full")
+        if errors:
+            # Stash for inspectors; keep plan usable under Tirzah executor.
+            note = f"deborah.validate: {errors[0]}"
+            if plan.revision_reason:
+                if "deborah.validate" not in plan.revision_reason:
+                    plan.revision_reason = f"{plan.revision_reason} | {note}"[:1000]
+            else:
+                plan.revision_reason = note[:1000]
+    except Exception:
+        pass
     return plan
 
 

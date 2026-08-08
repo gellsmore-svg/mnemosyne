@@ -249,7 +249,14 @@ def test_frontend_wrapper_executes_existing_pipeline_then_revises_and_persists()
     assert result["request_plan"]["revision"] == 2
     assert result["request_plan"]["status"] == "stable"
     assert len(result["plan_revisions"]) == 2
-    assert [step["step"] for step in result["process_trace"]] == ["request_plan", "answer_adapter", "request_plan"]
+    # Specialist / Deborah conformance steps are optional environment side-effects.
+    core_trace = [
+        step["step"]
+        for step in result["process_trace"]
+        if step["step"] in {"request_plan", "answer_adapter"}
+    ]
+    assert core_trace == ["request_plan", "answer_adapter", "request_plan"]
+    assert "framed_execution" not in result or not result.get("framed_execution")
     assert len(db.recursive_plans.rows) == 2
     assert db.recursive_plans.rows[0]["session_id"] == "s1"
     assert result["activity_log"].startswith("Request Plan")

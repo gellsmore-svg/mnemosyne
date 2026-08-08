@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tirzah"
-version = "1.14.1"
+version = "1.15.1"
 description = "Local graph-based memory and retrieval layer for LLM interactions."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,10 +34,10 @@ dependencies = [
   "pymongo>=4.7",
   "pyyaml>=6.0",
   # PyPI pins (git URLs are rejected by the package index).
-  "hoglah>=0.8.0",   # priority queue and LLM transport runtime
-  "galeed>=0.2.0",   # cross-project trace/log spine
-  "deborah>=0.14.0", # process grammar (import: deborah)
-  "keturah>=0.3.0",  # uniform LLM interface manifest
+  "hoglah>=0.9.0",   # SessionPriorityQueue + LLM transport runtime
+  "galeed>=0.3.2",   # cross-project trace/log spine (negotiation note/phase)
+  "deborah>=0.23.3", # process grammar + framed substrate slice
+  "keturah>=0.4.0",  # manifest + shared specialist envelope (REQUEST_FIELDS)
 ]
 
 [project.optional-dependencies]
@@ -72,18 +72,18 @@ milcah = [
   "milcah[hoglah]>=0.2.0",
 ]
 hoglah = [
-  "hoglah>=0.8.0",
+  "hoglah>=0.9.0",
 ]
 hoglah-kafka = [
-  "hoglah>=0.8.0",
+  "hoglah>=0.9.0",
   "confluent-kafka>=2.3",
 ]
 hoglah-rabbitmq = [
-  "hoglah>=0.8.0",
+  "hoglah>=0.9.0",
   "pika>=1.3",
 ]
 hoglah-redis = [
-  "hoglah>=0.8.0",
+  "hoglah>=0.9.0",
   "redis>=5.0",
 ]
 
